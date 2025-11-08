@@ -7,11 +7,12 @@ import Header from './components/Header';
 import ProjectModal from './components/ProjectModal';
 import ConfirmationModal from './components/ConfirmationModal';
 import Toast from './components/Toast';
+import { useAuth } from './contexts/AuthContext';
 
 const App: React.FC = () => {
+  const { user, loading: authLoading } = useAuth();
   const [projects, setProjects] = useState<Project[]>(MOCK_PROJECTS);
   const [selectedProject, setSelectedProject] = useState<Project | null>(null);
-  const [currentUserRole, setCurrentUserRole] = useState<UserRole>(UserRole.Manager);
   
   const [isProjectModalOpen, setIsProjectModalOpen] = useState(false);
   const [editingProject, setEditingProject] = useState<Project | null>(null);
@@ -39,6 +40,9 @@ const App: React.FC = () => {
   const canModify = (role: UserRole) => {
     return role === UserRole.Admin || role === UserRole.Manager;
   }
+
+  // Get current user role, default to Member if not authenticated
+  const currentUserRole = user?.role || UserRole.Member;
 
   const handleUpdateProject = (updatedProject: Project) => {
     setProjects(currentProjects =>
@@ -100,7 +104,10 @@ const App: React.FC = () => {
 
   return (
     <div className="min-h-screen bg-slate-900 text-slate-200 font-sans">
-      <Header currentUserRole={currentUserRole} setCurrentUserRole={setCurrentUserRole} />
+      <Header 
+        currentUserRole={currentUserRole} 
+        setCurrentUserRole={() => {}} // Role is now controlled by Firebase Auth
+      />
       <main className="p-4 sm:p-6 lg:p-8">
         {selectedProject ? (
           <ProjectDetail 

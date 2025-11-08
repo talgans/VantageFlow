@@ -229,10 +229,18 @@ async function verifyData(db: admin.firestore.Firestore): Promise<void> {
     
     snapshot.forEach(doc => {
       const data = doc.data();
-      const taskCount = data.phases.reduce((total: number, phase: any) => 
-        total + phase.tasks.length, 0
-      );
-      console.log(`  ✓ ${doc.id}: "${data.name}" with ${taskCount} tasks`);
+      
+      // Safety check for data structure
+      if (!data.phases || !Array.isArray(data.phases)) {
+        console.log(`  ⚠ ${doc.id}: "${data.name || 'Unknown'}" - Invalid or missing phases data`);
+        return;
+      }
+      
+      const taskCount = data.phases.reduce((total: number, phase: any) => {
+        return total + (phase.tasks?.length || 0);
+      }, 0);
+      
+      console.log(`  ✓ ${doc.id}: "${data.name}" with ${data.phases.length} phases and ${taskCount} tasks`);
     });
 
     console.log('\n✅ Data verification complete!');
