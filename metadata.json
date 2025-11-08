@@ -1,5 +1,5 @@
 {
-  "name": "KPI Dashboard",
+  "name": "VantageFlow",
   "description": "A KPI dashboard app to track project progress using a rubric-based system, featuring Gantt-like views, attractive charts, and AI-powered analytics to provide insights into project health and potential risks.",
   "requestFramePermissions": []
 }
