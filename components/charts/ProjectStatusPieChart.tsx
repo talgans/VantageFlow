@@ -44,7 +44,8 @@ const ProjectStatusPieChart: React.FC<ProjectStatusPieChartProps> = ({ data }) =
                 backgroundColor: 'rgba(30, 41, 59, 0.9)', 
                 borderColor: '#475569',
                 borderRadius: '0.5rem'
-            }} 
+            }}
+            itemStyle={{ color: '#e2e8f0' }} 
           />
           <Legend
             iconSize={10}

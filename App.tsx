@@ -1,4 +1,3 @@
-
 import React, { useState } from 'react';
 import { Project, UserRole, Phase, Task } from './types';
 import { MOCK_PROJECTS } from './constants';
@@ -7,6 +6,7 @@ import ProjectDetail from './components/ProjectDetail';
 import Header from './components/Header';
 import ProjectModal from './components/ProjectModal';
 import ConfirmationModal from './components/ConfirmationModal';
+import Toast from './components/Toast';
 
 const App: React.FC = () => {
   const [projects, setProjects] = useState<Project[]>(MOCK_PROJECTS);
@@ -16,6 +16,14 @@ const App: React.FC = () => {
   const [isProjectModalOpen, setIsProjectModalOpen] = useState(false);
   const [editingProject, setEditingProject] = useState<Project | null>(null);
   const [projectToDelete, setProjectToDelete] = useState<Project | null>(null);
+  const [toast, setToast] = useState<string | null>(null);
+
+  const showToast = (message: string) => {
+    setToast(message);
+    setTimeout(() => {
+        setToast(null);
+    }, 3000);
+  };
 
 
   const handleSelectProject = (project: Project) => {
@@ -54,7 +62,7 @@ const App: React.FC = () => {
     setEditingProject(null);
   };
 
-  const handleSaveProject = (projectData: Omit<Project, 'id' | 'phases'> & { id?: string }) => {
+  const handleSaveProject = (projectData: Omit<Project, 'id'> & { id?: string }) => {
     if (projectData.id) { // Update
         const originalProject = projects.find(p => p.id === projectData.id);
         if (!originalProject) return;
@@ -69,9 +77,8 @@ const App: React.FC = () => {
         }
     } else { // Create
         const newProject: Project = {
-            ...(projectData as Omit<Project, 'id' | 'phases'>),
+            ...projectData,
             id: `proj-${Date.now()}`,
-            phases: [],
         };
         setProjects(currentProjects => [newProject, ...currentProjects]);
     }
@@ -101,6 +108,7 @@ const App: React.FC = () => {
             onBack={handleGoBack}
             canEdit={canModify(currentUserRole)}
             onUpdateProject={handleUpdateProject}
+            showToast={showToast}
           />
         ) : (
           <MasterDashboard 
@@ -129,6 +137,7 @@ const App: React.FC = () => {
             message={<>Are you sure you want to delete the project "<strong>{projectToDelete.name}</strong>"? This action cannot be undone.</>}
         />
       )}
+      {toast && <Toast message={toast} />}
     </div>
   );
 };

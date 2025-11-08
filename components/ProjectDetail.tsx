@@ -2,7 +2,7 @@ import React, { useState, useRef, useEffect, useMemo } from 'react';
 import { Project, Task, TaskStatus, Phase } from '../types';
 import StatusBadge from './StatusBadge';
 import { getProjectInsights } from '../services/geminiService';
-import { ArrowLeftIcon, SparklesIcon, InfoIcon, TeamIcon, CalendarIcon, MoneyIcon, CheckCircleIcon, PlusCircleIcon, ChevronRightIcon, ChevronDownIcon, ListBulletIcon, ChartBarIcon, TrashIcon, ArrowUpIcon, ArrowDownIcon } from './icons';
+import { ArrowLeftIcon, SparklesIcon, InfoIcon, TeamIcon, CalendarIcon, MoneyIcon, CheckCircleIcon, PlusCircleIcon, ChevronRightIcon, ChevronDownIcon, ListBulletIcon, ChartBarIcon, TrashIcon, ArrowUpIcon, ArrowDownIcon, GripVerticalIcon } from './icons';
 import GanttChart from './GanttChart';
 import ConfirmationModal from './ConfirmationModal';
 
@@ -38,6 +38,7 @@ interface ProjectDetailProps {
   onBack: () => void;
   canEdit: boolean;
   onUpdateProject: (project: Project) => void;
+  showToast: (message: string) => void;
 }
 
 type SortKey = 'name' | 'startDate' | 'status' | 'deliverables';
@@ -157,7 +158,7 @@ const StatusEditButtons: React.FC<{
 };
 
 
-const TaskRow: React.FC<{
+interface TaskRowProps {
     task: Task;
     level: number;
     isExpanded: boolean;
@@ -170,11 +171,27 @@ const TaskRow: React.FC<{
     setEditingField: (field: { taskId: string; field: string } | null) => void;
     handleUpdateTaskField: (taskId: string, field: keyof Task, value: any) => void;
     onRequestDelete: (taskId: string) => void;
-}> = ({ task, level, isExpanded, onToggleExpand, addingSubtaskTo, setAddingSubtaskTo, canEdit, handleSaveSubtask, editingField, setEditingField, handleUpdateTaskField, onRequestDelete }) => {
+    phaseId: string;
+    parentId?: string;
+    onDragStart: (e: React.DragEvent, task: Task, phaseId: string, parentId?: string) => void;
+    onDragOver: (e: React.DragEvent, task: Task, phaseId: string, parentId?: string) => void;
+    onDrop: (e: React.DragEvent, task: Task, phaseId: string, parentId?: string) => void;
+    onDragEnd: () => void;
+    onDragLeave: () => void;
+    draggedItemId: string | null;
+    dropTarget: { taskId: string; position: 'above' | 'below' } | null;
+}
+
+
+const TaskRow: React.FC<TaskRowProps> = ({ task, level, isExpanded, onToggleExpand, addingSubtaskTo, setAddingSubtaskTo, canEdit, handleSaveSubtask, editingField, setEditingField, handleUpdateTaskField, onRequestDelete, phaseId, parentId, onDragStart, onDragOver, onDrop, onDragEnd, onDragLeave, draggedItemId, dropTarget }) => {
     const hasSubtasks = task.subTasks && task.subTasks.length > 0;
     const formatDate = (date: Date) => new Date(date).toLocaleString('en-US', { month: 'short', day: 'numeric' });
     const isEditing = (field: string) => editingField?.taskId === task.id && editingField?.field === field;
     const progress = calculateTaskProgress(task);
+
+    const isBeingDragged = draggedItemId === task.id;
+    const isDropTargetAbove = dropTarget?.taskId === task.id && dropTarget.position === 'above';
+    const isDropTargetBelow = dropTarget?.taskId === task.id && dropTarget.position === 'below';
 
     const handleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
         if (e.key === 'Enter') {
@@ -186,13 +203,24 @@ const TaskRow: React.FC<{
     
     return (
       <>
-        <li className="bg-slate-800 rounded-lg p-2 grid grid-cols-10 gap-4 items-center" style={{ marginLeft: `${level * 2}rem`}}>
+        {isDropTargetAbove && <li className="h-0.5 bg-brand-secondary list-none" style={{ marginLeft: `${level * 2}rem` }} />}
+        <li 
+            className={`bg-slate-800 rounded-lg p-2 grid grid-cols-10 gap-4 items-center transition-opacity ${isBeingDragged ? 'opacity-30' : 'opacity-100'}`}
+            style={{ marginLeft: `${level * 2}rem`}}
+            draggable={canEdit}
+            onDragStart={(e) => onDragStart(e, task, phaseId, parentId)}
+            onDragOver={(e) => onDragOver(e, task, phaseId, parentId)}
+            onDrop={(e) => onDrop(e, task, phaseId, parentId)}
+            onDragEnd={onDragEnd}
+            onDragLeave={onDragLeave}
+        >
             <div className="col-span-4 text-white font-medium flex items-center">
+                 {canEdit && <GripVerticalIcon className="w-5 h-5 mr-2 text-slate-500 cursor-grab flex-shrink-0" />}
                 {hasSubtasks ? (
                     <button onClick={() => onToggleExpand(task.id)} className="mr-2 text-slate-400 hover:text-white flex-shrink-0">
                         {isExpanded ? <ChevronDownIcon className="w-4 h-4" /> : <ChevronRightIcon className="w-4 h-4" />}
                     </button>
-                ) : <div className="w-4 h-4 mr-2 flex-shrink-0"></div>}
+                ) : <div className="w-4 h-4 mr-2 flex-shrink-0" style={!canEdit ? { marginLeft: '1.75rem' } : {}} />}
 
                 <div className="w-full">
                   {isEditing('name') ? (
@@ -274,6 +302,7 @@ const TaskRow: React.FC<{
               )}
             </div>
         </li>
+        {isDropTargetBelow && <li className="h-0.5 bg-brand-secondary list-none" style={{ marginLeft: `${level * 2}rem` }} />}
         {addingSubtaskTo === task.id && (
             <InlineTaskForm 
                 onSave={(name) => handleSaveSubtask(task.id, name)} 
@@ -298,6 +327,15 @@ const TaskRow: React.FC<{
                     setEditingField={setEditingField}
                     handleUpdateTaskField={handleUpdateTaskField}
                     onRequestDelete={onRequestDelete}
+                    phaseId={phaseId}
+                    parentId={task.id}
+                    onDragStart={onDragStart}
+                    onDragOver={onDragOver}
+                    onDrop={onDrop}
+                    onDragEnd={onDragEnd}
+                    onDragLeave={onDragLeave}
+                    draggedItemId={draggedItemId}
+                    dropTarget={dropTarget}
                 />
             ))
         )}
@@ -332,7 +370,7 @@ const SortableHeaderCell: React.FC<SortableHeaderCellProps> = ({ label, sortKey,
 };
 
 
-const ProjectDetail: React.FC<ProjectDetailProps> = ({ project, onBack, canEdit, onUpdateProject }) => {
+const ProjectDetail: React.FC<ProjectDetailProps> = ({ project, onBack, canEdit, onUpdateProject, showToast }) => {
   const [aiInsight, setAiInsight] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [expandedTasks, setExpandedTasks] = useState<Set<string>>(new Set());
@@ -341,7 +379,14 @@ const ProjectDetail: React.FC<ProjectDetailProps> = ({ project, onBack, canEdit,
   const [editingField, setEditingField] = useState<{ taskId: string; field: string } | null>(null);
   const [viewMode, setViewMode] = useState<'list' | 'gantt'>('list');
   const [taskToDeleteId, setTaskToDeleteId] = useState<string | null>(null);
-  const [sortConfig, setSortConfig] = useState<SortConfig>({ key: 'startDate', direction: 'ascending' });
+  const [sortConfig, setSortConfig] = useState<SortConfig>({ key: 'status', direction: 'ascending' });
+  const [editingPhase, setEditingPhase] = useState<{ id: string; field: 'name' | 'weekRange' } | null>(null);
+  const [phaseToDelete, setPhaseToDelete] = useState<Phase | null>(null);
+
+  // --- Drag and Drop State ---
+  const [draggedItemId, setDraggedItemId] = useState<string | null>(null);
+  const [draggedItemContext, setDraggedItemContext] = useState<{ phaseId: string; parentId?: string } | null>(null);
+  const [dropTarget, setDropTarget] = useState<{ taskId: string; position: 'above' | 'below' } | null>(null);
 
 
   const sortedProject = useMemo(() => {
@@ -359,6 +404,125 @@ const ProjectDetail: React.FC<ProjectDetailProps> = ({ project, onBack, canEdit,
     return projectCopy;
   }, [project, sortConfig]);
 
+  const reviveDates = (key: string, value: any) => {
+    if (key === 'startDate' || key === 'endDate') {
+        return new Date(value);
+    }
+    return value;
+  };
+
+  // --- Drag and Drop Handlers ---
+
+  const handleDragStart = (e: React.DragEvent, task: Task, phaseId: string, parentId?: string) => {
+      e.dataTransfer.effectAllowed = 'move';
+      e.dataTransfer.setData('text/plain', task.id);
+      setDraggedItemId(task.id);
+      setDraggedItemContext({ phaseId, parentId });
+  };
+
+  const handleDragOver = (e: React.DragEvent, targetTask: Task, phaseId: string, parentId?: string) => {
+      e.preventDefault();
+      if (!draggedItemContext || !draggedItemId) return;
+      
+      if (draggedItemId === targetTask.id) return;
+
+      // Only allow dropping within the same parent
+      if (draggedItemContext.phaseId !== phaseId || draggedItemContext.parentId !== parentId) {
+          setDropTarget(null);
+          e.dataTransfer.dropEffect = 'none';
+          return;
+      }
+      e.dataTransfer.dropEffect = 'move';
+
+      const targetElement = e.currentTarget as HTMLLIElement;
+      const rect = targetElement.getBoundingClientRect();
+      const midpoint = rect.top + rect.height / 2;
+      const position = e.clientY < midpoint ? 'above' : 'below';
+
+      if (dropTarget?.taskId !== targetTask.id || dropTarget?.position !== position) {
+          setDropTarget({ taskId: targetTask.id, position });
+      }
+  };
+
+  const handleDrop = (e: React.DragEvent, targetTask: Task, phaseId: string, parentId?: string) => {
+      e.preventDefault();
+      const draggedTaskId = e.dataTransfer.getData('text/plain');
+      if (!draggedTaskId || !draggedItemContext || !dropTarget) {
+          handleDragEnd();
+          return;
+      };
+      if (draggedTaskId === targetTask.id) {
+          handleDragEnd();
+          return;
+      };
+      
+      if (draggedItemContext.phaseId !== phaseId || draggedItemContext.parentId !== parentId) {
+          handleDragEnd();
+          return;
+      }
+
+      const updatedProject = JSON.parse(JSON.stringify(project), reviveDates);
+      
+      let parentList: Task[] | undefined;
+      const findParentList = (p: Project) => {
+          const phase = p.phases.find(ph => ph.id === phaseId);
+          if (!phase) return;
+
+          if (!parentId) {
+              parentList = phase.tasks;
+          } else {
+              const findListRecursively = (tasks: Task[]): Task[] | undefined => {
+                  for (const task of tasks) {
+                      if (task.id === parentId) {
+                          return task.subTasks;
+                      }
+                      if (task.subTasks) {
+                          const list = findListRecursively(task.subTasks);
+                          if (list) return list;
+                      }
+                  }
+                  return undefined;
+              };
+              parentList = findListRecursively(phase.tasks);
+          }
+      };
+      findParentList(updatedProject);
+      
+      if (!parentList) {
+          handleDragEnd();
+          return;
+      }
+      
+      const dragIndex = parentList.findIndex(t => t.id === draggedTaskId);
+      const targetIndex = parentList.findIndex(t => t.id === targetTask.id);
+
+      if (dragIndex === -1 || targetIndex === -1) {
+          handleDragEnd();
+          return;
+      }
+
+      const [draggedItem] = parentList.splice(dragIndex, 1);
+      const newTargetIndex = parentList.findIndex(t => t.id === targetTask.id);
+      
+      if (dropTarget.position === 'above') {
+          parentList.splice(newTargetIndex, 0, draggedItem);
+      } else {
+          parentList.splice(newTargetIndex + 1, 0, draggedItem);
+      }
+
+      onUpdateProject(updatedProject);
+      handleDragEnd();
+  };
+
+  const handleDragEnd = () => {
+      setDraggedItemId(null);
+      setDraggedItemContext(null);
+      setDropTarget(null);
+  };
+
+  const handleDragLeave = () => {
+      setDropTarget(null);
+  };
 
   const handleGetInsights = async () => {
     setIsLoading(true);
@@ -391,14 +555,46 @@ const ProjectDetail: React.FC<ProjectDetailProps> = ({ project, onBack, canEdit,
       return { key, direction: 'ascending' };
     });
   };
-
-  const reviveDates = (key: string, value: any) => {
-    if (key === 'startDate' || key === 'endDate') {
-        return new Date(value);
-    }
-    return value;
-  };
   
+  const handleAddPhase = () => {
+    const newPhase: Phase = {
+      id: `phase-${Date.now()}`,
+      name: `Phase: ${project.phases.length + 1}`,
+      weekRange: 'TBD',
+      tasks: [],
+    };
+    const updatedProject = JSON.parse(JSON.stringify(project), reviveDates);
+    updatedProject.phases.push(newPhase);
+    onUpdateProject(updatedProject);
+    showToast("New phase created below.");
+  };
+
+  const handleUpdatePhase = (phaseId: string, field: 'name' | 'weekRange', value: string) => {
+      if (field === 'name' && !value.trim()) {
+          setEditingPhase(null);
+          return;
+      }
+      const updatedProject = JSON.parse(JSON.stringify(project), reviveDates);
+      const phase = updatedProject.phases.find((p: Phase) => p.id === phaseId);
+      if (phase) {
+          phase[field] = value;
+      }
+      onUpdateProject(updatedProject);
+      setEditingPhase(null);
+  };
+
+  const handleRequestDeletePhase = (phase: Phase) => {
+      setPhaseToDelete(phase);
+  };
+
+  const handleConfirmDeletePhase = () => {
+      if (!phaseToDelete) return;
+      const updatedProject = JSON.parse(JSON.stringify(project), reviveDates);
+      updatedProject.phases = updatedProject.phases.filter((p: Phase) => p.id !== phaseToDelete.id);
+      onUpdateProject(updatedProject);
+      setPhaseToDelete(null);
+  };
+
   const handleSaveTask = (phaseId: string, taskName: string) => {
     if (!taskName.trim()) return;
 
@@ -539,62 +735,115 @@ const ProjectDetail: React.FC<ProjectDetailProps> = ({ project, onBack, canEdit,
       <div className="bg-slate-800/50 rounded-xl border border-slate-700">
         <div className="p-4 border-b border-slate-700 flex justify-between items-center">
           <h3 className="font-semibold text-lg text-white">Project Timeline</h3>
-          <div className="flex items-center rounded-lg bg-slate-900 p-1">
-              <ViewModeButton icon={<ListBulletIcon />} label="List" isActive={viewMode === 'list'} onClick={() => setViewMode('list')} />
-              <ViewModeButton icon={<ChartBarIcon />} label="Gantt" isActive={viewMode === 'gantt'} onClick={() => setViewMode('gantt')} />
+          <div className="flex items-center gap-4">
+            {canEdit && viewMode === 'list' && (
+                <button onClick={handleAddPhase} className="flex items-center space-x-2 bg-slate-700 hover:bg-slate-600 text-slate-300 font-semibold py-1 px-3 rounded-lg transition-colors text-sm">
+                    <PlusCircleIcon className="w-4 h-4" />
+                    <span>Add Phase</span>
+                </button>
+            )}
+            <div className="flex items-center rounded-lg bg-slate-900 p-1">
+                <ViewModeButton icon={<ListBulletIcon />} label="List" isActive={viewMode === 'list'} onClick={() => setViewMode('list')} />
+                <ViewModeButton icon={<ChartBarIcon />} label="Gantt" isActive={viewMode === 'gantt'} onClick={() => setViewMode('gantt')} />
+            </div>
           </div>
         </div>
 
         {viewMode === 'list' ? (
-          sortedProject.phases.map(phase => (
-            <div key={phase.id} className="border-b border-slate-700 last:border-b-0">
-              <div className="p-4 bg-slate-800 flex justify-between items-center">
-                <h4 className="font-semibold text-md text-slate-300">{phase.name} <span className="text-sm text-slate-400 font-normal ml-2">{phase.weekRange}</span></h4>
-                 {canEdit && (
-                    <button onClick={() => setAddingTaskToPhase(phase.id)} className="flex items-center space-x-2 bg-slate-700 hover:bg-slate-600 text-slate-300 font-semibold py-1 px-3 rounded-lg transition-colors text-sm">
-                        <PlusCircleIcon className="w-4 h-4" />
-                        <span>Add Item</span>
-                    </button>
-                )}
-              </div>
-              {addingTaskToPhase === phase.id && (
-                  <div className="p-4 pb-0">
-                      <InlineTaskForm
-                          onSave={(name) => handleSaveTask(phase.id, name)}
-                          onCancel={() => setAddingTaskToPhase(null)}
-                          placeholder="New task name"
-                      />
+          <>
+            {sortedProject.phases.map(phase => (
+              <div key={phase.id} className="border-b border-slate-700 last:border-b-0">
+                <div className="p-4 bg-slate-800 flex justify-between items-center group">
+                  <div className="flex items-center gap-2 flex-grow min-w-0">
+                    {editingPhase?.id === phase.id && editingPhase.field === 'name' ? (
+                        <input
+                            type="text"
+                            defaultValue={phase.name}
+                            onBlur={(e) => handleUpdatePhase(phase.id, 'name', e.target.value)}
+                            onKeyDown={(e) => { if (e.key === 'Enter') e.currentTarget.blur(); if (e.key === 'Escape') setEditingPhase(null); }}
+                            className="bg-slate-700 border border-slate-600 text-white font-semibold text-md rounded-md p-1 w-full"
+                            autoFocus
+                        />
+                    ) : (
+                        <h4 className="font-semibold text-md text-slate-300 cursor-pointer truncate" onClick={() => canEdit && setEditingPhase({id: phase.id, field: 'name'})} title={phase.name}>{phase.name}</h4>
+                    )}
+                    
+                    {editingPhase?.id === phase.id && editingPhase.field === 'weekRange' ? (
+                        <input
+                            type="text"
+                            defaultValue={phase.weekRange}
+                            onBlur={(e) => handleUpdatePhase(phase.id, 'weekRange', e.target.value)}
+                            onKeyDown={(e) => { if (e.key === 'Enter') e.currentTarget.blur(); if (e.key === 'Escape') setEditingPhase(null); }}
+                            className="bg-slate-700 border border-slate-600 text-slate-400 text-sm rounded-md p-1 w-24"
+                            autoFocus
+                        />
+                    ) : (
+                        <span className="text-sm text-slate-400 font-normal cursor-pointer flex-shrink-0" onClick={() => canEdit && setEditingPhase({id: phase.id, field: 'weekRange'})}>{phase.weekRange}</span>
+                    )}
                   </div>
-              )}
-              <div className="p-4">
-                <div className="grid grid-cols-10 gap-4 text-sm mb-2 px-2" style={{ paddingLeft: '2.5rem' }}>
-                  <SortableHeaderCell label="Task" sortKey="name" sortConfig={sortConfig} onSort={handleSort} className="col-span-4" />
-                  <SortableHeaderCell label="Timeline" sortKey="startDate" sortConfig={sortConfig} onSort={handleSort} className="col-span-2" />
-                  <SortableHeaderCell label="Status" sortKey="status" sortConfig={sortConfig} onSort={handleSort} className="col-span-2" />
-                  <SortableHeaderCell label="Details" sortKey="deliverables" sortConfig={sortConfig} onSort={handleSort} className="col-span-2" />
+
+                  <div className="flex items-center gap-2 pl-2">
+                    {canEdit && (
+                        <button onClick={() => handleRequestDeletePhase(phase)} className="text-slate-500 hover:text-red-500 opacity-0 group-hover:opacity-100 transition-opacity">
+                            <TrashIcon className="w-4 h-4" />
+                        </button>
+                    )}
+                    {canEdit && (
+                        <button onClick={() => setAddingTaskToPhase(phase.id)} className="flex items-center space-x-2 bg-slate-700 hover:bg-slate-600 text-slate-300 font-semibold py-1 px-3 rounded-lg transition-colors text-sm">
+                            <PlusCircleIcon className="w-4 h-4" />
+                            <span>Add Item</span>
+                        </button>
+                    )}
+                  </div>
                 </div>
-                <ul className="space-y-2">
-                  {phase.tasks.map(task => (
-                    <TaskRow
-                      key={task.id}
-                      task={task}
-                      level={0}
-                      isExpanded={expandedTasks.has(task.id)}
-                      onToggleExpand={handleToggleExpand}
-                      addingSubtaskTo={addingSubtaskTo}
-                      setAddingSubtaskTo={setAddingSubtaskTo}
-                      canEdit={canEdit}
-                      handleSaveSubtask={handleSaveSubtask}
-                      editingField={editingField}
-                      setEditingField={setEditingField}
-                      handleUpdateTaskField={handleUpdateTaskField}
-                      onRequestDelete={handleRequestDeleteTask}
-                    />
-                  ))}
-                </ul>
+
+                {addingTaskToPhase === phase.id && (
+                    <div className="p-4 pb-0">
+                        <InlineTaskForm
+                            onSave={(name) => handleSaveTask(phase.id, name)}
+                            onCancel={() => setAddingTaskToPhase(null)}
+                            placeholder="New task name"
+                        />
+                    </div>
+                )}
+                <div className="p-4">
+                  <div className="grid grid-cols-10 gap-4 text-sm mb-2 px-2" style={{ paddingLeft: '2.5rem' }}>
+                    <SortableHeaderCell label="Task" sortKey="name" sortConfig={sortConfig} onSort={handleSort} className="col-span-4" />
+                    <SortableHeaderCell label="Timeline" sortKey="startDate" sortConfig={sortConfig} onSort={handleSort} className="col-span-2" />
+                    <SortableHeaderCell label="Status" sortKey="status" sortConfig={sortConfig} onSort={handleSort} className="col-span-2" />
+                    <SortableHeaderCell label="Details" sortKey="deliverables" sortConfig={sortConfig} onSort={handleSort} className="col-span-2" />
+                  </div>
+                  <ul className="space-y-2">
+                    {phase.tasks.map(task => (
+                      <TaskRow
+                        key={task.id}
+                        task={task}
+                        level={0}
+                        isExpanded={expandedTasks.has(task.id)}
+                        onToggleExpand={handleToggleExpand}
+                        addingSubtaskTo={addingSubtaskTo}
+                        setAddingSubtaskTo={setAddingSubtaskTo}
+                        canEdit={canEdit}
+                        handleSaveSubtask={handleSaveSubtask}
+                        editingField={editingField}
+                        setEditingField={setEditingField}
+                        handleUpdateTaskField={handleUpdateTaskField}
+                        onRequestDelete={handleRequestDeleteTask}
+                        phaseId={phase.id}
+                        onDragStart={handleDragStart}
+                        onDragOver={handleDragOver}
+                        onDrop={handleDrop}
+                        onDragEnd={handleDragEnd}
+                        onDragLeave={handleDragLeave}
+                        draggedItemId={draggedItemId}
+                        dropTarget={dropTarget}
+                      />
+                    ))}
+                  </ul>
+                </div>
               </div>
-            </div>
-          ))
+            ))}
+          </>
         ) : (
           <GanttChart project={project} />
         )}
@@ -626,6 +875,14 @@ const ProjectDetail: React.FC<ProjectDetailProps> = ({ project, onBack, canEdit,
         onConfirm={handleConfirmDeleteTask}
         title="Delete Task"
         message="Are you sure you want to delete this task and all its sub-tasks? This action cannot be undone."
+      />
+
+      <ConfirmationModal
+        isOpen={!!phaseToDelete}
+        onClose={() => setPhaseToDelete(null)}
+        onConfirm={handleConfirmDeletePhase}
+        title="Delete Phase"
+        message={<>Are you sure you want to delete the phase "<strong>{phaseToDelete?.name}</strong>"? All tasks and sub-tasks within this phase will also be deleted. This action cannot be undone.</>}
       />
 
     </div>
