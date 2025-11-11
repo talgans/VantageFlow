@@ -1,18 +1,32 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Project, UserRole, Phase, Task } from './types';
 import { MOCK_PROJECTS } from './constants';
 import MasterDashboard from './components/MasterDashboard';
 import ProjectDetail from './components/ProjectDetail';
 import Header from './components/Header';
+import SideNav from './components/SideNav';
 import ProjectModal from './components/ProjectModal';
 import ConfirmationModal from './components/ConfirmationModal';
 import Toast from './components/Toast';
+import LoginModal from './components/LoginModal';
+import UserAdministrationPage from './components/UserAdministrationPage';
 import { useAuth } from './contexts/AuthContext';
+import {
+  subscribeToProjects,
+  createProject,
+  updateProject as updateFirestoreProject,
+  deleteProject as deleteFirestoreProject,
+  isFirestoreAvailable,
+} from './services/firestoreService';
 
 const App: React.FC = () => {
-  const { user, loading: authLoading } = useAuth();
-  const [projects, setProjects] = useState<Project[]>(MOCK_PROJECTS);
+  const { user, loading: authLoading, signOut } = useAuth();
+  const [projects, setProjects] = useState<Project[]>([]);
   const [selectedProject, setSelectedProject] = useState<Project | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [isLoginModalOpen, setIsLoginModalOpen] = useState(false);
+  const [currentPage, setCurrentPage] = useState<string>('dashboard');
+  const [isSideNavOpen, setIsSideNavOpen] = useState(false);
   
   const [isProjectModalOpen, setIsProjectModalOpen] = useState(false);
   const [editingProject, setEditingProject] = useState<Project | null>(null);
@@ -26,29 +40,83 @@ const App: React.FC = () => {
     }, 3000);
   };
 
+  /**
+   * Subscribe to Firestore real-time updates
+   */
+  useEffect(() => {
+    if (!isFirestoreAvailable()) {
+      console.warn('Firestore not available, using mock data');
+      setProjects(MOCK_PROJECTS);
+      setLoading(false);
+      return;
+    }
+
+    const unsubscribe = subscribeToProjects(
+      (projectsFromDb) => {
+        setProjects(projectsFromDb);
+        setLoading(false);
+      },
+      (error) => {
+        console.error('Firestore subscription error:', error);
+        showToast('Failed to load projects from database');
+        // Fallback to mock data
+        setProjects(MOCK_PROJECTS);
+        setLoading(false);
+      }
+    );
+
+    return () => unsubscribe();
+  }, []);
+
+  /**
+   * Sync selected project with real-time updates from Firestore
+   */
+  useEffect(() => {
+    if (selectedProject) {
+      const updatedProject = projects.find(p => p.id === selectedProject.id);
+      if (updatedProject) {
+        setSelectedProject(updatedProject);
+      }
+    }
+  }, [projects]);
 
   const handleSelectProject = (project: Project) => {
     // Ensure we are selecting the most up-to-date project from the state
     const currentProject = projects.find(p => p.id === project.id) || project;
     setSelectedProject(currentProject);
+    setCurrentPage('projects'); // Ensure we're on the projects page
   };
 
   const handleGoBack = () => {
     setSelectedProject(null);
+    setCurrentPage('projects'); // Ensure we're on the projects page when going back
   };
   
   const canModify = (role: UserRole) => {
     return role === UserRole.Admin || role === UserRole.Manager;
   }
 
+  const canEditProject = (project: Project): boolean => {
+    // Admin can edit everything
+    if (currentUserRole === UserRole.Admin) return true;
+    // Owner can edit their own project
+    if (user && project.ownerId === user.uid) return true;
+    return false;
+  }
+
   // Get current user role, default to Member if not authenticated
   const currentUserRole = user?.role || UserRole.Member;
 
-  const handleUpdateProject = (updatedProject: Project) => {
-    setProjects(currentProjects =>
-      currentProjects.map(p => (p.id === updatedProject.id ? updatedProject : p))
-    );
-    setSelectedProject(updatedProject);
+  const handleUpdateProject = async (updatedProject: Project) => {
+    try {
+      await updateFirestoreProject(updatedProject);
+      // Real-time listener will update the state automatically
+      setSelectedProject(updatedProject);
+      showToast('Project updated successfully');
+    } catch (error) {
+      console.error('Error updating project:', error);
+      showToast('Failed to update project');
+    }
   };
 
   const handleShowCreateProjectModal = () => {
@@ -66,68 +134,131 @@ const App: React.FC = () => {
     setEditingProject(null);
   };
 
-  const handleSaveProject = (projectData: Omit<Project, 'id'> & { id?: string }) => {
-    if (projectData.id) { // Update
-        const originalProject = projects.find(p => p.id === projectData.id);
-        if (!originalProject) return;
-
-        const updatedProjectData = { ...originalProject, ...projectData };
-
-        setProjects(currentProjects =>
-            currentProjects.map(p => (p.id === updatedProjectData.id ? updatedProjectData : p))
-        );
-        if (selectedProject?.id === updatedProjectData.id) {
-            setSelectedProject(updatedProjectData);
-        }
-    } else { // Create
-        const newProject: Project = {
-            ...projectData,
-            id: `proj-${Date.now()}`,
+  const handleSaveProject = async (projectData: Omit<Project, 'id'> & { id?: string }) => {
+    try {
+      if (projectData.id) { 
+        // Update existing project
+        await updateFirestoreProject(projectData as Project);
+        showToast('Project updated successfully');
+      } else { 
+        // Create new project - set owner
+        const newProjectData = {
+          ...projectData,
+          ownerId: user?.uid,
+          ownerEmail: user?.email || undefined,
         };
-        setProjects(currentProjects => [newProject, ...currentProjects]);
+        await createProject(newProjectData);
+        showToast('Project created successfully');
+      }
+      handleCloseProjectModal();
+    } catch (error) {
+      console.error('Error saving project:', error);
+      showToast('Failed to save project');
     }
-    handleCloseProjectModal();
   };
 
   const handleRequestDeleteProject = (project: Project) => {
     setProjectToDelete(project);
   };
 
-  const handleConfirmDeleteProject = () => {
-      if (!projectToDelete) return;
-      setProjects(projects.filter(p => p.id !== projectToDelete.id));
+  const handleConfirmDeleteProject = async () => {
+    if (!projectToDelete) return;
+    
+    try {
+      await deleteFirestoreProject(projectToDelete.id);
+      
       if (selectedProject?.id === projectToDelete.id) {
-          setSelectedProject(null);
+        setSelectedProject(null);
       }
+      
       setProjectToDelete(null);
+      showToast('Project deleted successfully');
+    } catch (error) {
+      console.error('Error deleting project:', error);
+      showToast('Failed to delete project');
+    }
   };
+
+  const handleSignOut = async () => {
+    try {
+      await signOut();
+      showToast('Signed out successfully');
+    } catch (error) {
+      console.error('Error signing out:', error);
+      showToast('Failed to sign out');
+    }
+  };
+
+  // Show loading state
+  if (authLoading || loading) {
+    return (
+      <div className="min-h-screen bg-slate-900 flex items-center justify-center">
+        <div className="text-center">
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-brand-secondary mx-auto"></div>
+          <p className="text-slate-400 mt-4">Loading...</p>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen bg-slate-900 text-slate-200 font-sans">
       <Header 
-        currentUserRole={currentUserRole} 
-        setCurrentUserRole={() => {}} // Role is now controlled by Firebase Auth
+        currentUserRole={currentUserRole}
+        onSignOut={handleSignOut}
+        onSignInClick={() => setIsLoginModalOpen(true)}
+        onMenuClick={() => setIsSideNavOpen(true)}
       />
-      <main className="p-4 sm:p-6 lg:p-8">
-        {selectedProject ? (
-          <ProjectDetail 
-            project={selectedProject} 
-            onBack={handleGoBack}
-            canEdit={canModify(currentUserRole)}
-            onUpdateProject={handleUpdateProject}
-            showToast={showToast}
-          />
-        ) : (
-          <MasterDashboard 
-            projects={projects} 
-            onSelectProject={handleSelectProject}
-            onShowCreateModal={handleShowCreateProjectModal}
-            onEditProject={handleShowEditProjectModal}
-            onDeleteProject={handleRequestDeleteProject}
-            canModify={canModify(currentUserRole)}
-          />
-        )}
-      </main>
+      <div className="flex">
+        <SideNav 
+          currentPage={currentPage}
+          onNavigate={(page) => {
+            setCurrentPage(page);
+            setSelectedProject(null); // Reset selected project when navigating
+            setIsSideNavOpen(false);
+          }}
+          isOpen={isSideNavOpen}
+          onClose={() => setIsSideNavOpen(false)}
+          userRole={currentUserRole}
+        />
+        <main className="flex-1 p-4 sm:p-6 lg:p-8">
+          {currentPage === 'users' ? (
+            <UserAdministrationPage />
+          ) : currentPage === 'projects' || selectedProject ? (
+            selectedProject ? (
+              <ProjectDetail 
+                project={selectedProject} 
+                onBack={handleGoBack}
+                canEdit={canEditProject(selectedProject)}
+                onUpdateProject={handleUpdateProject}
+                showToast={showToast}
+              />
+            ) : (
+              <MasterDashboard 
+                projects={projects} 
+                onSelectProject={handleSelectProject}
+                onShowCreateModal={handleShowCreateProjectModal}
+                onEditProject={handleShowEditProjectModal}
+                onDeleteProject={handleRequestDeleteProject}
+                canModify={canModify(currentUserRole)}
+              />
+            )
+          ) : (
+            <MasterDashboard 
+              projects={projects} 
+              onSelectProject={handleSelectProject}
+              onShowCreateModal={handleShowCreateProjectModal}
+              onEditProject={handleShowEditProjectModal}
+              onDeleteProject={handleRequestDeleteProject}
+              canModify={canModify(currentUserRole)}
+            />
+          )}
+        </main>
+      </div>
+      <LoginModal 
+        isOpen={isLoginModalOpen}
+        onClose={() => setIsLoginModalOpen(false)}
+      />
       {isProjectModalOpen && (
         <ProjectModal 
           onClose={handleCloseProjectModal}

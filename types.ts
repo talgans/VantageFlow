@@ -37,6 +37,8 @@ export interface Project {
   };
   cost: string;
   phases: Phase[];
+  ownerId?: string; // User ID of project owner
+  ownerEmail?: string; // Email of project owner
 }
 
 export enum UserRole {

@@ -2,6 +2,8 @@
 import React from 'react';
 import { Project, Task, TaskStatus } from '../types';
 import ProjectStatusPieChart from './charts/ProjectStatusPieChart';
+import CircularProgress from './CircularProgress';
+import StatusBadge from './StatusBadge';
 import { ChevronRightIcon, PlusCircleIcon, PencilIcon, TrashIcon } from './icons';
 
 interface MasterDashboardProps {
@@ -37,6 +39,42 @@ const MasterDashboard: React.FC<MasterDashboardProps> = ({ projects, onSelectPro
     const completed = tasks.filter(t => t.status === TaskStatus.Completed).length;
     const total = tasks.length;
     return `${completed} / ${total} tasks completed`;
+  }
+
+  const getProjectCompletionPercentage = (project: Project) => {
+    const allProjectTasks = project.phases.flatMap(ph => 
+      ph.tasks.flatMap(t => t.subTasks ? [t, ...t.subTasks] : [t])
+    );
+    if (allProjectTasks.length === 0) return 0;
+    const completed = allProjectTasks.filter(t => t.status === TaskStatus.Completed).length;
+    return Math.round((completed / allProjectTasks.length) * 100);
+  }
+
+  const getProjectOverallStatus = (project: Project): { status: TaskStatus; label: string } => {
+    const allProjectTasks = project.phases.flatMap(ph => 
+      ph.tasks.flatMap(t => t.subTasks ? [t, ...t.subTasks] : [t])
+    );
+    
+    if (allProjectTasks.length === 0) {
+      return { status: TaskStatus.NotStarted, label: 'Not Started' };
+    }
+
+    // Check if any task is at risk
+    const hasAtRisk = allProjectTasks.some(t => t.status === TaskStatus.AtRisk);
+    if (hasAtRisk) {
+      return { status: TaskStatus.AtRisk, label: 'At Risk' };
+    }
+
+    // Check completion percentage
+    const percentage = getProjectCompletionPercentage(project);
+    if (percentage === 100) {
+      return { status: TaskStatus.Completed, label: 'Completed' };
+    }
+    if (percentage > 0) {
+      return { status: TaskStatus.InProgress, label: 'In Progress' };
+    }
+
+    return { status: TaskStatus.NotStarted, label: 'Not Started' };
   }
 
   return (
@@ -88,12 +126,18 @@ const MasterDashboard: React.FC<MasterDashboardProps> = ({ projects, onSelectPro
               key={project.id}
               className="p-6 hover:bg-slate-800 transition-colors flex justify-between items-center group"
             >
-              <div
-                onClick={() => onSelectProject(project)}
-                className="flex-grow cursor-pointer"
-              >
-                <p className="font-semibold text-white group-hover:text-brand-light">{project.name}</p>
-                <p className="text-sm text-slate-400">{getProjectStatusSummary(project)}</p>
+              <div className="flex items-center space-x-4 flex-grow">
+                <CircularProgress percentage={getProjectCompletionPercentage(project)} size={60} />
+                <div
+                  onClick={() => onSelectProject(project)}
+                  className="flex-grow cursor-pointer"
+                >
+                  <div className="flex items-center space-x-3 mb-1">
+                    <p className="font-semibold text-white group-hover:text-brand-light">{project.name}</p>
+                    <StatusBadge status={getProjectOverallStatus(project).status} />
+                  </div>
+                  <p className="text-sm text-slate-400">{getProjectStatusSummary(project)}</p>
+                </div>
               </div>
               <div className="flex items-center space-x-2 ml-4">
                 {canModify ? (

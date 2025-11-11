@@ -5,7 +5,9 @@
   "private": true,
   "type": "commonjs",
   "scripts": {
-    "seed": "ts-node seed.ts"
+    "seed": "ts-node seed.ts",
+    "set-role": "ts-node setUserRole.ts",
+    "list-users": "ts-node setUserRole.ts list"
   },
   "dependencies": {
     "firebase": "^12.5.0",
