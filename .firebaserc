@@ -1,0 +1,11 @@
+{
+  "projects": {},
+  "targets": {},
+  "etags": {
+    "vantageflow": {
+      "extensionInstances": {
+        "firestore-send-email": "100238d4f6829af01bbc18ca1d10dac4189d50019edcb01d32dd295ac4983abe"
+      }
+    }
+  }
+}

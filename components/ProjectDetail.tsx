@@ -732,7 +732,7 @@ const ProjectDetail: React.FC<ProjectDetailProps> = ({ project, onBack, canEdit,
       
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
           <InfoCard icon={<InfoIcon/>} title="Core System" value={project.coreSystem} />
-          <InfoCard icon={<CalendarIcon/>} title="Duration" value={project.duration} />
+          <InfoCard icon={<CalendarIcon/>} title="Duration" value={`${project.duration} weeks`} />
           <InfoCard icon={<TeamIcon/>} title="Team / Size" value={`${project.team.name} / ${project.team.size}`} />
           <InfoCard icon={<MoneyIcon/>} title="Cost / Funding" value={project.cost} />
       </div>

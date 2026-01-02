@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { UserIcon, ShieldCheckIcon, TrashIcon, EnvelopeIcon, PlusCircleIcon } from './icons';
 import { getFunctions, httpsCallable } from 'firebase/functions';
+import { app } from '../services/firebaseConfig';
 import { UserRole } from '../types';
 
 interface User {
@@ -61,7 +62,7 @@ const UserAdministrationPage: React.FC<UserAdministrationPageProps> = ({
     setError(null);
     
     try {
-      const functions = getFunctions();
+      const functions = getFunctions(app, 'us-central1');
       const listUsersFunction = httpsCallable(functions, 'listUsers');
       const result = await listUsersFunction();
       const data = result.data as { users: User[] };
@@ -81,7 +82,7 @@ const UserAdministrationPage: React.FC<UserAdministrationPageProps> = ({
   const handleRoleChange = async (uid: string, newRole: string) => {
     setUpdatingUserId(uid);
     try {
-      const functions = getFunctions();
+      const functions = getFunctions(app, 'us-central1');
       const setUserRoleFunction = httpsCallable(functions, 'setUserRole');
       await setUserRoleFunction({ uid, role: newRole });
       
@@ -102,7 +103,7 @@ const UserAdministrationPage: React.FC<UserAdministrationPageProps> = ({
     }
 
     try {
-      const functions = getFunctions();
+      const functions = getFunctions(app, 'us-central1');
       const deleteUserFunction = httpsCallable(functions, 'deleteUser');
       await deleteUserFunction({ uid });
       
@@ -125,10 +126,24 @@ const UserAdministrationPage: React.FC<UserAdministrationPageProps> = ({
 
     setInviting(true);
     try {
-      const functions = getFunctions();
-      const inviteUserFunction = httpsCallable(functions, 'inviteUser');
-      await inviteUserFunction({ email: inviteEmail, role: inviteRole });
+      // Debug: Check if user is authenticated
+      const { auth } = await import('../services/firebaseConfig');
+      const currentUser = auth.currentUser;
+      console.log('Current user:', currentUser?.email);
+      console.log('Auth token available:', !!currentUser);
       
+      if (!currentUser) {
+        throw new Error('You must be signed in to invite users. Please refresh the page and sign in again.');
+      }
+
+      // Force token refresh to ensure it's valid
+      await currentUser.getIdToken(true);
+
+      const functions = getFunctions(app, 'us-central1');
+      const inviteUserFunction = httpsCallable(functions, 'inviteUser');
+      const result = await inviteUserFunction({ email: inviteEmail, role: inviteRole });
+      
+      console.log('Invite result:', result);
       showToast(`Invitation sent to ${inviteEmail}!`);
       setInviteEmail('');
       setInviteRole('member');
@@ -267,8 +282,10 @@ const UserAdministrationPage: React.FC<UserAdministrationPageProps> = ({
                               )}
                             </div>
                             <p className="text-xs text-slate-400">
-                              Joined {new Date(user.createdAt).toLocaleDateString()}
-                              {user.lastSignIn && ` • Last sign in ${new Date(user.lastSignIn).toLocaleDateString()}`}
+                              {user.lastSignIn 
+                                ? `Joined ${new Date(user.createdAt).toLocaleDateString()} • Last sign in ${new Date(user.lastSignIn).toLocaleDateString()}`
+                                : `Invited ${new Date(user.createdAt).toLocaleDateString()}`
+                              }
                             </p>
                           </div>
                         </div>

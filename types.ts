@@ -29,7 +29,8 @@ export interface Project {
   name: string;
   description: string;
   coreSystem: string;
-  duration: string;
+  startDate: Date; // Project start date
+  duration: number; // Duration in weeks
   team: {
     name: string;
     size: number;
@@ -39,6 +40,7 @@ export interface Project {
   phases: Phase[];
   ownerId?: string; // User ID of project owner
   ownerEmail?: string; // Email of project owner
+  createdAt?: Date; // Creation timestamp
 }
 
 export enum UserRole {
