@@ -1,0 +1,21 @@
+{
+  "name": "vantageflow-firestore-admin",
+  "version": "1.0.0",
+  "description": "Administrative scripts for VantageFlow Firestore database seeding and management",
+  "private": true,
+  "type": "commonjs",
+  "scripts": {
+    "seed": "ts-node seed.ts",
+    "set-role": "ts-node setUserRole.ts",
+    "list-users": "ts-node setUserRole.ts list"
+  },
+  "dependencies": {
+    "firebase": "^12.5.0",
+    "firebase-admin": "^12.0.0"
+  },
+  "devDependencies": {
+    "@types/node": "^22.14.0",
+    "ts-node": "^10.9.2",
+    "typescript": "~5.8.2"
+  }
+}

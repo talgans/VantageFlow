@@ -722,12 +722,17 @@ const ProjectDetail: React.FC<ProjectDetailProps> = ({ project, onBack, canEdit,
 
       <div className="bg-slate-800/50 p-6 rounded-xl border border-slate-700">
         <h2 className="text-3xl font-bold text-white">{project.name}</h2>
+        {project.ownerEmail && (
+          <p className="text-sm text-slate-400 mt-1">
+            Owner: <span className="text-brand-light">{project.ownerEmail}</span>
+          </p>
+        )}
         <p className="text-slate-400 mt-2 max-w-4xl">{project.description}</p>
       </div>
       
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
           <InfoCard icon={<InfoIcon/>} title="Core System" value={project.coreSystem} />
-          <InfoCard icon={<CalendarIcon/>} title="Duration" value={project.duration} />
+          <InfoCard icon={<CalendarIcon/>} title="Duration" value={`${project.duration} weeks`} />
           <InfoCard icon={<TeamIcon/>} title="Team / Size" value={`${project.team.name} / ${project.team.size}`} />
           <InfoCard icon={<MoneyIcon/>} title="Cost / Funding" value={project.cost} />
       </div>

@@ -7,7 +7,8 @@ export const MOCK_PROJECTS: Project[] = [
     name: 'Digital Transformation Project Plan (StrategicRefresh 1.0)',
     description: 'A comprehensive plan to fully automate university administration, academics, finance, HR, and student services through an AI-powered, data-driven ecosystem.',
     coreSystem: 'eUniversity ERP + AI, Data Analytics, Blockchain, IoT, Cloud Platforms',
-    duration: '2 Months (Phased Rollout)',
+    startDate: new Date('2024-07-01'),
+    duration: 8, // 8 weeks
     team: {
       name: 'Digital Transformation Team',
       size: 15,

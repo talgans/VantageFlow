@@ -6,28 +6,31 @@ VantageFlow is a KPI dashboard for tracking project progress using a rubric-base
 ## Architecture & Key Components
 
 ### State Management Pattern
-- **Single source of truth**: `App.tsx` holds all project state in `useState`
-- **Unidirectional data flow**: Props flow down, callbacks flow up (no Redux/Context)
-- **State updates**: Always use functional updates (`setProjects(currentProjects => ...)`) to avoid stale closures
-- **Example**: When updating a project, map over the array and replace the matching item by `id`
+- **Authentication Context**: `AuthContext` provides user auth state, role, and auth methods throughout the app
+- **Real-time Firestore sync**: `App.tsx` subscribes to Firestore via `subscribeToProjects()` for automatic updates
+- **No manual state updates**: Firestore operations trigger real-time listeners that update component state automatically
+- **Functional updates**: Still use `setProjects(currentProjects => ...)` pattern for local state operations
 
 ### Component Hierarchy
 ```
-App.tsx (state owner)
-├─ Header (role switching)
-├─ MasterDashboard (project list + overview charts)
-│  └─ ProjectStatusPieChart (recharts visualization)
-└─ ProjectDetail (single project view)
-   ├─ GanttChart (timeline visualization)
-   ├─ AI Insights panel (Gemini integration)
-   └─ Nested task lists with drag-and-drop
+index.tsx (AuthProvider wrapper)
+├─ App.tsx (Firestore subscription + state)
+   ├─ Header (user info, sign in/out)
+   ├─ LoginModal (authentication UI)
+   ├─ MasterDashboard (project list + overview charts)
+   │  └─ ProjectStatusPieChart (recharts visualization)
+   └─ ProjectDetail (single project view)
+      ├─ GanttChart (timeline visualization)
+      ├─ AI Insights panel (Gemini integration)
+      └─ Nested task lists with drag-and-drop
 ```
 
 ### Type System (`types.ts`)
 - `Project` → `Phase[]` → `Task[]` → optional `subTasks: Task[]`
 - `TaskStatus` enum drives UI colors and progress calculations
-- `UserRole` enum controls edit permissions via `canModify()` helper in `App.tsx`
-- **Critical**: Dates are `Date` objects in memory but serialize to strings in JSON - use `new Date()` when reviving
+- `UserRole` enum (`Admin`, `Manager`, `Member`) controls permissions via Firebase custom claims
+- `AuthUser` interface: Firebase user with extracted role from custom claims
+- **Critical**: Dates are `Date` objects in memory, `Timestamp` in Firestore - always convert bidirectionally
 
 ## Development Workflows
 
@@ -57,6 +60,20 @@ npm run dev          # Start dev server on port 3000
 - Uses Vite for dev experience but deployed as vanilla HTML/JS/TS
 
 ## Project-Specific Conventions
+
+### Firebase Authentication Pattern
+- **AuthContext** (`contexts/AuthContext.tsx`): Provides `useAuth()` hook with `user`, `signIn`, `signOut`, `signUp`
+- **Custom claims for RBAC**: User roles stored in Firebase custom claims (`admin`, `manager`, `member`)
+- **Token refresh**: Automatic refresh every 10 minutes to sync role changes
+- **Usage**: `const { user, signIn, signOut } = useAuth();`
+- **Permission helper**: `canModifyProjects(user)` checks if user can edit/delete
+
+### Firestore Integration Pattern
+- **Service layer**: `services/firestoreService.ts` handles all database operations
+- **Real-time listeners**: `subscribeToProjects()` returns unsubscribe function for cleanup
+- **Date conversion**: Always convert `Date` ↔ `Timestamp` using helper functions
+- **CRUD operations**: `createProject()`, `updateProject()`, `deleteProject()` - all async with error handling
+- **Auto-sync**: Firestore changes automatically update React state via listeners
 
 ### Styling System
 - **Tailwind via CDN** (`<script src="https://cdn.tailwindcss.com"></script>`)
@@ -237,15 +254,19 @@ service cloud.firestore {
 
 ## Common Pitfalls
 
-1. **Date serialization**: When storing/loading projects, convert date strings back to `Date` objects
-2. **Stale state closures**: Always use functional setState when updating based on current state
-3. **Subtask recursion**: Remember to handle `subTasks` array in any task operation (map/filter/find)
-4. **Tailwind purging**: CDN version doesn't purge - all classes available, but use semantic naming
-5. **Modal state sync**: Close modals by setting controlling state to `null`, not just closing the modal
+1. **Date/Timestamp conversion**: Always convert between `Date` and Firestore `Timestamp` in service layer
+2. **Auth state timing**: Check `loading` state before rendering auth-dependent UI
+3. **Listener cleanup**: Always return `unsubscribe()` from `useEffect` for Firestore listeners
+4. **Custom claims delay**: New users don't have custom claims immediately - defaults to `Member`
+5. **Async CRUD operations**: All Firestore operations are async - use try/catch and show loading states
+6. **Subtask recursion**: Remember to handle `subTasks` array recursively in conversion functions
+7. **Modal state sync**: Close modals by setting controlling state to `null`, not just closing the modal
 
 ## File Organization
 - Root: Core app files (`App.tsx`, `types.ts`, `constants.ts`)
 - `components/`: UI components (modals, charts, detail views)
 - `components/icons/`: SVG icon exports
-- `services/`: External API integrations (Gemini)
+- `services/`: External integrations (Gemini AI, Firebase config, Firestore service)
+- `contexts/`: React contexts (AuthContext for authentication)
+- `firestore-admin/`: Admin scripts for database seeding (separate Node.js environment)
 - No `src/` directory - flat structure at root level
