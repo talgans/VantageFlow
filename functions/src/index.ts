@@ -30,7 +30,7 @@ export const listUsers = functions.https.onCall(async (data, context) => {
 
   try {
     const listUsersResult = await admin.auth().listUsers(1000);
-    
+
     const users: UserData[] = listUsersResult.users.map(user => ({
       uid: user.uid,
       email: user.email || '',
@@ -119,24 +119,24 @@ export const inviteUser = functions
     memory: '256MB'
   })
   .https.onCall(async (data: any, context) => {
-  // Check if user is authenticated
-  if (!(context as any).auth) {
-    console.error('inviteUser called without authentication');
-    throw new functions.https.HttpsError('unauthenticated', 'User must be authenticated');
-  }
-  
-  console.log(`inviteUser called by: ${(context as any).auth.uid}`);
+    // Check if user is authenticated
+    if (!(context as any).auth) {
+      console.error('inviteUser called without authentication');
+      throw new functions.https.HttpsError('unauthenticated', 'User must be authenticated');
+    }
 
-  // Check if user is admin
-  const callerToken = await admin.auth().getUser((context as any).auth.uid);
-  console.log(`Caller role: ${callerToken.customClaims?.role}`);
-  
-  if (!callerToken.customClaims?.role || callerToken.customClaims.role !== 'admin') {
-    throw new functions.https.HttpsError('permission-denied', 'Only admins can invite users');
-  }
+    console.log(`inviteUser called by: ${(context as any).auth.uid}`);
 
-  const { email, role } = data;
-  console.log(`Attempting to invite: ${email} with role: ${role}`);
+    // Check if user is admin
+    const callerToken = await admin.auth().getUser((context as any).auth.uid);
+    console.log(`Caller role: ${callerToken.customClaims?.role}`);
+
+    if (!callerToken.customClaims?.role || callerToken.customClaims.role !== 'admin') {
+      throw new functions.https.HttpsError('permission-denied', 'Only admins can invite users');
+    }
+
+    const { email, role } = data;
+    console.log(`Attempting to invite: ${email} with role: ${role}`);
 
     // Validate role - only manager or member allowed for invitations
     if (!['manager', 'member'].includes(role)) {
@@ -179,7 +179,7 @@ export const inviteUser = functions
       // Generate password reset link (24 hour expiration)
       console.log('Generating password reset link...');
       const actionCodeSettings = {
-        url: 'https://vantageflow.firebaseapp.com', // Redirect to app after password reset
+        url: 'https://vantageflow.vercel.app', // Redirect to Vercel-hosted app after password reset
         handleCodeInApp: false,
       };
       const resetLink = await admin.auth().generatePasswordResetLink(email, actionCodeSettings);
@@ -190,7 +190,7 @@ export const inviteUser = functions
       const emailUserValue = emailConfig?.user;
       const emailPasswordValue = emailConfig?.password;
       console.log(`Email config - user: ${emailUserValue ? 'set' : 'not set'}, password: ${emailPasswordValue ? 'set' : 'not set'}`);
-      
+
       // Send email using Nodemailer
       if (emailUserValue && emailPasswordValue) {
         console.log('Configuring email transporter...');
@@ -227,31 +227,31 @@ export const inviteUser = functions
             </p>
           </div>
         `,
+        };
+
+        console.log(`Sending email to ${email}...`);
+        await transporter.sendMail(mailOptions);
+        console.log(`Invitation email sent successfully to ${email}`);
+      } else {
+        console.warn('Email configuration not set. User created but invitation email not sent.');
+      }
+
+      console.log(`User invited successfully: ${email} with role ${role}`);
+
+      return {
+        success: true,
+        message: `Invitation email sent to ${email}`,
       };
+    } catch (error: any) {
+      console.error('Error inviting user:', error);
+      console.error('Error code:', error.code);
+      console.error('Error message:', error.message);
+      console.error('Error stack:', error.stack);
 
-      console.log(`Sending email to ${email}...`);
-      await transporter.sendMail(mailOptions);
-      console.log(`Invitation email sent successfully to ${email}`);
-    } else {
-      console.warn('Email configuration not set. User created but invitation email not sent.');
+      if (error.code === 'already-exists') {
+        throw error;
+      }
+      throw new functions.https.HttpsError('internal', `Failed to invite user: ${error.message}`);
     }
-
-    console.log(`User invited successfully: ${email} with role ${role}`);
-
-    return { 
-      success: true, 
-      message: `Invitation email sent to ${email}`,
-    };
-  } catch (error: any) {
-    console.error('Error inviting user:', error);
-    console.error('Error code:', error.code);
-    console.error('Error message:', error.message);
-    console.error('Error stack:', error.stack);
-    
-    if (error.code === 'already-exists') {
-      throw error;
-    }
-    throw new functions.https.HttpsError('internal', `Failed to invite user: ${error.message}`);
-  }
-});
+  });
 

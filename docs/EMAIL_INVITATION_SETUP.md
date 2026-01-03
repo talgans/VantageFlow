@@ -161,7 +161,7 @@ export const inviteUser = functions
 
       // 7. Generate password reset link (24 hour expiration)
       const actionCodeSettings = {
-        url: 'https://your-app.web.app', // Redirect URL after password reset
+        url: 'https://vantageflow.vercel.app', // Redirect URL after password reset
         handleCodeInApp: false,
       };
       const resetLink = await admin.auth().generatePasswordResetLink(
@@ -395,7 +395,7 @@ Also delete any `.env.vantageflow` or `.env.<project>` files in the functions di
 **Solution**: Update the URL in the function:
 ```typescript
 const actionCodeSettings = {
-  url: 'https://your-actual-domain.web.app',
+  url: 'https://vantageflow.vercel.app',
   handleCodeInApp: false,
 };
 ```

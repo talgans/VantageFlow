@@ -190,7 +190,7 @@ exports.inviteUser = functions
         // Generate password reset link (24 hour expiration)
         console.log('Generating password reset link...');
         const actionCodeSettings = {
-            url: 'https://vantageflow.web.app', // Your app URL
+            url: 'https://vantageflow.vercel.app', // Redirect to Vercel-hosted app after password reset
             handleCodeInApp: false,
         };
         const resetLink = await admin.auth().generatePasswordResetLink(email, actionCodeSettings);
