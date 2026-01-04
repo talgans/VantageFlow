@@ -66,18 +66,13 @@ const MasterDashboard: React.FC<MasterDashboardProps> = ({ projects, onSelectPro
       return { status: TaskStatus.AtRisk, label: 'At Risk' };
     }
 
-    // Check completion percentage
+    // Use actual percentage and pick closest status
     const percentage = getProjectCompletionPercentage(project);
-    if (percentage === 100) {
-      return { status: TaskStatus.Hundred, label: 'Completed' };
-    }
-    if (percentage > 0) {
-      if (percentage >= 75) return { status: TaskStatus.SeventyFive, label: 'On Track' };
-      if (percentage >= 50) return { status: TaskStatus.Fifty, label: 'In Progress' };
-      return { status: TaskStatus.TwentyFive, label: 'Started' };
-    }
-
-    return { status: TaskStatus.Zero, label: 'Not Started' };
+    if (percentage >= 88) return { status: TaskStatus.Hundred, label: '100%' };
+    if (percentage >= 63) return { status: TaskStatus.SeventyFive, label: '75%' };
+    if (percentage >= 38) return { status: TaskStatus.Fifty, label: '50%' };
+    if (percentage >= 13) return { status: TaskStatus.TwentyFive, label: '25%' };
+    return { status: TaskStatus.Zero, label: '0%' };
   }
 
   return (
@@ -166,7 +161,17 @@ const MasterDashboard: React.FC<MasterDashboardProps> = ({ projects, onSelectPro
                   >
                     <div className="flex items-center space-x-3 mb-1">
                       <p className="font-semibold text-white group-hover:text-brand-light">{project.name}</p>
-                      <StatusBadge status={getProjectOverallStatus(project).status} />
+                      <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${(() => {
+                          const pct = getProjectCompletionPercentage(project);
+                          if (pct >= 75) return 'bg-green-500/10 text-green-400';
+                          if (pct >= 50) return 'bg-blue-500/10 text-blue-400';
+                          if (pct >= 25) return 'bg-sky-500/10 text-sky-400';
+                          if (pct > 0) return 'bg-indigo-500/10 text-indigo-400';
+                          return 'bg-gray-500/10 text-gray-400';
+                        })()
+                        }`}>
+                        {getProjectCompletionPercentage(project)}%
+                      </span>
                     </div>
                     <p className="text-sm text-slate-400">{getProjectStatusSummary(project)}</p>
                     <div className="flex items-center space-x-4 mt-2 text-xs text-slate-500">

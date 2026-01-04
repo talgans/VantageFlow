@@ -1,6 +1,7 @@
 import { initializeApp } from 'firebase/app';
 import { getAuth } from 'firebase/auth';
 import { getFirestore } from 'firebase/firestore';
+import { getStorage } from 'firebase/storage';
 
 /**
  * Firebase Configuration
@@ -59,6 +60,11 @@ export const auth = getAuth(app);
  * Firestore Database instance
  */
 export const db = getFirestore(app);
+
+/**
+ * Firebase Storage instance
+ */
+export const storage = getStorage(app);
 
 // Log initialization in development
 if (import.meta.env.DEV) {

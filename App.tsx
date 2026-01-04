@@ -12,6 +12,7 @@ import Toast from './components/Toast';
 import LoginModal from './components/LoginModal';
 import WelcomeScreen from './components/WelcomeScreen';
 import UserAdministrationPage from './components/UserAdministrationPage';
+import UserProfilePage from './components/UserProfilePage';
 import { useAuth } from './contexts/AuthContext';
 import {
     subscribeToProjects,
@@ -180,6 +181,8 @@ const App: React.FC = () => {
                     ...projectData,
                     ownerId: user?.uid,
                     ownerEmail: user?.email || undefined,
+                    ownerName: user?.displayName || undefined,
+                    ownerPhotoURL: user?.photoURL || undefined,
                 };
                 console.log('Creating new project with owner:', newProjectData);
                 await createProject(newProjectData);
@@ -297,6 +300,12 @@ const App: React.FC = () => {
                     ) : currentPage === 'users' ? (
                         <UserAdministrationPage
                             currentUserEmail={user?.email || ''}
+                            showToast={showToast}
+                        />
+                    ) : currentPage === 'profile' ? (
+                        <UserProfilePage
+                            projects={projects}
+                            onSelectProject={handleSelectProject}
                             showToast={showToast}
                         />
                     ) : currentPage === 'projects' ? (

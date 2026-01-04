@@ -1,10 +1,12 @@
 import React, { useState, useRef, useEffect, useMemo } from 'react';
 import { Project, Task, TaskStatus, Phase, DurationUnit, Currency } from '../types';
 import StatusBadge from './StatusBadge';
+import CircularProgress from './CircularProgress';
 import { getProjectInsights } from '../services/geminiService';
 import { ArrowLeftIcon, SparklesIcon, InfoIcon, TeamIcon, CalendarIcon, MoneyIcon, CheckCircleIcon, PlusCircleIcon, ChevronRightIcon, ChevronDownIcon, ListBulletIcon, ChartBarIcon, TrashIcon, ArrowUpIcon, ArrowDownIcon, GripVerticalIcon, StarIcon, UserIcon } from './icons';
 import GanttChart from './GanttChart';
 import ConfirmationModal from './ConfirmationModal';
+import { useUserLookup } from '../hooks/useUserLookup';
 
 // Helper function to calculate task progress recursively
 const calculateTaskProgress = (task: Task): number => {
@@ -393,6 +395,9 @@ const ProjectDetail: React.FC<ProjectDetailProps> = ({ project, onBack, canEdit,
   const [editingPhase, setEditingPhase] = useState<{ id: string; field: 'name' | 'weekRange' } | null>(null);
   const [phaseToDelete, setPhaseToDelete] = useState<Phase | null>(null);
 
+  // --- User Lookup for displaying names and photos ---
+  const { getUserDisplayName, getUserPhotoURL } = useUserLookup();
+
   // --- Drag and Drop State ---
   const [draggedItemId, setDraggedItemId] = useState<string | null>(null);
   const [draggedItemContext, setDraggedItemContext] = useState<{ phaseId: string; parentId?: string } | null>(null);
@@ -747,13 +752,36 @@ const ProjectDetail: React.FC<ProjectDetailProps> = ({ project, onBack, canEdit,
       </button>
 
       <div className="bg-slate-800/50 p-6 rounded-xl border border-slate-700">
-        <h2 className="text-3xl font-bold text-white">{project.name}</h2>
-        {project.ownerEmail && (
-          <p className="text-sm text-slate-400 mt-1">
-            Owner: <span className="text-brand-light">{project.ownerEmail}</span>
-          </p>
-        )}
-        <p className="text-slate-400 mt-2 max-w-4xl">{project.description}</p>
+        <div className="flex items-center space-x-4">
+          <CircularProgress
+            percentage={(() => {
+              const allTasks = project.phases.flatMap(ph =>
+                ph.tasks.flatMap(t => t.subTasks ? [t, ...t.subTasks] : [t])
+              );
+              if (allTasks.length === 0) return 0;
+              const completed = allTasks.filter(t => t.status === TaskStatus.Hundred || (t.status as string) === 'Completed').length;
+              return Math.round((completed / allTasks.length) * 100);
+            })()}
+            size={60}
+          />
+          <div>
+            <h2 className="text-3xl font-bold text-white">{project.name}</h2>
+            {project.ownerId && (
+              <div className="flex items-center gap-2 mt-1">
+                <span className="text-sm text-slate-400">Owner:</span>
+                {getUserPhotoURL(project.ownerId, project.ownerEmail) ? (
+                  <img src={getUserPhotoURL(project.ownerId, project.ownerEmail)} alt="Owner" className="w-6 h-6 rounded-full object-cover" />
+                ) : (
+                  <div className="w-6 h-6 rounded-full bg-brand-secondary/30 flex items-center justify-center">
+                    <UserIcon className="w-3 h-3 text-brand-light" />
+                  </div>
+                )}
+                <span className="text-sm text-brand-light">{getUserDisplayName(project.ownerId, project.ownerEmail) || project.ownerEmail}</span>
+              </div>
+            )}
+          </div>
+        </div>
+        <p className="text-slate-400 mt-4 max-w-4xl">{project.description}</p>
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
@@ -770,14 +798,20 @@ const ProjectDetail: React.FC<ProjectDetailProps> = ({ project, onBack, canEdit,
                 const isPrimary = member.leadRole === 'primary';
                 const isSecondary = member.leadRole === 'secondary';
                 const isLead = isPrimary || isSecondary;
+                const memberPhoto = getUserPhotoURL(member.uid, member.email);
+                const memberName = getUserDisplayName(member.uid, member.email) || member.displayName || member.email;
                 return (
                   <div key={member.uid} className="flex items-center gap-2">
-                    <div className={`w-6 h-6 rounded-full flex items-center justify-center ${isPrimary ? 'bg-blue-500/20' : isSecondary ? 'bg-amber-500/20' : 'bg-slate-700'
-                      }`}>
-                      {isLead ? <StarIcon className={`w-3 h-3 ${isPrimary ? 'text-blue-400' : 'text-amber-400'}`} /> : <UserIcon className="w-3 h-3 text-slate-400" />}
-                    </div>
+                    {memberPhoto ? (
+                      <img src={memberPhoto} alt={memberName} className="w-6 h-6 rounded-full object-cover" />
+                    ) : (
+                      <div className={`w-6 h-6 rounded-full flex items-center justify-center ${isPrimary ? 'bg-blue-500/20' : isSecondary ? 'bg-amber-500/20' : 'bg-slate-700'
+                        }`}>
+                        {isLead ? <StarIcon className={`w-3 h-3 ${isPrimary ? 'text-blue-400' : 'text-amber-400'}`} /> : <UserIcon className="w-3 h-3 text-slate-400" />}
+                      </div>
+                    )}
                     <span className={`text-sm truncate ${isPrimary ? 'text-blue-300 font-medium' : isSecondary ? 'text-amber-300 font-medium' : 'text-white'}`}>
-                      {member.displayName || member.email}
+                      {memberName}
                     </span>
                     {isLead && (
                       <span className={`text-xs px-1.5 py-0.5 rounded ${isPrimary ? 'bg-blue-500/30 text-blue-300' : 'bg-amber-500/30 text-amber-300'}`}>
