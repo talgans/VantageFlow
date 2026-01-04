@@ -24,6 +24,7 @@ export interface TeamMember {
   uid: string;
   email: string;
   displayName?: string;
+  photoURL?: string;
   leadRole?: 'primary' | 'secondary'; // undefined = regular member, primary = project owner, secondary = other leads
 }
 
@@ -69,6 +70,8 @@ export interface Project {
   phases: Phase[];
   ownerId?: string;
   ownerEmail?: string;
+  ownerName?: string;
+  ownerPhotoURL?: string;
   createdAt?: Date;
 }
 

@@ -25,8 +25,16 @@ const COLORS: Record<string, string> = {
 };
 
 const ProjectStatusPieChart: React.FC<ProjectStatusPieChartProps> = ({ data }) => {
+  if (!data || data.length === 0) {
+    return (
+      <div className="w-full h-[250px] min-h-[250px] flex items-center justify-center bg-slate-800/50 rounded-lg border border-slate-700/50">
+        <span className="text-slate-400">No project data available</span>
+      </div>
+    );
+  }
+
   return (
-    <div style={{ width: '100%', height: 250 }}>
+    <div style={{ width: '100%', height: 250, minHeight: 250, minWidth: 200 }}>
       <ResponsiveContainer>
         <PieChart>
           <Pie

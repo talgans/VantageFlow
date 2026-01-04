@@ -7,6 +7,7 @@ interface User {
     uid: string;
     email: string;
     displayName?: string;
+    photoURL?: string;
     role: string;
 }
 
@@ -79,6 +80,7 @@ const TeamMemberSelector: React.FC<TeamMemberSelectorProps> = ({
                     uid: user.uid,
                     email: user.email,
                     displayName: user.displayName,
+                    photoURL: user.photoURL,
                     leadRole: undefined, // Regular member by default
                 },
             ]);
@@ -227,8 +229,8 @@ const TeamMemberSelector: React.FC<TeamMemberSelectorProps> = ({
                                         key={user.uid}
                                         onClick={() => handleToggleMember(user)}
                                         className={`flex items-center justify-between px-4 py-3 cursor-pointer transition-colors ${selected
-                                                ? 'bg-brand-secondary/10 border-l-2 border-brand-secondary'
-                                                : 'hover:bg-slate-800 border-l-2 border-transparent'
+                                            ? 'bg-brand-secondary/10 border-l-2 border-brand-secondary'
+                                            : 'hover:bg-slate-800 border-l-2 border-transparent'
                                             } ${isOwner && selected ? 'opacity-80' : ''}`}
                                     >
                                         <div className="flex items-center gap-3">
@@ -258,8 +260,8 @@ const TeamMemberSelector: React.FC<TeamMemberSelectorProps> = ({
                                                     type="button"
                                                     onClick={(e) => handleCycleLeadRole(user.uid, e)}
                                                     className={`p-1.5 rounded transition-colors ${member?.leadRole === 'secondary'
-                                                            ? 'bg-amber-500/20 text-amber-400'
-                                                            : 'text-slate-500 hover:text-amber-400 hover:bg-slate-700'
+                                                        ? 'bg-amber-500/20 text-amber-400'
+                                                        : 'text-slate-500 hover:text-amber-400 hover:bg-slate-700'
                                                         }`}
                                                     title={member?.leadRole === 'secondary' ? 'Remove as Secondary Lead' : 'Set as Secondary Lead'}
                                                 >

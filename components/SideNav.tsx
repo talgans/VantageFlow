@@ -1,11 +1,12 @@
 import React from 'react';
 import { UserRole } from '../types';
-import { 
-  HomeIcon, 
-  ShieldCheckIcon, 
+import {
+  HomeIcon,
+  ShieldCheckIcon,
   UsersIcon,
   ChartBarIcon,
-  XMarkIcon
+  XMarkIcon,
+  UserIcon
 } from './icons';
 
 interface SideNavProps {
@@ -16,18 +17,19 @@ interface SideNavProps {
   userRole: UserRole;
 }
 
-const SideNav: React.FC<SideNavProps> = ({ 
-  isOpen, 
-  onClose, 
-  currentPage, 
+const SideNav: React.FC<SideNavProps> = ({
+  isOpen,
+  onClose,
+  currentPage,
   onNavigate,
-  userRole 
+  userRole
 }) => {
   const isAdmin = userRole === UserRole.Admin;
 
   const navItems = [
     { id: 'dashboard', label: 'Dashboard', icon: HomeIcon, adminOnly: false },
     { id: 'projects', label: 'Projects', icon: ChartBarIcon, adminOnly: false },
+    { id: 'profile', label: 'My Profile', icon: UserIcon, adminOnly: false },
     { id: 'users', label: 'User Administration', icon: ShieldCheckIcon, adminOnly: true },
   ];
 
@@ -40,7 +42,7 @@ const SideNav: React.FC<SideNavProps> = ({
     <>
       {/* Backdrop */}
       {isOpen && (
-        <div 
+        <div
           className="fixed inset-0 bg-black/50 z-40 lg:hidden"
           onClick={onClose}
         />
@@ -48,9 +50,8 @@ const SideNav: React.FC<SideNavProps> = ({
 
       {/* Side Navigation */}
       <aside
-        className={`fixed top-0 left-0 h-full w-64 bg-slate-800 border-r border-slate-700 z-50 transform transition-transform duration-300 ease-in-out ${
-          isOpen ? 'translate-x-0' : '-translate-x-full'
-        } lg:translate-x-0 lg:static`}
+        className={`fixed top-0 left-0 h-full w-64 bg-slate-800 border-r border-slate-700 z-50 transform transition-transform duration-300 ease-in-out ${isOpen ? 'translate-x-0' : '-translate-x-full'
+          } lg:translate-x-0 lg:static`}
       >
         <div className="flex flex-col h-full">
           {/* Header */}
@@ -73,19 +74,18 @@ const SideNav: React.FC<SideNavProps> = ({
           <nav className="flex-grow p-4 space-y-2">
             {navItems.map(item => {
               if (item.adminOnly && !isAdmin) return null;
-              
+
               const Icon = item.icon;
               const isActive = currentPage === item.id;
-              
+
               return (
                 <button
                   key={item.id}
                   onClick={() => handleNavClick(item.id)}
-                  className={`w-full flex items-center space-x-3 px-4 py-3 rounded-lg transition-colors ${
-                    isActive
+                  className={`w-full flex items-center space-x-3 px-4 py-3 rounded-lg transition-colors ${isActive
                       ? 'bg-brand-secondary text-white'
                       : 'text-slate-300 hover:bg-slate-700 hover:text-white'
-                  }`}
+                    }`}
                 >
                   <Icon className="w-5 h-5" />
                   <span className="font-medium">{item.label}</span>

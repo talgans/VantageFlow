@@ -1,5 +1,5 @@
 import React, { createContext, useContext, useState, useEffect, ReactNode } from 'react';
-import { 
+import {
   User,
   signInWithEmailAndPassword,
   createUserWithEmailAndPassword,
@@ -19,6 +19,7 @@ interface AuthUser {
   email: string | null;
   role: UserRole;
   displayName?: string | null;
+  photoURL?: string | null;
 }
 
 interface AuthContextType {
@@ -74,6 +75,7 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children, auth }) =>
       uid: firebaseUser.uid,
       email: firebaseUser.email,
       displayName: firebaseUser.displayName,
+      photoURL: firebaseUser.photoURL,
       role,
     };
   };
@@ -92,12 +94,12 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children, auth }) =>
       setLoading(true);
       // Force token refresh to get updated custom claims
       await auth.currentUser.getIdToken(true);
-      
+
       // Re-extract role from refreshed token
       const updatedUser = await convertToAuthUser(auth.currentUser);
       setUser(updatedUser);
       setError(null);
-      
+
       console.log('User role refreshed:', updatedUser.role);
     } catch (err) {
       const errorMessage = err instanceof Error ? err.message : 'Failed to refresh user role';
@@ -134,10 +136,10 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children, auth }) =>
       setError(null);
       setLoading(true);
       const userCredential = await createUserWithEmailAndPassword(auth, email, password);
-      
+
       // Note: Default role (Member) will be set via custom claims by backend
       // Admin needs to manually upgrade users to Manager or Admin roles
-      
+
       return userCredential;
     } catch (err) {
       const errorMessage = err instanceof Error ? err.message : 'Failed to sign up';

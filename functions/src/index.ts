@@ -2,19 +2,24 @@ import * as functions from 'firebase-functions/v1';
 import * as admin from 'firebase-admin';
 import * as nodemailer from 'nodemailer';
 
-admin.initializeApp();
+// Prevent double initialization
+if (admin.apps.length === 0) {
+  admin.initializeApp();
+}
 
 interface UserData {
   uid: string;
   email: string;
   displayName?: string;
+  photoURL?: string;
   role: string;
   createdAt: string;
   lastSignIn?: string;
 }
 
 /**
- * List all users (Admin only)
+ * List all users (Admin and Manager)
+ * Managers need this to assign team members when creating projects
  */
 export const listUsers = functions.https.onCall(async (data, context) => {
   // Check if user is authenticated
@@ -22,10 +27,11 @@ export const listUsers = functions.https.onCall(async (data, context) => {
     throw new functions.https.HttpsError('unauthenticated', 'User must be authenticated');
   }
 
-  // Check if user is admin
+  // Check if user is admin or manager
   const callerToken = await admin.auth().getUser((context as any).auth.uid);
-  if (!callerToken.customClaims?.role || callerToken.customClaims.role !== 'admin') {
-    throw new functions.https.HttpsError('permission-denied', 'Only admins can list users');
+  const userRole = callerToken.customClaims?.role;
+  if (!userRole || (userRole !== 'admin' && userRole !== 'manager')) {
+    throw new functions.https.HttpsError('permission-denied', 'Only admins and managers can list users');
   }
 
   try {
@@ -35,6 +41,7 @@ export const listUsers = functions.https.onCall(async (data, context) => {
       uid: user.uid,
       email: user.email || '',
       displayName: user.displayName,
+      photoURL: user.photoURL,
       role: user.customClaims?.role || 'member',
       createdAt: user.metadata.creationTime,
       lastSignIn: user.metadata.lastSignInTime,
@@ -64,9 +71,9 @@ export const setUserRole = functions.https.onCall(async (data, context) => {
 
   const { uid, role } = data as any;
 
-  // Validate role
-  if (!['admin', 'manager', 'member'].includes(role)) {
-    throw new functions.https.HttpsError('invalid-argument', 'Invalid role. Must be admin, manager, or member');
+  // Validate role - accept any non-empty string (supports custom roles)
+  if (!role || typeof role !== 'string' || role.trim().length === 0) {
+    throw new functions.https.HttpsError('invalid-argument', 'Invalid role. Role must be a non-empty string');
   }
 
   try {
@@ -110,6 +117,96 @@ export const deleteUser = functions.https.onCall(async (data, context) => {
 });
 
 /**
+ * Update user profile (Admin only for other users)
+ * Allows admin to update display name and photoURL for any user
+ */
+export const updateUserProfile = functions.https.onCall(async (data, context) => {
+  // Check if user is authenticated
+  if (!(context as any).auth) {
+    throw new functions.https.HttpsError('unauthenticated', 'User must be authenticated');
+  }
+
+  // Check if user is admin
+  const callerToken = await admin.auth().getUser((context as any).auth.uid);
+  if (!callerToken.customClaims?.role || callerToken.customClaims.role !== 'admin') {
+    throw new functions.https.HttpsError('permission-denied', 'Only admins can update other user profiles');
+  }
+
+  const { uid, displayName, photoURL } = data as any;
+
+  if (!uid) {
+    throw new functions.https.HttpsError('invalid-argument', 'User ID is required');
+  }
+
+  try {
+    const updateData: { displayName?: string; photoURL?: string } = {};
+
+    if (displayName !== undefined) {
+      updateData.displayName = displayName;
+    }
+
+    if (photoURL !== undefined) {
+      updateData.photoURL = photoURL;
+    }
+
+    await admin.auth().updateUser(uid, updateData);
+    return { success: true, message: 'User profile updated successfully' };
+  } catch (error) {
+    console.error('Error updating user profile:', error);
+    throw new functions.https.HttpsError('internal', 'Failed to update user profile');
+  }
+});
+
+/**
+ * Configure Storage CORS (Admin only)
+ * Fixes CORS issues for file uploads
+ */
+export const configureCors = functions.https.onCall(async (data, context) => {
+  try {
+    // Check if user is authenticated
+    if (!(context as any).auth) {
+      return { success: false, error: 'User must be authenticated' };
+    }
+
+    const callerToken = await admin.auth().getUser((context as any).auth.uid);
+    if (!callerToken.customClaims?.role || callerToken.customClaims.role !== 'admin') {
+      return { success: false, error: 'Only admins can invoke this function' };
+    }
+    const bucket = admin.storage().bucket('vantageflow.firebasestorage.app');
+
+    // Check if bucket exists
+    const [exists] = await bucket.exists();
+    if (!exists) {
+      return { success: false, error: 'Bucket vantageflow.firebasestorage.app does not exist' };
+    }
+
+    const corsConfig = [
+      {
+        origin: ["*"],
+        method: ["GET", "PUT", "POST", "DELETE", "HEAD", "OPTIONS"],
+        responseHeader: ["Content-Type", "Authorization", "Content-Length", "User-Agent", "x-goog-resumable"],
+        maxAgeSeconds: 3600
+      }
+    ];
+
+    try {
+      // Try preferred method
+      await bucket.setCorsConfiguration(corsConfig);
+    } catch (e) {
+      console.log('setCorsConfiguration failed, trying setMetadata...', e);
+      // Fallback to setMetadata which is lower level
+      await bucket.setMetadata({ cors: corsConfig });
+    }
+
+    return { success: true, message: `CORS configured for bucket: ${bucket.name}` };
+  } catch (error: any) {
+    console.error('Error configuring CORS:', error);
+    // Return error as result instead of throwing to avoid CORS errors on client
+    return { success: false, error: error.message || 'Unknown error occurred' };
+  }
+});
+
+/**
  * Invite user via email (Admin only)
  * Creates a user account with specified role
  */
@@ -138,9 +235,9 @@ export const inviteUser = functions
     const { email, role } = data;
     console.log(`Attempting to invite: ${email} with role: ${role}`);
 
-    // Validate role - only manager or member allowed for invitations
-    if (!['manager', 'member'].includes(role)) {
-      throw new functions.https.HttpsError('invalid-argument', 'Invalid role. Can only invite as manager or member');
+    // Validate role - any non-empty string except 'admin' (admin must be assigned after signup)
+    if (!role || typeof role !== 'string' || role.trim().length === 0 || role === 'admin') {
+      throw new functions.https.HttpsError('invalid-argument', 'Invalid role. Cannot invite as admin; admin role must be assigned after signup');
     }
 
     // Validate email
