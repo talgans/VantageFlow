@@ -4,7 +4,7 @@ import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip, Legend } from 'recha
 import { TaskStatus } from '../../types';
 
 interface ChartData {
-  name: TaskStatus;
+  name: TaskStatus | string;
   value: number;
 }
 
@@ -12,11 +12,16 @@ interface ProjectStatusPieChartProps {
   data: ChartData[];
 }
 
-const COLORS: Record<TaskStatus, string> = {
-  [TaskStatus.Completed]: '#22c55e',
-  [TaskStatus.InProgress]: '#f59e0b',
-  [TaskStatus.NotStarted]: '#6b7280',
+const COLORS: Record<string, string> = {
+  [TaskStatus.Hundred]: '#22c55e',
+  [TaskStatus.SeventyFive]: '#6366f1',
+  [TaskStatus.Fifty]: '#3b82f6',
+  [TaskStatus.TwentyFive]: '#0ea5e9',
+  [TaskStatus.Zero]: '#6b7280',
   [TaskStatus.AtRisk]: '#ef4444',
+  'Completed': '#22c55e',
+  'In Progress': '#3b82f6',
+  'Not Started': '#6b7280',
 };
 
 const ProjectStatusPieChart: React.FC<ProjectStatusPieChartProps> = ({ data }) => {
@@ -39,13 +44,13 @@ const ProjectStatusPieChart: React.FC<ProjectStatusPieChartProps> = ({ data }) =
               <Cell key={`cell-${index}`} fill={COLORS[entry.name]} />
             ))}
           </Pie>
-          <Tooltip 
-            contentStyle={{ 
-                backgroundColor: 'rgba(30, 41, 59, 0.9)', 
-                borderColor: '#475569',
-                borderRadius: '0.5rem'
+          <Tooltip
+            contentStyle={{
+              backgroundColor: 'rgba(30, 41, 59, 0.9)',
+              borderColor: '#475569',
+              borderRadius: '0.5rem'
             }}
-            itemStyle={{ color: '#e2e8f0' }} 
+            itemStyle={{ color: '#e2e8f0' }}
           />
           <Legend
             iconSize={10}

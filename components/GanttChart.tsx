@@ -4,11 +4,16 @@ import { ChevronRightIcon, ChevronDownIcon } from './icons';
 
 const GANTT_DAY_WIDTH = 32; // width of a day column in pixels
 
-const STATUS_COLORS: Record<TaskStatus, { bg: string; border: string }> = {
-  [TaskStatus.Completed]: { bg: 'bg-status-completed/70', border: 'border-status-completed' },
-  [TaskStatus.InProgress]: { bg: 'bg-status-inprogress/70', border: 'border-status-inprogress' },
-  [TaskStatus.NotStarted]: { bg: 'bg-status-notstarted/70', border: 'border-status-notstarted' },
-  [TaskStatus.AtRisk]: { bg: 'bg-status-atrisk/70', border: 'border-status-atrisk' },
+const STATUS_COLORS: Record<string, { bg: string; border: string }> = {
+    [TaskStatus.Hundred]: { bg: 'bg-green-500/70', border: 'border-green-500' },
+    [TaskStatus.SeventyFive]: { bg: 'bg-indigo-500/70', border: 'border-indigo-500' },
+    [TaskStatus.Fifty]: { bg: 'bg-blue-500/70', border: 'border-blue-500' },
+    [TaskStatus.TwentyFive]: { bg: 'bg-sky-500/70', border: 'border-sky-500' },
+    [TaskStatus.Zero]: { bg: 'bg-gray-500/70', border: 'border-gray-500' },
+    [TaskStatus.AtRisk]: { bg: 'bg-red-500/70', border: 'border-red-500' },
+    'Completed': { bg: 'bg-green-500/70', border: 'border-green-500' },
+    'In Progress': { bg: 'bg-blue-500/70', border: 'border-blue-500' },
+    'Not Started': { bg: 'bg-gray-500/70', border: 'border-gray-500' },
 };
 
 const flattenTasks = (tasks: Task[]): Task[] => {
@@ -98,20 +103,20 @@ const GanttTaskRow: React.FC<{
     totalDays: number;
 }> = ({ task, level, projectStartDate, isExpanded, onToggleExpand, totalDays }) => {
     const hasSubtasks = task.subTasks && task.subTasks.length > 0;
-    
+
     const startOffset = Math.round((task.startDate.getTime() - projectStartDate.getTime()) / (1000 * 3600 * 24));
     const duration = Math.round((task.endDate.getTime() - task.startDate.getTime()) / (1000 * 3600 * 24)) + 1;
 
     const barStyle = {
         gridColumn: `${startOffset + 1} / span ${duration}`,
     };
-    
-    const statusColor = STATUS_COLORS[task.status] || STATUS_COLORS[TaskStatus.NotStarted];
+
+    const statusColor = STATUS_COLORS[task.status as string] || STATUS_COLORS[TaskStatus.Zero];
 
     return (
         <>
             <div className="contents group">
-                 <div className="flex items-center p-2 border-b border-r border-slate-700 text-sm text-white bg-slate-800/30" style={{ paddingLeft: `${level * 1.5 + 0.5}rem` }}>
+                <div className="flex items-center p-2 border-b border-r border-slate-700 text-sm text-white bg-slate-800/30" style={{ paddingLeft: `${level * 1.5 + 0.5}rem` }}>
                     {hasSubtasks ? (
                         <button onClick={() => onToggleExpand(task.id)} className="mr-2 text-slate-400 hover:text-white">
                             {isExpanded ? <ChevronDownIcon className="w-4 h-4" /> : <ChevronRightIcon className="w-4 h-4" />}
@@ -121,11 +126,11 @@ const GanttTaskRow: React.FC<{
                 </div>
                 <div className="relative border-b border-slate-700 grid" style={{ gridTemplateColumns: `repeat(${totalDays}, minmax(0, 1fr))` }}>
                     <div className={`relative h-6 my-1 rounded-md border ${statusColor.bg} ${statusColor.border}`} style={barStyle}>
-                         <div className="absolute left-0 -top-10 w-max max-w-xs scale-0 group-hover:scale-100 transition-transform origin-bottom-left bg-slate-900 text-white text-xs rounded py-1 px-2 shadow-lg border border-slate-700 z-20">
+                        <div className="absolute left-0 -top-10 w-max max-w-xs scale-0 group-hover:scale-100 transition-transform origin-bottom-left bg-slate-900 text-white text-xs rounded py-1 px-2 shadow-lg border border-slate-700 z-20">
                             <p className="font-bold">{task.name}</p>
                             <p>{task.startDate.toLocaleDateString()} - {task.endDate.toLocaleDateString()}</p>
                             <p>Status: {task.status}</p>
-                         </div>
+                        </div>
                     </div>
                 </div>
             </div>
@@ -147,9 +152,9 @@ const GanttTaskRow: React.FC<{
 
 const GanttChart: React.FC<{ project: Project }> = ({ project }) => {
     const [expandedTasks, setExpandedTasks] = useState<Set<string>>(new Set());
-    
+
     const { startDate, totalDays } = useMemo(() => getProjectTimeline(project), [project]);
-    
+
     const handleToggleExpand = (taskId: string) => {
         setExpandedTasks(prev => {
             const newSet = new Set(prev);
@@ -165,8 +170,8 @@ const GanttChart: React.FC<{ project: Project }> = ({ project }) => {
                 <GanttHeader startDate={startDate} totalDays={totalDays} />
                 <div className="grid grid-cols-[300px_1fr]">
                     <div className="relative" style={{ gridColumn: '1 / -1' }}>
-                       {project.phases.map(phase => (
-                           <React.Fragment key={phase.id}>
+                        {project.phases.map(phase => (
+                            <React.Fragment key={phase.id}>
                                 <div className="contents">
                                     <div className="col-span-2 text-left p-2 font-semibold text-slate-300 bg-slate-800 border-b border-slate-700">{phase.name}</div>
                                 </div>
@@ -181,8 +186,8 @@ const GanttChart: React.FC<{ project: Project }> = ({ project }) => {
                                         totalDays={totalDays}
                                     />
                                 ))}
-                           </React.Fragment>
-                       ))}
+                            </React.Fragment>
+                        ))}
                     </div>
                 </div>
             </div>

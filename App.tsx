@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { Project, UserRole, Phase, Task } from './types';
 import { MOCK_PROJECTS } from './constants';
 import MasterDashboard from './components/MasterDashboard';
+import ProjectsList from './components/ProjectsList';
 import ProjectDetail from './components/ProjectDetail';
 import Header from './components/Header';
 import SideNav from './components/SideNav';
@@ -117,6 +118,13 @@ const App: React.FC = () => {
         if (currentUserRole === UserRole.Admin) return true;
         // Owner can edit their own project
         if (user && project.ownerId === user.uid) return true;
+        // Any team member can create/edit items (item-level CRUD checked in ProjectDetail)
+        if (user && project.team?.members) {
+            const isMember = project.team.members.some(m => m.uid === user.uid);
+            if (isMember) {
+                return true;
+            }
+        }
         return false;
     }
 
@@ -276,31 +284,31 @@ const App: React.FC = () => {
                     userRole={currentUserRole}
                 />
                 <main className="flex-1 p-4 sm:p-6 lg:p-8">
-                    {currentPage === 'users' ? (
+                    {selectedProject ? (
+                        <ProjectDetail
+                            project={selectedProject}
+                            onBack={handleGoBack}
+                            canEdit={canEditProject(selectedProject)}
+                            onUpdateProject={handleUpdateProject}
+                            showToast={showToast}
+                            currentUserId={user?.uid}
+                            currentUserEmail={user?.email || undefined}
+                        />
+                    ) : currentPage === 'users' ? (
                         <UserAdministrationPage
                             currentUserEmail={user?.email || ''}
                             showToast={showToast}
                         />
-                    ) : currentPage === 'projects' || selectedProject ? (
-                        selectedProject ? (
-                            <ProjectDetail
-                                project={selectedProject}
-                                onBack={handleGoBack}
-                                canEdit={canEditProject(selectedProject)}
-                                onUpdateProject={handleUpdateProject}
-                                showToast={showToast}
-                            />
-                        ) : (
-                            <MasterDashboard
-                                projects={projects}
-                                onSelectProject={handleSelectProject}
-                                onShowCreateModal={handleShowCreateProjectModal}
-                                onShowPasteModal={handleShowPasteModal}
-                                onEditProject={handleShowEditProjectModal}
-                                onDeleteProject={handleRequestDeleteProject}
-                                canModify={canModify(currentUserRole)}
-                            />
-                        )
+                    ) : currentPage === 'projects' ? (
+                        <ProjectsList
+                            projects={projects}
+                            onSelectProject={handleSelectProject}
+                            onShowCreateModal={handleShowCreateProjectModal}
+                            onShowPasteModal={handleShowPasteModal}
+                            onEditProject={handleShowEditProjectModal}
+                            onDeleteProject={handleRequestDeleteProject}
+                            canModify={canModify(currentUserRole)}
+                        />
                     ) : (
                         <MasterDashboard
                             projects={projects}
@@ -324,6 +332,8 @@ const App: React.FC = () => {
                     onSave={handleSaveProject}
                     projectToEdit={editingProject}
                     openWithTextImport={openWithTextImport}
+                    currentUserId={user?.uid}
+                    currentUserEmail={user?.email || undefined}
                 />
             )}
             {projectToDelete && (
