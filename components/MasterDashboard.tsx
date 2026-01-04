@@ -23,7 +23,7 @@ const MasterDashboard: React.FC<MasterDashboardProps> = ({ projects, onSelectPro
   const statusCounts = allTasks.reduce((acc, task) => {
     acc[task.status] = (acc[task.status] || 0) + 1;
     return acc;
-  }, {} as Record<TaskStatus, number>);
+  }, {} as Record<string, number>);
 
   const chartData = Object.entries(statusCounts).map(([name, value]) => ({
     name: name as TaskStatus,
@@ -31,13 +31,13 @@ const MasterDashboard: React.FC<MasterDashboardProps> = ({ projects, onSelectPro
   }));
 
   const totalTasks = allTasks.length;
-  const completedTasks = statusCounts[TaskStatus.Completed] || 0;
+  const completedTasks = (statusCounts[TaskStatus.Hundred] || 0) + (statusCounts['Completed'] || 0);
   const overallProgress = totalTasks > 0 ? Math.round((completedTasks / totalTasks) * 100) : 0;
 
   const getProjectStatusSummary = (project: Project) => {
     const tasks = project.phases.flatMap(ph => ph.tasks);
     if (tasks.length === 0) return 'No tasks yet';
-    const completed = tasks.filter(t => t.status === TaskStatus.Completed).length;
+    const completed = tasks.filter(t => t.status === TaskStatus.Hundred || (t.status as string) === 'Completed').length;
     const total = tasks.length;
     return `${completed} / ${total} tasks completed`;
   }
@@ -47,7 +47,7 @@ const MasterDashboard: React.FC<MasterDashboardProps> = ({ projects, onSelectPro
       ph.tasks.flatMap(t => t.subTasks ? [t, ...t.subTasks] : [t])
     );
     if (allProjectTasks.length === 0) return 0;
-    const completed = allProjectTasks.filter(t => t.status === TaskStatus.Completed).length;
+    const completed = allProjectTasks.filter(t => t.status === TaskStatus.Hundred || (t.status as string) === 'Completed').length;
     return Math.round((completed / allProjectTasks.length) * 100);
   }
 
@@ -57,7 +57,7 @@ const MasterDashboard: React.FC<MasterDashboardProps> = ({ projects, onSelectPro
     );
 
     if (allProjectTasks.length === 0) {
-      return { status: TaskStatus.NotStarted, label: 'Not Started' };
+      return { status: TaskStatus.Zero, label: 'Not Started' };
     }
 
     // Check if any task is at risk
@@ -69,13 +69,15 @@ const MasterDashboard: React.FC<MasterDashboardProps> = ({ projects, onSelectPro
     // Check completion percentage
     const percentage = getProjectCompletionPercentage(project);
     if (percentage === 100) {
-      return { status: TaskStatus.Completed, label: 'Completed' };
+      return { status: TaskStatus.Hundred, label: 'Completed' };
     }
     if (percentage > 0) {
-      return { status: TaskStatus.InProgress, label: 'In Progress' };
+      if (percentage >= 75) return { status: TaskStatus.SeventyFive, label: 'On Track' };
+      if (percentage >= 50) return { status: TaskStatus.Fifty, label: 'In Progress' };
+      return { status: TaskStatus.TwentyFive, label: 'Started' };
     }
 
-    return { status: TaskStatus.NotStarted, label: 'Not Started' };
+    return { status: TaskStatus.Zero, label: 'Not Started' };
   }
 
   return (

@@ -1,18 +1,41 @@
 
 export enum TaskStatus {
-  Completed = 'Completed',
-  InProgress = 'In Progress',
-  NotStarted = 'Not Started',
+  Zero = '0%',
+  TwentyFive = '25%',
+  Fifty = '50%',
+  SeventyFive = '75%',
+  Hundred = '100%',
   AtRisk = 'At Risk',
+}
+
+export enum DurationUnit {
+  Hours = 'hours',
+  Days = 'days',
+  Weeks = 'weeks',
+  Months = 'months',
+}
+
+export enum Currency {
+  NGN = 'NGN', // Naira (default)
+  USD = 'USD',
+}
+
+export interface TeamMember {
+  uid: string;
+  email: string;
+  displayName?: string;
+  leadRole?: 'primary' | 'secondary'; // undefined = regular member, primary = project owner, secondary = other leads
 }
 
 export interface Task {
   id: string;
-  name:string;
+  name: string;
   status: TaskStatus;
   startDate: Date;
   endDate: Date;
   assignee?: string;
+  ownerId?: string;      // User assigned to this task
+  ownerEmail?: string;
   deliverables?: string[];
   subTasks?: Task[];
 }
@@ -22,6 +45,8 @@ export interface Phase {
   name: string;
   weekRange: string;
   tasks: Task[];
+  ownerId?: string;      // User assigned to this phase
+  ownerEmail?: string;
 }
 
 export interface Project {
@@ -29,18 +54,22 @@ export interface Project {
   name: string;
   description: string;
   coreSystem: string;
-  startDate: Date; // Project start date
-  duration: number; // Duration in weeks
+  startDate: Date;
+  duration: number;
+  durationUnit: DurationUnit; // hours/days/weeks/months
   team: {
-    name: string;
-    size: number;
-    manager: string;
+    members: TeamMember[];
+    // Legacy fields for backward compatibility
+    name?: string;
+    size?: number;
+    manager?: string;
   };
-  cost: string;
+  cost: number;
+  currency: Currency; // NGN or USD
   phases: Phase[];
-  ownerId?: string; // User ID of project owner
-  ownerEmail?: string; // Email of project owner
-  createdAt?: Date; // Creation timestamp
+  ownerId?: string;
+  ownerEmail?: string;
+  createdAt?: Date;
 }
 
 export enum UserRole {

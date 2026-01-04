@@ -12,7 +12,7 @@ import {
   DocumentData,
 } from 'firebase/firestore';
 import { db } from './firebaseConfig';
-import { Project, Task } from '../types';
+import { Project, Task, DurationUnit, Currency } from '../types';
 
 /**
  * Convert Firestore Timestamps to Date objects recursively for tasks
@@ -82,10 +82,24 @@ const convertFirestoreDocToProject = (docData: DocumentData): Project => {
     createdAt = new Date(docData.createdAt);
   }
 
+  // Handle team - support both new format (members array) and legacy (name/size/manager)
+  const team = docData.team || {};
+  const normalizedTeam = {
+    members: team.members || [],
+    // Keep legacy fields for backward compatibility
+    name: team.name,
+    size: team.size,
+    manager: team.manager,
+  };
+
   const converted: any = {
     ...docData,
     startDate: docData.startDate?.toDate() || new Date(),
     duration: duration,
+    durationUnit: docData.durationUnit || DurationUnit.Weeks,
+    team: normalizedTeam,
+    cost: typeof docData.cost === 'number' ? docData.cost : Number(docData.cost) || 0,
+    currency: docData.currency || Currency.NGN,
     createdAt: createdAt,
     phases: docData.phases?.map((phase: any) => ({
       ...phase,
@@ -102,45 +116,77 @@ const convertFirestoreDocToProject = (docData: DocumentData): Project => {
 const convertProjectToFirestore = (project: Omit<Project, 'id'> | Project): any => {
   try {
     console.log('Converting project to Firestore format:', project);
-    
+
     // Ensure startDate is a valid Date object
-    const startDate = project.startDate instanceof Date 
-      ? project.startDate 
+    const startDate = project.startDate instanceof Date
+      ? project.startDate
       : new Date(project.startDate);
-    
+
     if (isNaN(startDate.getTime())) {
       throw new Error('Invalid start date');
     }
-    
+
+    // Helper to remove undefined values from an object
+    const removeUndefined = (obj: any): any => {
+      if (obj === null || obj === undefined) return obj;
+      if (Array.isArray(obj)) {
+        return obj.map(removeUndefined);
+      }
+      if (typeof obj === 'object' && !(obj instanceof Timestamp) && !(obj instanceof Date)) {
+        const cleaned: any = {};
+        Object.keys(obj).forEach(key => {
+          if (obj[key] !== undefined) {
+            cleaned[key] = removeUndefined(obj[key]);
+          }
+        });
+        return cleaned;
+      }
+      return obj;
+    };
+
+    // Prepare team data, ensuring members array exists
+    const teamData = {
+      members: project.team?.members || [],
+      ...(project.team?.name && { name: project.team.name }),
+      ...(project.team?.size !== undefined && { size: project.team.size }),
+      ...(project.team?.manager && { manager: project.team.manager }),
+    };
+
     const data: any = {
       name: project.name,
       description: project.description,
-      coreSystem: project.coreSystem,
+      coreSystem: project.coreSystem || '',
       startDate: Timestamp.fromDate(startDate),
-      duration: project.duration,
-      team: project.team,
-      cost: project.cost,
-      ownerId: project.ownerId,
-      ownerEmail: project.ownerEmail,
-      phases: project.phases.map((phase) => ({
-        id: phase.id,
-        name: phase.name,
-        weekRange: phase.weekRange,
-        tasks: phase.tasks.map(convertTaskDatesToFirestore),
-      })),
+      duration: project.duration || 0,
+      durationUnit: project.durationUnit || DurationUnit.Weeks,
+      team: teamData,
+      cost: typeof project.cost === 'number' ? project.cost : 0,
+      currency: project.currency || Currency.NGN,
+      phases: project.phases.map((phase) => {
+        const phaseData: any = {
+          id: phase.id,
+          name: phase.name,
+          weekRange: phase.weekRange || 'TBD',
+          tasks: phase.tasks.map(convertTaskDatesToFirestore),
+        };
+        // Only add optional fields if they have values
+        if (phase.ownerId) phaseData.ownerId = phase.ownerId;
+        if (phase.ownerEmail) phaseData.ownerEmail = phase.ownerEmail;
+        return phaseData;
+      }),
       updatedAt: Timestamp.now(),
     };
-    
+
+    // Only add optional fields if defined
+    if (project.ownerId) data.ownerId = project.ownerId;
+    if (project.ownerEmail) data.ownerEmail = project.ownerEmail;
+
     console.log('Converted Firestore data:', data);
-    
-    // Remove undefined values to prevent Firestore errors
-    Object.keys(data).forEach(key => {
-      if (data[key] === undefined) {
-        delete data[key];
-      }
-    });
-    
-    return data;
+
+    // Final cleanup - remove any remaining undefined values recursively
+    const cleanedData = removeUndefined(data);
+
+    return cleanedData;
   } catch (error) {
     console.error('Error converting project to Firestore:', error);
     throw error;
@@ -212,14 +258,14 @@ export const updateProject = async (project: Project): Promise<void> => {
     console.log('Updating project:', project);
     const { id, createdAt, ...projectData } = project;
     const docRef = doc(db, 'projects', id);
-    
+
     const updateData = convertProjectToFirestore(projectData);
-    
+
     // Preserve createdAt if it exists, otherwise add it
     if (createdAt) {
       updateData.createdAt = createdAt instanceof Date ? Timestamp.fromDate(createdAt) : createdAt;
     }
-    
+
     console.log('Update data being sent to Firestore:', updateData);
     await updateDoc(docRef, updateData);
     console.log('Project updated successfully:', id);
