@@ -7,6 +7,7 @@ import { ArrowLeftIcon, SparklesIcon, InfoIcon, TeamIcon, CalendarIcon, MoneyIco
 import GanttChart from './GanttChart';
 import ConfirmationModal from './ConfirmationModal';
 import { useUserLookup } from '../hooks/useUserLookup';
+import PhaseStatusDonut from './charts/PhaseStatusDonut';
 
 // Helper function to calculate task progress recursively
 const calculateTaskProgress = (task: Task): number => {
@@ -45,6 +46,7 @@ interface ProjectDetailProps {
   showToast: (message: string) => void;
   currentUserId?: string;  // Current user's ID for creator tracking
   currentUserEmail?: string; // Current user's email
+  onEditProject?: () => void;
 }
 
 type SortKey = 'name' | 'startDate' | 'status' | 'deliverables';
@@ -382,7 +384,7 @@ const SortableHeaderCell: React.FC<SortableHeaderCellProps> = ({ label, sortKey,
 };
 
 
-const ProjectDetail: React.FC<ProjectDetailProps> = ({ project, onBack, canEdit, onUpdateProject, showToast, currentUserId, currentUserEmail }) => {
+const ProjectDetail: React.FC<ProjectDetailProps> = ({ project, onBack, canEdit, onUpdateProject, showToast, currentUserId, currentUserEmail, onEditProject }) => {
   const [aiInsight, setAiInsight] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [expandedTasks, setExpandedTasks] = useState<Set<string>>(new Set());
@@ -393,7 +395,30 @@ const ProjectDetail: React.FC<ProjectDetailProps> = ({ project, onBack, canEdit,
   const [taskToDeleteId, setTaskToDeleteId] = useState<string | null>(null);
   const [sortConfig, setSortConfig] = useState<SortConfig>({ key: 'status', direction: 'ascending' });
   const [editingPhase, setEditingPhase] = useState<{ id: string; field: 'name' | 'weekRange' } | null>(null);
+  const [editingInfoCard, setEditingInfoCard] = useState<'duration' | 'cost' | 'team' | null>(null);
   const [phaseToDelete, setPhaseToDelete] = useState<Phase | null>(null);
+
+  // --- Accordion State ---
+  const [isCardsCollapsed, setIsCardsCollapsed] = useState(false);
+  const [collapsedPhases, setCollapsedPhases] = useState<Set<string>>(new Set());
+  const [phaseAnimationKeys, setPhaseAnimationKeys] = useState<Record<string, number>>({});
+
+  const togglePhaseCollapse = (phaseId: string) => {
+    setCollapsedPhases(prev => {
+      const newSet = new Set(prev);
+      if (newSet.has(phaseId)) {
+        newSet.delete(phaseId);
+      } else {
+        newSet.add(phaseId);
+      }
+      return newSet;
+    });
+    // Increment animation key to restart donut animation
+    setPhaseAnimationKeys(prev => ({
+      ...prev,
+      [phaseId]: (prev[phaseId] || 0) + 1
+    }));
+  };
 
   // --- User Lookup for displaying names and photos ---
   const { getUserDisplayName, getUserPhotoURL } = useUserLookup();
@@ -591,7 +616,7 @@ const ProjectDetail: React.FC<ProjectDetailProps> = ({ project, onBack, canEdit,
       ownerEmail: currentUserEmail,
     };
     const updatedProject = JSON.parse(JSON.stringify(project), reviveDates);
-    updatedProject.phases.push(newPhase);
+    updatedProject.phases.unshift(newPhase);
     onUpdateProject(updatedProject);
     showToast("New phase created below.");
   };
@@ -743,6 +768,30 @@ const ProjectDetail: React.FC<ProjectDetailProps> = ({ project, onBack, canEdit,
     setTaskToDeleteId(null);
   };
 
+  const handleUpdateDuration = (duration: string, unit: DurationUnit) => {
+    const numDuration = parseInt(duration);
+    if (!isNaN(numDuration)) {
+      const updatedProject = JSON.parse(JSON.stringify(project), reviveDates);
+      updatedProject.duration = numDuration;
+      updatedProject.durationUnit = unit;
+      onUpdateProject(updatedProject);
+    }
+    setEditingInfoCard(null);
+  };
+
+  const handleUpdateCost = (cost: string, currency: Currency) => {
+    // Remove commas if present
+    const cleanCost = cost.toString().replace(/,/g, '');
+    const numCost = parseFloat(cleanCost);
+    if (!isNaN(numCost)) {
+      const updatedProject = JSON.parse(JSON.stringify(project), reviveDates);
+      updatedProject.cost = numCost;
+      updatedProject.currency = currency;
+      onUpdateProject(updatedProject);
+    }
+    setEditingInfoCard(null);
+  };
+
 
   return (
     <div className="space-y-8">
@@ -784,58 +833,151 @@ const ProjectDetail: React.FC<ProjectDetailProps> = ({ project, onBack, canEdit,
         <p className="text-slate-400 mt-4 max-w-4xl">{project.description}</p>
       </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-        <InfoCard icon={<InfoIcon />} title="Core System" value={project.coreSystem} />
-        <InfoCard icon={<CalendarIcon />} title="Duration" value={`${project.duration} ${project.durationUnit || 'weeks'}`} />
-        <div className="bg-slate-800/50 p-4 rounded-xl border border-slate-700">
-          <div className="flex items-center space-x-3 text-slate-400 mb-2">
-            <TeamIcon className="w-5 h-5" />
-            <span className="text-sm">Team Members</span>
-          </div>
-          {project.team?.members && project.team.members.length > 0 ? (
-            <div className="space-y-2">
-              {project.team.members.slice(0, 4).map((member) => {
-                const isPrimary = member.leadRole === 'primary';
-                const isSecondary = member.leadRole === 'secondary';
-                const isLead = isPrimary || isSecondary;
-                const memberPhoto = getUserPhotoURL(member.uid, member.email);
-                const memberName = getUserDisplayName(member.uid, member.email) || member.displayName || member.email;
-                return (
-                  <div key={member.uid} className="flex items-center gap-2">
-                    {memberPhoto ? (
-                      <img src={memberPhoto} alt={memberName} className="w-6 h-6 rounded-full object-cover" />
-                    ) : (
-                      <div className={`w-6 h-6 rounded-full flex items-center justify-center ${isPrimary ? 'bg-blue-500/20' : isSecondary ? 'bg-amber-500/20' : 'bg-slate-700'
-                        }`}>
-                        {isLead ? <StarIcon className={`w-3 h-3 ${isPrimary ? 'text-blue-400' : 'text-amber-400'}`} /> : <UserIcon className="w-3 h-3 text-slate-400" />}
-                      </div>
-                    )}
-                    <span className={`text-sm truncate ${isPrimary ? 'text-blue-300 font-medium' : isSecondary ? 'text-amber-300 font-medium' : 'text-white'}`}>
-                      {memberName}
-                    </span>
-                    {isLead && (
-                      <span className={`text-xs px-1.5 py-0.5 rounded ${isPrimary ? 'bg-blue-500/30 text-blue-300' : 'bg-amber-500/30 text-amber-300'}`}>
-                        {isPrimary ? 'Primary' : 'Secondary'}
-                      </span>
-                    )}
+      {/* Collapsible Project Details Section */}
+      <div className="bg-slate-800/50 rounded-xl border border-slate-700 overflow-hidden">
+        <button
+          onClick={() => setIsCardsCollapsed(!isCardsCollapsed)}
+          className="w-full p-4 flex items-center justify-between text-left hover:bg-slate-700/30 transition-colors"
+        >
+          <h3 className="font-semibold text-lg text-white">Project Details</h3>
+          <ChevronDownIcon className={`w-5 h-5 text-slate-400 transition-transform duration-300 ${isCardsCollapsed ? '-rotate-90' : ''}`} />
+        </button>
+        <div className={`transition-all duration-300 ease-in-out ${isCardsCollapsed ? 'max-h-0 opacity-0' : 'max-h-[1000px] opacity-100'}`}>
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 p-4 pt-0">
+            <InfoCard icon={<InfoIcon />} title="Core System" value={project.coreSystem} />
+
+            {/* Editable Duration Card */}
+            <div
+              className={`bg-slate-800/50 p-4 rounded-xl border ${canEdit && !editingInfoCard ? 'border-slate-700 hover:border-brand-secondary cursor-pointer transition-colors' : 'border-slate-700'} flex items-start space-x-4`}
+              onClick={() => canEdit && !editingInfoCard && setEditingInfoCard('duration')}
+            >
+              <div className="bg-slate-700 p-3 rounded-lg text-brand-light">
+                <CalendarIcon className="w-6 h-6" />
+              </div>
+              <div className="flex-1">
+                <h4 className="text-sm text-slate-400 font-medium">Duration</h4>
+                {editingInfoCard === 'duration' ? (
+                  <div className="mt-1 flex gap-2 items-center" onClick={e => e.stopPropagation()}>
+                    <input
+                      type="number"
+                      defaultValue={project.duration}
+                      className="bg-slate-900 border border-slate-600 rounded px-2 py-1 w-20 text-white text-sm focus:border-brand-secondary outline-none"
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter') handleUpdateDuration(e.currentTarget.value, (e.currentTarget.nextSibling as HTMLSelectElement).value as DurationUnit);
+                        if (e.key === 'Escape') setEditingInfoCard(null);
+                      }}
+                      autoFocus
+                    />
+                    <select
+                      defaultValue={project.durationUnit || DurationUnit.Weeks}
+                      className="bg-slate-900 border border-slate-600 rounded px-2 py-1 text-white text-sm focus:border-brand-secondary outline-none"
+                      onChange={(e) => {
+                        const input = e.target.previousSibling as HTMLInputElement;
+                        handleUpdateDuration(input.value, e.target.value as DurationUnit);
+                      }}
+                    >
+                      {Object.values(DurationUnit).map(unit => (
+                        <option key={unit} value={unit}>{unit}</option>
+                      ))}
+                    </select>
                   </div>
-                );
-              })}
-              {project.team.members.length > 4 && (
-                <p className="text-xs text-slate-400">+{project.team.members.length - 4} more</p>
+                ) : (
+                  <p className="text-base font-semibold text-white mt-1">{project.duration} {project.durationUnit || 'weeks'}</p>
+                )}
+              </div>
+            </div>
+
+            {/* Team Card - Click to Edit Project */}
+            <div
+              className={`bg-slate-800/50 p-4 rounded-xl border ${canEdit && onEditProject ? 'border-slate-700 hover:border-brand-secondary cursor-pointer transition-colors' : 'border-slate-700'}`}
+              onClick={() => canEdit && onEditProject && onEditProject()}
+            >
+              <div className="flex items-center space-x-3 text-slate-400 mb-2">
+                <TeamIcon className="w-5 h-5" />
+                <span className="text-sm">Team Members</span>
+              </div>
+              {project.team?.members && project.team.members.length > 0 ? (
+                <div className="space-y-2">
+                  {project.team.members.slice(0, 4).map((member) => {
+                    const isPrimary = member.leadRole === 'primary';
+                    const isSecondary = member.leadRole === 'secondary';
+                    const isLead = isPrimary || isSecondary;
+                    const memberPhoto = getUserPhotoURL(member.uid, member.email);
+                    const memberName = getUserDisplayName(member.uid, member.email) || member.displayName || member.email;
+                    return (
+                      <div key={member.uid} className="flex items-center gap-2">
+                        {memberPhoto ? (
+                          <img src={memberPhoto} alt={memberName} className="w-6 h-6 rounded-full object-cover" />
+                        ) : (
+                          <div className={`w-6 h-6 rounded-full flex items-center justify-center ${isPrimary ? 'bg-blue-500/20' : isSecondary ? 'bg-amber-500/20' : 'bg-slate-700'
+                            }`}>
+                            {isLead ? <StarIcon className={`w-3 h-3 ${isPrimary ? 'text-blue-400' : 'text-amber-400'}`} /> : <UserIcon className="w-3 h-3 text-slate-400" />}
+                          </div>
+                        )}
+                        <span className={`text-sm truncate ${isPrimary ? 'text-blue-300 font-medium' : isSecondary ? 'text-amber-300 font-medium' : 'text-white'}`}>
+                          {memberName}
+                        </span>
+                        {isLead && (
+                          <span className={`text-xs px-1.5 py-0.5 rounded ${isPrimary ? 'bg-blue-500/30 text-blue-300' : 'bg-amber-500/30 text-amber-300'}`}>
+                            {isPrimary ? 'Lead' : 'Secondary'}
+                          </span>
+                        )}
+                      </div>
+                    );
+                  })}
+                  {project.team.members.length > 4 && (
+                    <p className="text-xs text-slate-400">+{project.team.members.length - 4} more</p>
+                  )}
+                </div>
+              ) : project.team?.name ? (
+                <p className="text-white font-semibold">{project.team.name} / {project.team.size || 0}</p>
+              ) : (
+                <p className="text-slate-500 text-sm">No team assigned</p>
               )}
             </div>
-          ) : project.team?.name ? (
-            <p className="text-white font-semibold">{project.team.name} / {project.team.size || 0}</p>
-          ) : (
-            <p className="text-slate-500 text-sm">No team assigned</p>
-          )}
+
+            {/* Editable Cost Card */}
+            <div
+              className={`bg-slate-800/50 p-4 rounded-xl border ${canEdit && !editingInfoCard ? 'border-slate-700 hover:border-brand-secondary cursor-pointer transition-colors' : 'border-slate-700'} flex items-start space-x-4`}
+              onClick={() => canEdit && !editingInfoCard && setEditingInfoCard('cost')}
+            >
+              <div className="bg-slate-700 p-3 rounded-lg text-brand-light">
+                <MoneyIcon className="w-6 h-6" />
+              </div>
+              <div className="flex-1">
+                <h4 className="text-sm text-slate-400 font-medium">Cost / Funding</h4>
+                {editingInfoCard === 'cost' ? (
+                  <div className="mt-1 flex gap-2 items-center" onClick={e => e.stopPropagation()}>
+                    <select
+                      defaultValue={project.currency}
+                      className="bg-slate-900 border border-slate-600 rounded px-2 py-1 text-white text-sm focus:border-brand-secondary outline-none w-20"
+                      onChange={(e) => {
+                        const input = e.target.nextSibling as HTMLInputElement;
+                        handleUpdateCost(input.value, e.target.value as Currency);
+                      }}
+                    >
+                      {Object.values(Currency).map(curr => (
+                        <option key={curr} value={curr}>{curr}</option>
+                      ))}
+                    </select>
+                    <input
+                      type="text"
+                      defaultValue={project.cost}
+                      className="bg-slate-900 border border-slate-600 rounded px-2 py-1 w-24 text-white text-sm focus:border-brand-secondary outline-none"
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter') handleUpdateCost(e.currentTarget.value, (e.currentTarget.previousSibling as HTMLSelectElement).value as Currency);
+                        if (e.key === 'Escape') setEditingInfoCard(null);
+                      }}
+                      autoFocus
+                    />
+                  </div>
+                ) : (
+                  <p className="text-base font-semibold text-white mt-1">{project.cost ? `${project.currency === Currency.USD ? '$' : '₦'}${project.cost.toLocaleString()}` : '—'}</p>
+                )}
+              </div>
+            </div>
+          </div>
         </div>
-        <InfoCard
-          icon={<MoneyIcon />}
-          title="Cost / Funding"
-          value={project.cost ? `${project.currency === Currency.USD ? '$' : '₦'}${project.cost.toLocaleString()}` : '—'}
-        />
       </div>
 
       <div className="bg-slate-800/50 rounded-xl border border-slate-700">
@@ -859,8 +1001,36 @@ const ProjectDetail: React.FC<ProjectDetailProps> = ({ project, onBack, canEdit,
           <>
             {sortedProject.phases.map(phase => (
               <div key={phase.id} className="border-b border-slate-700 last:border-b-0">
-                <div className="p-4 bg-slate-800 flex justify-between items-center group">
-                  <div className="flex items-center gap-2 flex-grow min-w-0">
+                <div
+                  className="p-4 bg-slate-800 flex justify-between items-center group cursor-pointer hover:bg-slate-700/50 transition-colors"
+                  onClick={(e) => {
+                    // Only toggle if clicking on the header area itself, not on interactive elements
+                    const target = e.target as HTMLElement;
+                    if (target.tagName === 'BUTTON' || target.tagName === 'INPUT' || target.closest('button') || target.closest('input')) {
+                      return;
+                    }
+                    // Don't toggle if clicking on editable text (when not in edit mode, these trigger edit)
+                    if (target.tagName === 'H4' || target.tagName === 'SPAN') {
+                      return;
+                    }
+                    togglePhaseCollapse(phase.id);
+                  }}
+                >
+                  <button
+                    onClick={(e) => { e.stopPropagation(); togglePhaseCollapse(phase.id); }}
+                    className="mr-2 text-slate-400 hover:text-white transition-colors flex-shrink-0"
+                  >
+                    <ChevronDownIcon className={`w-5 h-5 transition-transform duration-300 ${collapsedPhases.has(phase.id) ? '-rotate-90' : ''}`} />
+                  </button>
+
+                  {/* Phase Status Donut Chart */}
+                  <PhaseStatusDonut
+                    tasks={phase.tasks}
+                    size={46}
+                    animationKey={phaseAnimationKeys[phase.id] || 0}
+                  />
+
+                  <div className="flex items-center gap-2 flex-grow min-w-0 ml-3">
                     {editingPhase?.id === phase.id && editingPhase.field === 'name' ? (
                       <input
                         type="text"
@@ -869,9 +1039,10 @@ const ProjectDetail: React.FC<ProjectDetailProps> = ({ project, onBack, canEdit,
                         onKeyDown={(e) => { if (e.key === 'Enter') e.currentTarget.blur(); if (e.key === 'Escape') setEditingPhase(null); }}
                         className="bg-slate-700 border border-slate-600 text-white font-semibold text-md rounded-md p-1 w-full"
                         autoFocus
+                        onClick={(e) => e.stopPropagation()}
                       />
                     ) : (
-                      <h4 className="font-semibold text-md text-slate-300 cursor-pointer truncate" onClick={() => checkPermission(phase.ownerId) && setEditingPhase({ id: phase.id, field: 'name' })} title={phase.name}>{phase.name}</h4>
+                      <h4 className="font-semibold text-md text-slate-300 cursor-pointer truncate" onClick={(e) => { e.stopPropagation(); checkPermission(phase.ownerId) && setEditingPhase({ id: phase.id, field: 'name' }); }} title={phase.name}>{phase.name}</h4>
                     )}
 
                     {editingPhase?.id === phase.id && editingPhase.field === 'weekRange' ? (
@@ -882,13 +1053,14 @@ const ProjectDetail: React.FC<ProjectDetailProps> = ({ project, onBack, canEdit,
                         onKeyDown={(e) => { if (e.key === 'Enter') e.currentTarget.blur(); if (e.key === 'Escape') setEditingPhase(null); }}
                         className="bg-slate-700 border border-slate-600 text-slate-400 text-sm rounded-md p-1 w-24"
                         autoFocus
+                        onClick={(e) => e.stopPropagation()}
                       />
                     ) : (
-                      <span className="text-sm text-slate-400 font-normal cursor-pointer flex-shrink-0" onClick={() => checkPermission(phase.ownerId) && setEditingPhase({ id: phase.id, field: 'weekRange' })}>{phase.weekRange}</span>
+                      <span className="text-sm text-slate-400 font-normal cursor-pointer flex-shrink-0" onClick={(e) => { e.stopPropagation(); checkPermission(phase.ownerId) && setEditingPhase({ id: phase.id, field: 'weekRange' }); }}>{phase.weekRange}</span>
                     )}
                   </div>
 
-                  <div className="flex items-center gap-2 pl-2">
+                  <div className="flex items-center gap-2 pl-2" onClick={(e) => e.stopPropagation()}>
                     {checkPermission(phase.ownerId) && (
                       <button onClick={() => handleRequestDeletePhase(phase)} className="text-slate-500 hover:text-red-500 opacity-0 group-hover:opacity-100 transition-opacity">
                         <TrashIcon className="w-4 h-4" />
@@ -903,50 +1075,52 @@ const ProjectDetail: React.FC<ProjectDetailProps> = ({ project, onBack, canEdit,
                   </div>
                 </div>
 
-                {addingTaskToPhase === phase.id && (
-                  <div className="p-4 pb-0">
-                    <InlineTaskForm
-                      onSave={(name) => handleSaveTask(phase.id, name)}
-                      onCancel={() => setAddingTaskToPhase(null)}
-                      placeholder="New task name"
-                    />
-                  </div>
-                )}
-                <div className="p-4">
-                  <div className="grid grid-cols-10 gap-4 text-sm mb-2 px-2" style={{ paddingLeft: '2.5rem' }}>
-                    <SortableHeaderCell label="Task" sortKey="name" sortConfig={sortConfig} onSort={handleSort} className="col-span-4" />
-                    <SortableHeaderCell label="Timeline" sortKey="startDate" sortConfig={sortConfig} onSort={handleSort} className="col-span-2" />
-                    <SortableHeaderCell label="Status" sortKey="status" sortConfig={sortConfig} onSort={handleSort} className="col-span-2" />
-                    <SortableHeaderCell label="Details" sortKey="deliverables" sortConfig={sortConfig} onSort={handleSort} className="col-span-2" />
-                  </div>
-                  <ul className="space-y-2">
-                    {phase.tasks.map(task => (
-                      <TaskRow
-                        key={task.id}
-                        task={task}
-                        level={0}
-                        isExpanded={expandedTasks.has(task.id)}
-                        onToggleExpand={handleToggleExpand}
-                        addingSubtaskTo={addingSubtaskTo}
-                        setAddingSubtaskTo={setAddingSubtaskTo}
-                        canEdit={canEdit}
-                        handleSaveSubtask={handleSaveSubtask}
-                        editingField={editingField}
-                        setEditingField={setEditingField}
-                        handleUpdateTaskField={handleUpdateTaskField}
-                        onRequestDelete={handleRequestDeleteTask}
-                        checkPermission={checkPermission}
-                        phaseId={phase.id}
-                        onDragStart={handleDragStart}
-                        onDragOver={handleDragOver}
-                        onDrop={handleDrop}
-                        onDragEnd={handleDragEnd}
-                        onDragLeave={handleDragLeave}
-                        draggedItemId={draggedItemId}
-                        dropTarget={dropTarget}
+                <div className={`transition-all duration-300 ease-in-out overflow-hidden ${collapsedPhases.has(phase.id) ? 'max-h-0 opacity-0' : 'max-h-[5000px] opacity-100'}`}>
+                  {addingTaskToPhase === phase.id && (
+                    <div className="p-4 pb-0">
+                      <InlineTaskForm
+                        onSave={(name) => handleSaveTask(phase.id, name)}
+                        onCancel={() => setAddingTaskToPhase(null)}
+                        placeholder="New task name"
                       />
-                    ))}
-                  </ul>
+                    </div>
+                  )}
+                  <div className="p-4">
+                    <div className="grid grid-cols-10 gap-4 text-sm mb-2 px-2" style={{ paddingLeft: '2.5rem' }}>
+                      <SortableHeaderCell label="Task" sortKey="name" sortConfig={sortConfig} onSort={handleSort} className="col-span-4" />
+                      <SortableHeaderCell label="Timeline" sortKey="startDate" sortConfig={sortConfig} onSort={handleSort} className="col-span-2" />
+                      <SortableHeaderCell label="Status" sortKey="status" sortConfig={sortConfig} onSort={handleSort} className="col-span-2" />
+                      <SortableHeaderCell label="Details" sortKey="deliverables" sortConfig={sortConfig} onSort={handleSort} className="col-span-2" />
+                    </div>
+                    <ul className="space-y-2">
+                      {phase.tasks.map(task => (
+                        <TaskRow
+                          key={task.id}
+                          task={task}
+                          level={0}
+                          isExpanded={expandedTasks.has(task.id)}
+                          onToggleExpand={handleToggleExpand}
+                          addingSubtaskTo={addingSubtaskTo}
+                          setAddingSubtaskTo={setAddingSubtaskTo}
+                          canEdit={canEdit}
+                          handleSaveSubtask={handleSaveSubtask}
+                          editingField={editingField}
+                          setEditingField={setEditingField}
+                          handleUpdateTaskField={handleUpdateTaskField}
+                          onRequestDelete={handleRequestDeleteTask}
+                          checkPermission={checkPermission}
+                          phaseId={phase.id}
+                          onDragStart={handleDragStart}
+                          onDragOver={handleDragOver}
+                          onDrop={handleDrop}
+                          onDragEnd={handleDragEnd}
+                          onDragLeave={handleDragLeave}
+                          draggedItemId={draggedItemId}
+                          dropTarget={dropTarget}
+                        />
+                      ))}
+                    </ul>
+                  </div>
                 </div>
               </div>
             ))}
