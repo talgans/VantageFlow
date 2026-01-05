@@ -30,13 +30,18 @@ const App: React.FC = () => {
     const [isLoginModalOpen, setIsLoginModalOpen] = useState(false);
     const [currentPage, setCurrentPage] = useState<string>('dashboard');
 
-    // Reset to dashboard when user logs in
+    // Track previous user to detect login vs token refresh
+    const [prevUser, setPrevUser] = useState<typeof user>(null);
+
+    // Reset to dashboard only when user logs in (null -> user), not on token refresh updates
     useEffect(() => {
-        if (user) {
+        // Only reset navigation when user transitions from null to logged-in
+        if (user && !prevUser) {
             setCurrentPage('dashboard');
             setSelectedProject(null);
         }
-    }, [user]);
+        setPrevUser(user);
+    }, [user, prevUser]);
     const [isSideNavOpen, setIsSideNavOpen] = useState(false);
 
     const [isProjectModalOpen, setIsProjectModalOpen] = useState(false);
@@ -296,6 +301,7 @@ const App: React.FC = () => {
                             showToast={showToast}
                             currentUserId={user?.uid}
                             currentUserEmail={user?.email || undefined}
+                            onEditProject={() => handleShowEditProjectModal(selectedProject)}
                         />
                     ) : currentPage === 'users' ? (
                         <UserAdministrationPage
