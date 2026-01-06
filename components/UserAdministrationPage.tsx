@@ -280,27 +280,18 @@ const UserAdministrationPage: React.FC<UserAdministrationPageProps> = ({
     }
 
     // Set a loading state locally if needed, or just show toast
-    const toastId = showToast(`Sending reminder to ${user.email}...`);
+    showToast(`Sending reminder to ${user.email}...`);
 
     try {
       const functions = getFunctions(app, 'us-central1');
-      const inviteUserFunction = httpsCallable(functions, 'inviteUser');
+      const sendReminderEmailFunction = httpsCallable(functions, 'sendReminderEmail');
 
-      // Call inviteUser with the same role (preserving current role)
-      await inviteUserFunction({
-        email: user.email,
-        role: user.role
-      });
+      await sendReminderEmailFunction({ email: user.email });
 
       showToast(`Reminder sent to ${user.email}!`);
     } catch (err: any) {
       console.error('Error sending reminder:', err);
-      // Display specific error message if limit is reached
-      if (err.message.includes('Maximum of')) {
-        showToast(err.message);
-      } else {
-        showToast(`Failed to send reminder: ${err.message}`);
-      }
+      showToast(`Failed to send reminder: ${err.message}`);
     }
   };
 

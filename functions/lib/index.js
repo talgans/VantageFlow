@@ -33,7 +33,7 @@ var __importStar = (this && this.__importStar) || (function () {
     };
 })();
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.notifyResponsibilityAssigned = exports.notifyProjectMemberAdded = exports.inviteUser = exports.configureCors = exports.updateUserProfile = exports.deleteUser = exports.setUserRole = exports.listUsers = void 0;
+exports.notifyResponsibilityAssigned = exports.notifyProjectMemberAdded = exports.sendReminderEmail = exports.inviteUser = exports.configureCors = exports.updateUserProfile = exports.deleteUser = exports.setUserRole = exports.listUsers = void 0;
 const functions = __importStar(require("firebase-functions/v1"));
 const admin = __importStar(require("firebase-admin"));
 const resend_1 = require("resend");
@@ -375,9 +375,87 @@ exports.inviteUser = functions
     }
 });
 /**
- * Notify project team when a new member is added
+ * Send reminder email to existing user who hasn't logged in (Admin only)
+ * Generates a new password reset link and sends it
  */
-exports.notifyProjectMemberAdded = functions.https.onCall(async (data, context) => {
+exports.sendReminderEmail = functions
+    .runWith({
+    timeoutSeconds: 60,
+    memory: '256MB'
+})
+    .https.onCall(async (data, context) => {
+    var _a, _b;
+    // Check if user is authenticated
+    if (!context.auth) {
+        throw new functions.https.HttpsError('unauthenticated', 'User must be authenticated');
+    }
+    // Check if user is admin
+    const callerToken = await admin.auth().getUser(context.auth.uid);
+    if (!((_a = callerToken.customClaims) === null || _a === void 0 ? void 0 : _a.role) || callerToken.customClaims.role !== 'admin') {
+        throw new functions.https.HttpsError('permission-denied', 'Only admins can send reminder emails');
+    }
+    const { email } = data;
+    if (!email || !email.includes('@')) {
+        throw new functions.https.HttpsError('invalid-argument', 'Invalid email address');
+    }
+    try {
+        // Get the existing user
+        const existingUser = await admin.auth().getUserByEmail(email);
+        // Check if user has already logged in
+        if (existingUser.metadata.lastSignInTime) {
+            throw new functions.https.HttpsError('failed-precondition', 'This user has already logged in. Password reset is not needed.');
+        }
+        const role = ((_b = existingUser.customClaims) === null || _b === void 0 ? void 0 : _b.role) || 'member';
+        // Generate a new password reset link
+        const actionCodeSettings = {
+            url: 'https://vantageflow.vercel.app',
+            handleCodeInApp: false,
+        };
+        const resetLink = await admin.auth().generatePasswordResetLink(email, actionCodeSettings);
+        const html = `
+        <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
+          <h2 style="color: #3b82f6;">Reminder: Complete Your VantageFlow Setup</h2>
+          <p>You were invited to join VantageFlow as a <strong>${role}</strong>, but haven't set your password yet.</p>
+          <p>To get started, please set your password by clicking the link below:</p>
+          <div style="margin: 30px 0;">
+            <a href="${resetLink}" 
+               style="background-color: #3b82f6; color: white; padding: 12px 24px; text-decoration: none; border-radius: 6px; display: inline-block;">
+              Set Your Password
+            </a>
+          </div>
+          <p style="color: #64748b; font-size: 14px;">
+            This link will expire in 24 hours. If you didn't expect this reminder, you can safely ignore this email.
+          </p>
+          <hr style="border: none; border-top: 1px solid #e2e8f0; margin: 30px 0;">
+          <p style="color: #94a3b8; font-size: 12px;">
+            VantageFlow - Project Management & KPI Dashboard
+          </p>
+        </div>
+      `;
+        await sendEmail(email, 'Reminder: Complete Your VantageFlow Setup', html);
+        return {
+            success: true,
+            message: `Reminder email sent to ${email}`,
+        };
+    }
+    catch (error) {
+        console.error('Error sending reminder:', error);
+        if (error.code === 'auth/user-not-found') {
+            throw new functions.https.HttpsError('not-found', 'User not found. Please invite them first.');
+        }
+        if (error instanceof functions.https.HttpsError)
+            throw error;
+        throw new functions.https.HttpsError('internal', `Failed to send reminder: ${error.message}`);
+    }
+}); /**
+* Notify project team when a new member is added
+*/
+exports.notifyProjectMemberAdded = functions
+    .runWith({
+    timeoutSeconds: 60,
+    memory: '256MB'
+})
+    .https.onCall(async (data, context) => {
     if (!context.auth) {
         throw new functions.https.HttpsError('unauthenticated', 'Authenticated user required');
     }
@@ -409,7 +487,12 @@ exports.notifyProjectMemberAdded = functions.https.onCall(async (data, context) 
 /**
  * Notify assignees of responsibility
  */
-exports.notifyResponsibilityAssigned = functions.https.onCall(async (data, context) => {
+exports.notifyResponsibilityAssigned = functions
+    .runWith({
+    timeoutSeconds: 60,
+    memory: '256MB'
+})
+    .https.onCall(async (data, context) => {
     if (!context.auth) {
         throw new functions.https.HttpsError('unauthenticated', 'Authenticated user required');
     }

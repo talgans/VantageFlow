@@ -75,12 +75,10 @@ service cloud.firestore {
       allow create: if false; 
     }
 
-    // Achievements
+    // Achievements - gamification points/badges (public for authenticated users)
     match /achievements/{achievementId} {
-      // User can read their own achievements (both get and list)
-      allow read: if isAuthenticated() && (
-        resource == null || resource.data.userId == request.auth.uid
-      );
+      // Any authenticated user can read achievements (displayed for team members)
+      allow read: if isAuthenticated();
       // Creation: currently client-side 'achievementService' calls addDoc.
       allow create: if isAuthenticated();
       // Only admin can modify/delete history

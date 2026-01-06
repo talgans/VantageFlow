@@ -1,4 +1,5 @@
 import { getFunctions, httpsCallable } from 'firebase/functions';
+import { app, auth } from './firebaseConfig';
 import { Project, TeamMember, Task, Phase } from '../types';
 
 export const notificationService = {
@@ -14,7 +15,16 @@ export const notificationService = {
      */
     notifyTeamMemberJoined: async (project: Project, newMember: TeamMember) => {
         console.log(`[NotificationService] Notifying team of new member: ${newMember.email}`);
-        const functions = getFunctions();
+
+        // Ensure auth token is fresh (matching pattern from working inviteUser)
+        const currentUser = auth.currentUser;
+        if (!currentUser) {
+            console.error('[NotificationService] No authenticated user');
+            return false;
+        }
+        await currentUser.getIdToken(true);
+
+        const functions = getFunctions(app, 'us-central1');
         const notifyProjectMemberAdded = httpsCallable(functions, 'notifyProjectMemberAdded');
 
         try {
@@ -46,7 +56,15 @@ export const notificationService = {
 
         if (assignees.length === 0) return;
 
-        const functions = getFunctions();
+        // Ensure auth token is fresh (matching pattern from working inviteUser)
+        const currentUser = auth.currentUser;
+        if (!currentUser) {
+            console.error('[NotificationService] No authenticated user');
+            return false;
+        }
+        await currentUser.getIdToken(true);
+
+        const functions = getFunctions(app, 'us-central1');
         const notifyResponsibilityAssigned = httpsCallable(functions, 'notifyResponsibilityAssigned');
 
         try {

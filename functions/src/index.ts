@@ -388,19 +388,107 @@ export const inviteUser = functions
 
 
 /**
+ * Send reminder email to existing user who hasn't logged in (Admin only)
+ * Generates a new password reset link and sends it
+ */
+export const sendReminderEmail = functions
+  .runWith({
+    timeoutSeconds: 60,
+    memory: '256MB'
+  })
+  .https.onCall(async (data: any, context) => {
+    // Check if user is authenticated
+    if (!(context as any).auth) {
+      throw new functions.https.HttpsError('unauthenticated', 'User must be authenticated');
+    }
+
+    // Check if user is admin
+    const callerToken = await admin.auth().getUser((context as any).auth.uid);
+    if (!callerToken.customClaims?.role || callerToken.customClaims.role !== 'admin') {
+      throw new functions.https.HttpsError('permission-denied', 'Only admins can send reminder emails');
+    }
+
+    const { email } = data;
+
+    if (!email || !email.includes('@')) {
+      throw new functions.https.HttpsError('invalid-argument', 'Invalid email address');
+    }
+
+    try {
+      // Get the existing user
+      const existingUser = await admin.auth().getUserByEmail(email);
+
+      // Check if user has already logged in
+      if (existingUser.metadata.lastSignInTime) {
+        throw new functions.https.HttpsError(
+          'failed-precondition',
+          'This user has already logged in. Password reset is not needed.'
+        );
+      }
+
+      const role = existingUser.customClaims?.role || 'member';
+
+      // Generate a new password reset link
+      const actionCodeSettings = {
+        url: 'https://vantageflow.vercel.app',
+        handleCodeInApp: false,
+      };
+      const resetLink = await admin.auth().generatePasswordResetLink(email, actionCodeSettings);
+
+      const html = `
+        <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
+          <h2 style="color: #3b82f6;">Reminder: Complete Your VantageFlow Setup</h2>
+          <p>You were invited to join VantageFlow as a <strong>${role}</strong>, but haven't set your password yet.</p>
+          <p>To get started, please set your password by clicking the link below:</p>
+          <div style="margin: 30px 0;">
+            <a href="${resetLink}" 
+               style="background-color: #3b82f6; color: white; padding: 12px 24px; text-decoration: none; border-radius: 6px; display: inline-block;">
+              Set Your Password
+            </a>
+          </div>
+          <p style="color: #64748b; font-size: 14px;">
+            This link will expire in 24 hours. If you didn't expect this reminder, you can safely ignore this email.
+          </p>
+          <hr style="border: none; border-top: 1px solid #e2e8f0; margin: 30px 0;">
+          <p style="color: #94a3b8; font-size: 12px;">
+            VantageFlow - Project Management & KPI Dashboard
+          </p>
+        </div>
+      `;
+
+      await sendEmail(email, 'Reminder: Complete Your VantageFlow Setup', html);
+
+      return {
+        success: true,
+        message: `Reminder email sent to ${email}`,
+      };
+    } catch (error: any) {
+      console.error('Error sending reminder:', error);
+      if (error.code === 'auth/user-not-found') {
+        throw new functions.https.HttpsError('not-found', 'User not found. Please invite them first.');
+      }
+      if (error instanceof functions.https.HttpsError) throw error;
+      throw new functions.https.HttpsError('internal', `Failed to send reminder: ${error.message}`);
+    }
+  });/**
  * Notify project team when a new member is added
  */
-export const notifyProjectMemberAdded = functions.https.onCall(async (data, context) => {
-  if (!(context as any).auth) {
-    throw new functions.https.HttpsError('unauthenticated', 'Authenticated user required');
-  }
+export const notifyProjectMemberAdded = functions
+  .runWith({
+    timeoutSeconds: 60,
+    memory: '256MB'
+  })
+  .https.onCall(async (data, context) => {
+    if (!(context as any).auth) {
+      throw new functions.https.HttpsError('unauthenticated', 'Authenticated user required');
+    }
 
-  const { projectId, projectName, newMemberEmail, newMemberName, teamEmails } = data;
-  const inviterName = (context as any).auth.token.name || (context as any).auth.token.email;
+    const { projectId, projectName, newMemberEmail, newMemberName, teamEmails } = data;
+    const inviterName = (context as any).auth.token.name || (context as any).auth.token.email;
 
-  const subject = `New Team Member: ${newMemberName || newMemberEmail}`;
-  const link = `https://vantageflow.vercel.app/project/${projectId}`;
-  const html = `
+    const subject = `New Team Member: ${newMemberName || newMemberEmail}`;
+    const link = `https://vantageflow.vercel.app/project/${projectId}`;
+    const html = `
     <div style="font-family: Arial, sans-serif;">
       <h2 style="color: #3b82f6;">New Project Member</h2>
       <p><strong>${newMemberName || newMemberEmail}</strong> has been added to project <strong>${projectName}</strong> by ${inviterName}.</p>
@@ -408,40 +496,45 @@ export const notifyProjectMemberAdded = functions.https.onCall(async (data, cont
     </div>
   `;
 
-  const validEmails = (teamEmails as string[] || []).filter(e => e && e.includes('@'));
+    const validEmails = (teamEmails as string[] || []).filter(e => e && e.includes('@'));
 
-  // Note: For large teams, consider individual sending or BCC to avoid exposing all emails if privacy is concern
-  // For internal teams, iterating is fine
-  const promises = validEmails.map(email => sendEmail(email, subject, html));
-  await Promise.all(promises);
+    // Note: For large teams, consider individual sending or BCC to avoid exposing all emails if privacy is concern
+    // For internal teams, iterating is fine
+    const promises = validEmails.map(email => sendEmail(email, subject, html));
+    await Promise.all(promises);
 
-  // Send in-app notification to the new member? Or team? 
-  // Requirement: "Notify team when new member is added"
-  // We'll simplisticly assume we notify the TEAM that a new member joined.
-  // We'll also notify the NEW MEMBER that they were added.
+    // Send in-app notification to the new member? Or team? 
+    // Requirement: "Notify team when new member is added"
+    // We'll simplisticly assume we notify the TEAM that a new member joined.
+    // We'll also notify the NEW MEMBER that they were added.
 
-  // Need UIDs to create in-app notifications. Typically passed or looked up.
-  // For now, we will just count on emails if we don't have UIDs passed in data.
-  // Ideally client passes member UIDs.
+    // Need UIDs to create in-app notifications. Typically passed or looked up.
+    // For now, we will just count on emails if we don't have UIDs passed in data.
+    // Ideally client passes member UIDs.
 
-  return { success: true };
-});
+    return { success: true };
+  });
 
 /**
  * Notify assignees of responsibility
  */
-export const notifyResponsibilityAssigned = functions.https.onCall(async (data, context) => {
-  if (!(context as any).auth) {
-    throw new functions.https.HttpsError('unauthenticated', 'Authenticated user required');
-  }
+export const notifyResponsibilityAssigned = functions
+  .runWith({
+    timeoutSeconds: 60,
+    memory: '256MB'
+  })
+  .https.onCall(async (data, context) => {
+    if (!(context as any).auth) {
+      throw new functions.https.HttpsError('unauthenticated', 'Authenticated user required');
+    }
 
-  const { projectId, projectName, itemType, itemName, assignees } = data;
-  // assignees: { uid: string, email: string, displayName: string }[]
-  const assignerName = (context as any).auth.token.name || (context as any).auth.token.email;
+    const { projectId, projectName, itemType, itemName, assignees } = data;
+    // assignees: { uid: string, email: string, displayName: string }[]
+    const assignerName = (context as any).auth.token.name || (context as any).auth.token.email;
 
-  const subject = `New Responsibility: ${itemName}`;
-  const link = `https://vantageflow.vercel.app/project/${projectId}`;
-  const html = `
+    const subject = `New Responsibility: ${itemName}`;
+    const link = `https://vantageflow.vercel.app/project/${projectId}`;
+    const html = `
     <div style="font-family: Arial, sans-serif;">
       <h2 style="color: #3b82f6;">Responsibility Assigned</h2>
       <p>You have been assigned to <strong>${itemType}: ${itemName}</strong> in project <strong>${projectName}</strong> by ${assignerName}.</p>
@@ -449,26 +542,26 @@ export const notifyResponsibilityAssigned = functions.https.onCall(async (data, 
     </div>
   `;
 
-  // Send emails and create notifications
-  const promises = (assignees as any[]).map(async (member) => {
-    if (member.email) {
-      await sendEmail(member.email, subject, html);
-    }
-    if (member.uid) {
-      await createNotification(
-        member.uid,
-        'responsibility_assigned',
-        `Assigned to ${itemType}: ${itemName} in ${projectName}`,
-        projectId,
-        projectName,
-        link
-      );
-    }
-  });
+    // Send emails and create notifications
+    const promises = (assignees as any[]).map(async (member) => {
+      if (member.email) {
+        await sendEmail(member.email, subject, html);
+      }
+      if (member.uid) {
+        await createNotification(
+          member.uid,
+          'responsibility_assigned',
+          `Assigned to ${itemType}: ${itemName} in ${projectName}`,
+          projectId,
+          projectName,
+          link
+        );
+      }
+    });
 
-  await Promise.all(promises);
-  return { success: true };
-});
+    await Promise.all(promises);
+    return { success: true };
+  });
 
 // NOTE: Dynamic user lookup via useUserLookup hook is now used on the client.
 // The onUserUpdate trigger is no longer necessary for keeping project team data fresh.
