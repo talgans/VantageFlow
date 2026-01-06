@@ -1,8 +1,10 @@
 import React from 'react';
-import { Project, TaskStatus } from '../types';
+import { Project, TaskStatus, TeamMember } from '../types';
 import CircularProgress from './CircularProgress';
 import StatusBadge from './StatusBadge';
 import { ChevronRightIcon, PlusCircleIcon, PencilIcon, TrashIcon } from './icons';
+import { useUserLookup } from '../hooks/useUserLookup';
+import MemberCountChart from './charts/MemberCountChart';
 
 interface ProjectsListProps {
     projects: Project[];
@@ -23,6 +25,37 @@ const ProjectsList: React.FC<ProjectsListProps> = ({
     onDeleteProject,
     canModify
 }) => {
+    const { getUserDisplayName, getUserPhotoURL } = useUserLookup();
+
+    // Get the project owner info
+    const getOwnerInfo = (project: Project) => {
+        const ownerMember = project.team?.members?.find(m => m.leadRole === 'primary');
+        if (ownerMember) {
+            return {
+                name: getUserDisplayName(ownerMember.uid, ownerMember.email) || ownerMember.displayName || ownerMember.email || 'Owner',
+                photoURL: getUserPhotoURL(ownerMember.uid, ownerMember.email) || ownerMember.photoURL,
+            };
+        }
+        // Fallback to project-level owner info
+        if (project.ownerId) {
+            return {
+                name: getUserDisplayName(project.ownerId, project.ownerEmail) || project.ownerName || project.ownerEmail || 'Owner',
+                photoURL: getUserPhotoURL(project.ownerId, project.ownerEmail) || project.ownerPhotoURL,
+            };
+        }
+        return { name: project.ownerEmail || 'Unassigned', photoURL: undefined };
+    };
+
+    // Get secondary leads
+    const getSecondaryLeads = (project: Project): TeamMember[] => {
+        return project.team?.members?.filter(m => m.leadRole === 'secondary') || [];
+    };
+
+    // Get total team member count
+    const getMemberCount = (project: Project): number => {
+        return project.team?.members?.length || 0;
+    };
+
     const getProjectStatusSummary = (project: Project) => {
         const tasks = project.phases.flatMap(ph => ph.tasks);
         if (tasks.length === 0) return 'No tasks yet';
@@ -125,22 +158,53 @@ const ProjectsList: React.FC<ProjectsListProps> = ({
                                         <div className="flex items-center space-x-3 mb-1">
                                             <p className="font-semibold text-white group-hover:text-brand-light">{project.name}</p>
                                             <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${(() => {
-                                                    const pct = getProjectCompletionPercentage(project);
-                                                    if (pct >= 75) return 'bg-green-500/10 text-green-400';
-                                                    if (pct >= 50) return 'bg-blue-500/10 text-blue-400';
-                                                    if (pct >= 25) return 'bg-sky-500/10 text-sky-400';
-                                                    if (pct > 0) return 'bg-indigo-500/10 text-indigo-400';
-                                                    return 'bg-gray-500/10 text-gray-400';
-                                                })()
+                                                const pct = getProjectCompletionPercentage(project);
+                                                if (pct >= 75) return 'bg-green-500/10 text-green-400';
+                                                if (pct >= 50) return 'bg-blue-500/10 text-blue-400';
+                                                if (pct >= 25) return 'bg-sky-500/10 text-sky-400';
+                                                if (pct > 0) return 'bg-indigo-500/10 text-indigo-400';
+                                                return 'bg-gray-500/10 text-gray-400';
+                                            })()
                                                 }`}>
                                                 {getProjectCompletionPercentage(project)}%
                                             </span>
                                         </div>
                                         <p className="text-sm text-slate-400">{getProjectStatusSummary(project)}</p>
-                                        <div className="flex items-center space-x-4 mt-2 text-xs text-slate-500">
-                                            <span>Owner: {project.ownerEmail || 'Unassigned'}</span>
-                                            <span>•</span>
+                                        <div className="flex items-center flex-wrap gap-x-4 gap-y-2 mt-2 text-xs text-slate-500">
+                                            {/* Owner with avatar */}
+                                            <div className="flex items-center space-x-1.5">
+                                                {(() => {
+                                                    const owner = getOwnerInfo(project);
+                                                    return (
+                                                        <>
+                                                            {owner.photoURL ? (
+                                                                <img
+                                                                    src={owner.photoURL}
+                                                                    alt={owner.name}
+                                                                    className="w-5 h-5 rounded-full object-cover"
+                                                                />
+                                                            ) : (
+                                                                <div className="w-5 h-5 rounded-full bg-brand-secondary/20 flex items-center justify-center">
+                                                                    <span className="text-[10px] font-medium text-brand-light">
+                                                                        {owner.name.charAt(0).toUpperCase()}
+                                                                    </span>
+                                                                </div>
+                                                            )}
+                                                            <span className="text-slate-400">
+                                                                <span className="text-slate-500">Owner:</span> {owner.name}
+                                                            </span>
+                                                        </>
+                                                    );
+                                                })()}
+                                            </div>
+
+                                            <span className="text-slate-600">•</span>
                                             <span>Created: {project.createdAt ? new Date(project.createdAt).toLocaleDateString() : 'N/A'}</span>
+
+                                            {/* Member count chart */}
+                                            {getMemberCount(project) > 0 && (
+                                                <MemberCountChart count={getMemberCount(project)} size={32} />
+                                            )}
                                         </div>
                                     </div>
                                 </div>
