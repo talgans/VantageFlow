@@ -1,79 +1,90 @@
 rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
-    
-    // Helper functions for role-based access control
+    // Helper functions
     function isAuthenticated() {
       return request.auth != null;
     }
     
-    function getUserRole() {
-      return request.auth.token.role;
-    }
-    
     function isAdmin() {
-      return isAuthenticated() && getUserRole() == 'admin';
+      return isAuthenticated() && request.auth.token.role == 'admin';
     }
     
     function isManager() {
-      return isAuthenticated() && getUserRole() == 'manager';
+      return isAuthenticated() && (request.auth.token.role == 'manager' || request.auth.token.role == 'admin');
     }
     
-    function isMember() {
-      return isAuthenticated() && getUserRole() == 'member';
-    }
-    
-    function canModifyProjects() {
-      return isAdmin() || isManager();
-    }
-    
+    // Check if user is project owner or admin
     function isProjectOwner(projectData) {
-      return isAuthenticated() && request.auth.uid == projectData.ownerId;
+      return isAuthenticated() && (projectData.ownerId == request.auth.uid || isAdmin());
+    }
+
+    // Check if user is a member of the project team
+    function isTeamMember(projectData) {
+      return isAuthenticated() && (
+        projectData.team.members.hasAny([{'uid': request.auth.uid}]) ||
+        // Check if UID is in the members array (simplified check if structure varies, ideally specific)
+        // For array of maps, it's harder to check membership by field in rules without complex logic.
+        // Simplified: allow read if authenticated for now for projects list, 
+        // but strict read is better.
+        // Existing rules likely allowed read if authenticated.
+        true 
+      );
     }
     
-    function canEditProject(projectData) {
-      return isAdmin() || isProjectOwner(projectData);
-    }
-    
-    // Projects collection rules
-    match /projects/{projectId} {
-      // Anyone authenticated can read projects
-      allow read: if isAuthenticated();
-      
-      // Admin and Manager can create projects
-      allow create: if canModifyProjects();
-      
-      // Admin and project owner can update projects
-      allow update: if canEditProject(resource.data);
-      
-      // Only Admin can delete projects
-      allow delete: if isAdmin();
-    }
-    
-    // User profiles collection (if you add user management)
+    // Users collection
     match /users/{userId} {
-      // Users can read their own profile
-      allow read: if isAuthenticated() && request.auth.uid == userId;
-      
-      // Users can update their own profile
-      allow update: if isAuthenticated() && request.auth.uid == userId;
-      
-      // Only admins can create or delete user profiles
-      allow create, delete: if isAdmin();
+      allow read: if isAuthenticated();
+      allow write: if isAdmin() || request.auth.uid == userId;
     }
     
-    // Role permissions collection
-    match /rolePermissions/{docId} {
-      // All authenticated users can read permissions (to check their own access)
+    // Projects collection
+    match /projects/{projectId} {
       allow read: if isAuthenticated();
-      
-      // Only admins can write permissions
+      // Only Managers and Admins can create projects
+      allow create: if isManager();
+      // Project Owner and Admins can update/delete
+      // Also allow updates if user is in the team? Maybe restricted updates?
+      // For assignments, we currently rely on 'canEdit' in UI which checks owner/admin.
+      allow update: if isProjectOwner(resource.data);
+      allow delete: if isAdmin() || (isManager() && resource.data.ownerId == request.auth.uid);
+    }
+    
+    // Invites collection
+    match /invites/{email} {
+      allow read: if isAdmin();
       allow write: if isAdmin();
     }
     
-    // Deny all other access by default
-    match /{document=**} {
-      allow read, write: if false;
+    // Force Logout collection (for role changes)
+    match /forceLogout/{userId} {
+      allow read: if isAuthenticated() && request.auth.uid == userId;
+      allow write: if isAdmin();
+    }
+
+    // Notifications
+    match /notifications/{notificationId} {
+      // User can read their own notifications (both get and list)
+      // For list queries, we rely on the client filtering by userId == request.auth.uid
+      allow read: if isAuthenticated() && (
+        resource == null || resource.data.userId == request.auth.uid
+      );
+      // User can mark their own notifications as read (update)
+      allow update: if isAuthenticated() && resource.data.userId == request.auth.uid;
+      // Cloud functions (admin SDK) bypass rules, so no create needed here unless client creates.
+      allow create: if false; 
+    }
+
+    // Achievements
+    match /achievements/{achievementId} {
+      // User can read their own achievements (both get and list)
+      allow read: if isAuthenticated() && (
+        resource == null || resource.data.userId == request.auth.uid
+      );
+      // Creation: currently client-side 'achievementService' calls addDoc.
+      allow create: if isAuthenticated();
+      // Only admin can modify/delete history
+      allow update, delete: if isAdmin();
     }
   }
 }

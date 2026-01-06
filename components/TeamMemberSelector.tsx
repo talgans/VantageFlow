@@ -2,6 +2,7 @@ import React, { useState, useEffect, useMemo } from 'react';
 import { TeamMember } from '../types';
 import { XMarkIcon, UserIcon, MagnifyingGlassIcon, StarIcon } from './icons';
 import { getFunctions, httpsCallable } from 'firebase/functions';
+import UserAchievementBadge from './UserAchievementBadge';
 
 interface User {
     uid: string;
@@ -242,16 +243,24 @@ const TeamMemberSelector: React.FC<TeamMemberSelectorProps> = ({
                                             </div>
                                             <div>
                                                 <p className="text-sm font-medium text-white flex items-center gap-2">
-                                                    {user.displayName || user.email}
+                                                    {(() => {
+                                                        let name = user.displayName;
+                                                        if (!name || name.includes('@')) {
+                                                            name = user.email.split('@')[0];
+                                                            name = name.charAt(0).toUpperCase() + name.slice(1);
+                                                        }
+                                                        return name;
+                                                    })()}
                                                     {isOwner && (
                                                         <span className="text-xs bg-blue-500/30 text-blue-300 px-1.5 py-0.5 rounded">
                                                             Project Owner
                                                         </span>
                                                     )}
                                                 </p>
-                                                {user.displayName && (
+                                                <div className="flex items-center gap-2">
                                                     <p className="text-xs text-slate-400">{user.email}</p>
-                                                )}
+                                                    <UserAchievementBadge userId={user.uid} />
+                                                </div>
                                             </div>
                                         </div>
                                         <div className="flex items-center gap-2">

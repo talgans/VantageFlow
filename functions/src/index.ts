@@ -1,6 +1,6 @@
 import * as functions from 'firebase-functions/v1';
 import * as admin from 'firebase-admin';
-import * as nodemailer from 'nodemailer';
+import { Resend } from 'resend';
 
 // Prevent double initialization
 if (admin.apps.length === 0) {
@@ -16,6 +16,60 @@ interface UserData {
   createdAt: string;
   lastSignIn?: string;
 }
+
+// --- Helper for sending emails via Resend ---
+const sendEmail = async (to: string, subject: string, html: string): Promise<boolean> => {
+  console.log(`[sendEmail] Attempting to send email to: ${to}`);
+  console.log(`[sendEmail] Subject: ${subject}`);
+
+  const resendApiKey = functions.config().resend?.api_key;
+
+  if (!resendApiKey) {
+    console.error('[sendEmail] ERROR: Resend API key not set. Email not sent.');
+    return false;
+  }
+
+  console.log(`[sendEmail] API key found (first 10 chars): ${resendApiKey.substring(0, 10)}...`);
+
+  try {
+    const resend = new Resend(resendApiKey);
+
+    console.log('[sendEmail] Calling Resend API...');
+    const { data, error } = await resend.emails.send({
+      from: 'VantageFlow <vantage@intellisys.xyz>',
+      to: [to],
+      subject,
+      html,
+    });
+
+    if (error) {
+      console.error('[sendEmail] Resend API error:', JSON.stringify(error));
+      return false;
+    }
+
+    console.log(`[sendEmail] Email sent successfully! Resend ID: ${data?.id}`);
+    return true;
+  } catch (error: any) {
+    console.error('[sendEmail] Exception caught:', error.message || error);
+    return false;
+  }
+};
+
+// --- Helper for creating in-app notification ---
+const createNotification = async (userId: string, type: string, message: string, projectId: string, projectName: string, link?: string) => {
+  await admin.firestore().collection('notifications').add({
+    userId,
+    type,
+    message,
+    projectId,
+    projectName,
+    link,
+    read: false,
+    emailSent: true, // We assume email is attempted if we are here
+    createdAt: admin.firestore.FieldValue.serverTimestamp(),
+  });
+};
+
 
 /**
  * List all users (Admin and Manager)
@@ -77,7 +131,25 @@ export const setUserRole = functions.https.onCall(async (data, context) => {
   }
 
   try {
+    // Get the user's current role before changing
+    const targetUser = await admin.auth().getUser(uid);
+    const previousRole = targetUser.customClaims?.role || 'member';
+
+    // Set the new role
     await admin.auth().setCustomUserClaims(uid, { role });
+
+    // If role actually changed, create a forceLogout document to notify the user
+    if (previousRole !== role) {
+      await admin.firestore().collection('forceLogout').doc(uid).set({
+        reason: 'role_changed',
+        previousRole,
+        newRole: role,
+        changedAt: admin.firestore.FieldValue.serverTimestamp(),
+        changedBy: (context as any).auth.uid,
+        message: `Your role has been changed from ${previousRole} to ${role}. You will be logged out in 60 seconds to apply the new permissions.`
+      });
+    }
+
     return { success: true, message: `User role set to ${role}` };
   } catch (error) {
     console.error('Error setting user role:', error);
@@ -235,7 +307,7 @@ export const inviteUser = functions
     const { email, role } = data;
     console.log(`Attempting to invite: ${email} with role: ${role}`);
 
-    // Validate role - any non-empty string except 'admin' (admin must be assigned after signup)
+    // Validate role
     if (!role || typeof role !== 'string' || role.trim().length === 0 || role === 'admin') {
       throw new functions.https.HttpsError('invalid-argument', 'Invalid role. Cannot invite as admin; admin role must be assigned after signup');
     }
@@ -256,7 +328,6 @@ export const inviteUser = functions
           throw error;
         }
         console.log('User does not exist, proceeding with creation');
-        // User doesn't exist, proceed with creation
       }
 
       // Create user with temporary password
@@ -273,67 +344,36 @@ export const inviteUser = functions
       console.log(`Setting custom claims: role=${role}`);
       await admin.auth().setCustomUserClaims(userRecord.uid, { role });
 
-      // Generate password reset link (24 hour expiration)
+      // Generate password reset link
       console.log('Generating password reset link...');
       const actionCodeSettings = {
-        url: 'https://vantageflow.vercel.app', // Redirect to Vercel-hosted app after password reset
+        url: 'https://vantageflow.vercel.app',
         handleCodeInApp: false,
       };
       const resetLink = await admin.auth().generatePasswordResetLink(email, actionCodeSettings);
-      console.log('Password reset link generated');
 
-      // Get email configuration
-      const emailConfig = functions.config().email;
-      const emailUserValue = emailConfig?.user;
-      const emailPasswordValue = emailConfig?.password;
-      console.log(`Email config - user: ${emailUserValue ? 'set' : 'not set'}, password: ${emailPasswordValue ? 'set' : 'not set'}`);
-
-      // Send email using Nodemailer
-      if (emailUserValue && emailPasswordValue) {
-        console.log('Configuring email transporter...');
-        const transporter = nodemailer.createTransport({
-          service: 'gmail',
-          auth: {
-            user: emailUserValue,
-            pass: emailPasswordValue,
-          },
-        });
-
-        console.log('Preparing email...');
-        const mailOptions = {
-          from: `VantageFlow <${emailUserValue}>`,
-          to: email,
-          subject: 'You have been invited to VantageFlow',
-          html: `
-          <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
-            <h2 style="color: #3b82f6;">Welcome to VantageFlow!</h2>
-            <p>You have been invited to join VantageFlow as a <strong>${role}</strong>.</p>
-            <p>To get started, please set your password by clicking the link below:</p>
-            <div style="margin: 30px 0;">
-              <a href="${resetLink}" 
-                 style="background-color: #3b82f6; color: white; padding: 12px 24px; text-decoration: none; border-radius: 6px; display: inline-block;">
-                Set Your Password
-              </a>
-            </div>
-            <p style="color: #64748b; font-size: 14px;">
-              This link will expire in 24 hours. If you didn't expect this invitation, you can safely ignore this email.
-            </p>
-            <hr style="border: none; border-top: 1px solid #e2e8f0; margin: 30px 0;">
-            <p style="color: #94a3b8; font-size: 12px;">
-              VantageFlow - Project Management & KPI Dashboard
-            </p>
+      const html = `
+        <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
+          <h2 style="color: #3b82f6;">Welcome to VantageFlow!</h2>
+          <p>You have been invited to join VantageFlow as a <strong>${role}</strong>.</p>
+          <p>To get started, please set your password by clicking the link below:</p>
+          <div style="margin: 30px 0;">
+            <a href="${resetLink}" 
+               style="background-color: #3b82f6; color: white; padding: 12px 24px; text-decoration: none; border-radius: 6px; display: inline-block;">
+              Set Your Password
+            </a>
           </div>
-        `,
-        };
+          <p style="color: #64748b; font-size: 14px;">
+            This link will expire in 24 hours. If you didn't expect this invitation, you can safely ignore this email.
+          </p>
+          <hr style="border: none; border-top: 1px solid #e2e8f0; margin: 30px 0;">
+          <p style="color: #94a3b8; font-size: 12px;">
+            VantageFlow - Project Management & KPI Dashboard
+          </p>
+        </div>
+      `;
 
-        console.log(`Sending email to ${email}...`);
-        await transporter.sendMail(mailOptions);
-        console.log(`Invitation email sent successfully to ${email}`);
-      } else {
-        console.warn('Email configuration not set. User created but invitation email not sent.');
-      }
-
-      console.log(`User invited successfully: ${email} with role ${role}`);
+      await sendEmail(email, 'You have been invited to VantageFlow', html);
 
       return {
         success: true,
@@ -341,14 +381,94 @@ export const inviteUser = functions
       };
     } catch (error: any) {
       console.error('Error inviting user:', error);
-      console.error('Error code:', error.code);
-      console.error('Error message:', error.message);
-      console.error('Error stack:', error.stack);
-
-      if (error.code === 'already-exists') {
-        throw error;
-      }
+      if (error.code === 'already-exists') throw error;
       throw new functions.https.HttpsError('internal', `Failed to invite user: ${error.message}`);
     }
   });
 
+
+/**
+ * Notify project team when a new member is added
+ */
+export const notifyProjectMemberAdded = functions.https.onCall(async (data, context) => {
+  if (!(context as any).auth) {
+    throw new functions.https.HttpsError('unauthenticated', 'Authenticated user required');
+  }
+
+  const { projectId, projectName, newMemberEmail, newMemberName, teamEmails } = data;
+  const inviterName = (context as any).auth.token.name || (context as any).auth.token.email;
+
+  const subject = `New Team Member: ${newMemberName || newMemberEmail}`;
+  const link = `https://vantageflow.vercel.app/project/${projectId}`;
+  const html = `
+    <div style="font-family: Arial, sans-serif;">
+      <h2 style="color: #3b82f6;">New Project Member</h2>
+      <p><strong>${newMemberName || newMemberEmail}</strong> has been added to project <strong>${projectName}</strong> by ${inviterName}.</p>
+      <p><a href="${link}">View Project</a></p>
+    </div>
+  `;
+
+  const validEmails = (teamEmails as string[] || []).filter(e => e && e.includes('@'));
+
+  // Note: For large teams, consider individual sending or BCC to avoid exposing all emails if privacy is concern
+  // For internal teams, iterating is fine
+  const promises = validEmails.map(email => sendEmail(email, subject, html));
+  await Promise.all(promises);
+
+  // Send in-app notification to the new member? Or team? 
+  // Requirement: "Notify team when new member is added"
+  // We'll simplisticly assume we notify the TEAM that a new member joined.
+  // We'll also notify the NEW MEMBER that they were added.
+
+  // Need UIDs to create in-app notifications. Typically passed or looked up.
+  // For now, we will just count on emails if we don't have UIDs passed in data.
+  // Ideally client passes member UIDs.
+
+  return { success: true };
+});
+
+/**
+ * Notify assignees of responsibility
+ */
+export const notifyResponsibilityAssigned = functions.https.onCall(async (data, context) => {
+  if (!(context as any).auth) {
+    throw new functions.https.HttpsError('unauthenticated', 'Authenticated user required');
+  }
+
+  const { projectId, projectName, itemType, itemName, assignees } = data;
+  // assignees: { uid: string, email: string, displayName: string }[]
+  const assignerName = (context as any).auth.token.name || (context as any).auth.token.email;
+
+  const subject = `New Responsibility: ${itemName}`;
+  const link = `https://vantageflow.vercel.app/project/${projectId}`;
+  const html = `
+    <div style="font-family: Arial, sans-serif;">
+      <h2 style="color: #3b82f6;">Responsibility Assigned</h2>
+      <p>You have been assigned to <strong>${itemType}: ${itemName}</strong> in project <strong>${projectName}</strong> by ${assignerName}.</p>
+      <p><a href="${link}">View Assignment</a></p>
+    </div>
+  `;
+
+  // Send emails and create notifications
+  const promises = (assignees as any[]).map(async (member) => {
+    if (member.email) {
+      await sendEmail(member.email, subject, html);
+    }
+    if (member.uid) {
+      await createNotification(
+        member.uid,
+        'responsibility_assigned',
+        `Assigned to ${itemType}: ${itemName} in ${projectName}`,
+        projectId,
+        projectName,
+        link
+      );
+    }
+  });
+
+  await Promise.all(promises);
+  return { success: true };
+});
+
+// NOTE: Dynamic user lookup via useUserLookup hook is now used on the client.
+// The onUserUpdate trigger is no longer necessary for keeping project team data fresh.

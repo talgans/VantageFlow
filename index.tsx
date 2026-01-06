@@ -3,7 +3,7 @@ import React from 'react';
 import ReactDOM from 'react-dom/client';
 import App from './App';
 import { AuthProvider } from './contexts/AuthContext';
-import { auth } from './services/firebaseConfig';
+import { auth, db } from './services/firebaseConfig';
 
 const rootElement = document.getElementById('root');
 if (!rootElement) {
@@ -13,7 +13,7 @@ if (!rootElement) {
 const root = ReactDOM.createRoot(rootElement);
 root.render(
   <React.StrictMode>
-    <AuthProvider auth={auth}>
+    <AuthProvider auth={auth} firestore={db}>
       <App />
     </AuthProvider>
   </React.StrictMode>

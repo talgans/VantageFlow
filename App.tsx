@@ -13,6 +13,7 @@ import LoginModal from './components/LoginModal';
 import WelcomeScreen from './components/WelcomeScreen';
 import UserAdministrationPage from './components/UserAdministrationPage';
 import UserProfilePage from './components/UserProfilePage';
+import RoleChangeNotification from './components/RoleChangeNotification';
 import { useAuth } from './contexts/AuthContext';
 import {
     subscribeToProjects,
@@ -278,6 +279,10 @@ const App: React.FC = () => {
                 onSignOut={handleSignOut}
                 onSignInClick={() => setIsLoginModalOpen(true)}
                 onMenuClick={() => setIsSideNavOpen(true)}
+                onNavigateToProfile={() => {
+                    setCurrentPage('profile');
+                    setSelectedProject(null);
+                }}
             />
             <div className="flex">
                 <SideNav
@@ -361,6 +366,7 @@ const App: React.FC = () => {
                 />
             )}
             {toast && <Toast message={toast} />}
+            <RoleChangeNotification />
         </div>
     );
 };

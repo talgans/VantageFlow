@@ -4,6 +4,7 @@ import { Project, Phase, Task, TaskStatus, DurationUnit, Currency, TeamMember } 
 import { XMarkIcon, PlusCircleIcon, TrashIcon } from './icons';
 import { parseTextToProject } from '../utils/textParser';
 import TeamMemberSelector from './TeamMemberSelector';
+import { notificationService } from '../services/notificationService';
 
 interface ProjectModalProps {
   onClose: () => void;
@@ -146,6 +147,26 @@ const ProjectModal: React.FC<ProjectModalProps> = ({ onClose, onSave, projectToE
         currency: formData.currency,
         phases: phases,
       });
+
+      // Check for new members and notify
+      if (projectToEdit) {
+        const originalMembers = projectToEdit.team?.members || [];
+        const newMembers = teamMembers.filter(tm => !originalMembers.some(om => om.uid === tm.uid));
+
+        if (newMembers.length > 0) {
+          // We need the project object to pass to the notification service
+          // Since projectToEdit might be stale, we use the ID and current name
+          const projectContext: any = {
+            id: projectToEdit.id,
+            name: formData.name,
+            team: { members: teamMembers } // Send updated team list for email recipients
+          };
+
+          newMembers.forEach(member => {
+            notificationService.notifyTeamMemberJoined(projectContext, member);
+          });
+        }
+      }
     }
   };
 

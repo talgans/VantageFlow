@@ -5,6 +5,7 @@ import ProjectStatusPieChart from './charts/ProjectStatusPieChart';
 import CircularProgress from './CircularProgress';
 import StatusBadge from './StatusBadge';
 import { ChevronRightIcon, PlusCircleIcon, PencilIcon, TrashIcon } from './icons';
+import NotificationCenter from './NotificationCenter';
 
 interface MasterDashboardProps {
   projects: Project[];
@@ -77,9 +78,12 @@ const MasterDashboard: React.FC<MasterDashboardProps> = ({ projects, onSelectPro
 
   return (
     <div className="space-y-8">
-      <div>
-        <h2 className="text-3xl font-bold text-white">Projects Overview</h2>
-        <p className="text-slate-400 mt-1">Summary of all ongoing initiatives.</p>
+      <div className="flex justify-between items-center">
+        <div>
+          <h2 className="text-3xl font-bold text-white">Projects Overview</h2>
+          <p className="text-slate-400 mt-1">Summary of all ongoing initiatives.</p>
+        </div>
+        <NotificationCenter />
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
@@ -162,13 +166,13 @@ const MasterDashboard: React.FC<MasterDashboardProps> = ({ projects, onSelectPro
                     <div className="flex items-center space-x-3 mb-1">
                       <p className="font-semibold text-white group-hover:text-brand-light">{project.name}</p>
                       <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${(() => {
-                          const pct = getProjectCompletionPercentage(project);
-                          if (pct >= 75) return 'bg-green-500/10 text-green-400';
-                          if (pct >= 50) return 'bg-blue-500/10 text-blue-400';
-                          if (pct >= 25) return 'bg-sky-500/10 text-sky-400';
-                          if (pct > 0) return 'bg-indigo-500/10 text-indigo-400';
-                          return 'bg-gray-500/10 text-gray-400';
-                        })()
+                        const pct = getProjectCompletionPercentage(project);
+                        if (pct >= 75) return 'bg-green-500/10 text-green-400';
+                        if (pct >= 50) return 'bg-blue-500/10 text-blue-400';
+                        if (pct >= 25) return 'bg-sky-500/10 text-sky-400';
+                        if (pct > 0) return 'bg-indigo-500/10 text-indigo-400';
+                        return 'bg-gray-500/10 text-gray-400';
+                      })()
                         }`}>
                         {getProjectCompletionPercentage(project)}%
                       </span>
