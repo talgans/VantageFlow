@@ -29,7 +29,6 @@ const SideNav: React.FC<SideNavProps> = ({
   const navItems = [
     { id: 'dashboard', label: 'Dashboard', icon: HomeIcon, adminOnly: false },
     { id: 'projects', label: 'Projects', icon: ChartBarIcon, adminOnly: false },
-    { id: 'profile', label: 'My Profile', icon: UserIcon, adminOnly: false },
     { id: 'users', label: 'User Administration', icon: ShieldCheckIcon, adminOnly: true },
   ];
 
@@ -83,8 +82,8 @@ const SideNav: React.FC<SideNavProps> = ({
                   key={item.id}
                   onClick={() => handleNavClick(item.id)}
                   className={`w-full flex items-center space-x-3 px-4 py-3 rounded-lg transition-colors ${isActive
-                      ? 'bg-brand-secondary text-white'
-                      : 'text-slate-300 hover:bg-slate-700 hover:text-white'
+                    ? 'bg-brand-secondary text-white'
+                    : 'text-slate-300 hover:bg-slate-700 hover:text-white'
                     }`}
                 >
                   <Icon className="w-5 h-5" />

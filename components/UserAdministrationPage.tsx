@@ -274,6 +274,27 @@ const UserAdministrationPage: React.FC<UserAdministrationPageProps> = ({
     }
   };
 
+  const handleRemindUser = async (user: User) => {
+    if (!confirm(`Send a reminder email to ${user.email}?`)) {
+      return;
+    }
+
+    // Set a loading state locally if needed, or just show toast
+    showToast(`Sending reminder to ${user.email}...`);
+
+    try {
+      const functions = getFunctions(app, 'us-central1');
+      const sendReminderEmailFunction = httpsCallable(functions, 'sendReminderEmail');
+
+      await sendReminderEmailFunction({ email: user.email });
+
+      showToast(`Reminder sent to ${user.email}!`);
+    } catch (err: any) {
+      console.error('Error sending reminder:', err);
+      showToast(`Failed to send reminder: ${err.message}`);
+    }
+  };
+
   const handleInviteUser = async (e: React.FormEvent) => {
     e.preventDefault();
 
@@ -470,6 +491,15 @@ const UserAdministrationPage: React.FC<UserAdministrationPageProps> = ({
                           </select>
                           {user.email !== currentUserEmail && (
                             <>
+                              {!user.lastSignIn && (
+                                <button
+                                  onClick={() => handleRemindUser(user)}
+                                  className="p-2 text-slate-400 hover:text-yellow-400 rounded-lg hover:bg-slate-800 transition-colors"
+                                  title="Send reminder email"
+                                >
+                                  <EnvelopeIcon className="w-5 h-5" />
+                                </button>
+                              )}
                               <button
                                 onClick={() => handleEditProfile(user)}
                                 className="p-2 text-slate-400 hover:text-brand-secondary rounded-lg hover:bg-slate-800 transition-colors"

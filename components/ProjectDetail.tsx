@@ -1,7 +1,10 @@
 import React, { useState, useRef, useEffect, useMemo } from 'react';
-import { Project, Task, TaskStatus, Phase, DurationUnit, Currency } from '../types';
+import { Project, Task, TaskStatus, Phase, DurationUnit, Currency, TeamMember } from '../types';
 import StatusBadge from './StatusBadge';
 import CircularProgress from './CircularProgress';
+import ResponsibilitySelector from './ResponsibilitySelector';
+import { notificationService } from '../services/notificationService';
+import { achievementService } from '../services/achievementService';
 import { getProjectInsights } from '../services/geminiService';
 import { ArrowLeftIcon, SparklesIcon, InfoIcon, TeamIcon, CalendarIcon, MoneyIcon, CheckCircleIcon, PlusCircleIcon, ChevronRightIcon, ChevronDownIcon, ListBulletIcon, ChartBarIcon, TrashIcon, ArrowUpIcon, ArrowDownIcon, GripVerticalIcon, StarIcon, UserIcon } from './icons';
 import GanttChart from './GanttChart';
@@ -191,9 +194,13 @@ interface TaskRowProps {
   draggedItemId: string | null;
   dropTarget: { taskId: string; position: 'above' | 'below' } | null;
   checkPermission: (ownerId?: string) => boolean;
+  onAssign?: (task: Task) => void;
+  projectTeam?: TeamMember[];
+  getUserDisplayName?: (uid: string, email?: string) => string | undefined;
+  getUserPhotoURL?: (uid: string, email?: string) => string | undefined;
 }
 
-const TaskRow: React.FC<TaskRowProps> = ({ task, level, isExpanded, onToggleExpand, addingSubtaskTo, setAddingSubtaskTo, canEdit, handleSaveSubtask, editingField, setEditingField, handleUpdateTaskField, onRequestDelete, phaseId, parentId, onDragStart, onDragOver, onDrop, onDragEnd, onDragLeave, draggedItemId, dropTarget, checkPermission }) => {
+const TaskRow: React.FC<TaskRowProps> = ({ task, level, isExpanded, onToggleExpand, addingSubtaskTo, setAddingSubtaskTo, canEdit, handleSaveSubtask, editingField, setEditingField, handleUpdateTaskField, onRequestDelete, phaseId, parentId, onDragStart, onDragOver, onDrop, onDragEnd, onDragLeave, draggedItemId, dropTarget, checkPermission, onAssign, projectTeam, getUserDisplayName, getUserPhotoURL }) => {
   const hasSubtasks = task.subTasks && task.subTasks.length > 0;
   const formatDate = (date: Date) => new Date(date).toLocaleString('en-US', { month: 'short', day: 'numeric' });
   const isEditing = (field: string) => editingField?.taskId === task.id && editingField?.field === field;
@@ -299,16 +306,56 @@ const TaskRow: React.FC<TaskRowProps> = ({ task, level, isExpanded, onToggleExpa
           )}
         </div>
 
-        <div className="col-span-2 flex items-center justify-between">
-          <div className="text-slate-400 text-xs space-y-1">
-            {task.deliverables?.map(d => <div key={d} className="flex items-center"><CheckCircleIcon className="w-3 h-3 text-green-500 mr-1.5 flex-shrink-0" /> {d}</div>)}
+        <div className="col-span-2 flex items-center justify-between overflow-hidden">
+          <div className="flex flex-col gap-1 w-full mr-2">
+            {/* Assignees */}
+            <div className="flex items-center gap-2">
+              {task.assignees && task.assignees.length > 0 ? (
+                <div className="flex -space-x-2 overflow-hidden hover:space-x-1 transition-all p-1">
+                  {task.assignees.map((a, i) => {
+                    // Dynamic lookup for fresh data
+                    const lookupName = getUserDisplayName?.(a.uid, a.email);
+                    const lookupPhoto = getUserPhotoURL?.(a.uid, a.email);
+                    const displayName = lookupName || a.displayName;
+                    const photoURL = lookupPhoto || a.photoURL;
+
+                    let name = displayName;
+                    if (!name || name.includes('@')) {
+                      name = a.email.split('@')[0];
+                      name = name.charAt(0).toUpperCase() + name.slice(1);
+                    }
+
+                    return (
+                      <div key={i} className="w-6 h-6 shrink-0 rounded-full bg-slate-600 border border-slate-700 flex items-center justify-center text-[10px] text-white cursor-help"
+                        title={`${name} (${a.email})`}>
+                        {photoURL ? <img src={photoURL} className="w-6 h-6 rounded-full" alt="" /> : (displayName?.[0] || a.email[0]).toUpperCase()}
+                      </div>
+                    );
+                  })}
+                </div>
+              ) : (
+                <span className="text-xs text-slate-600 italic">Unassigned</span>
+              )}
+            </div>
+
+            {/* Deliverables */}
+            <div className="text-slate-400 text-xs space-y-1">
+              {task.deliverables?.map(d => <div key={d} className="flex items-center truncate"><CheckCircleIcon className="w-3 h-3 text-green-500 mr-1.5 flex-shrink-0" /> <span className="truncate">{d}</span></div>)}
+            </div>
           </div>
           {canEditTask && (
             <div className="flex items-center space-x-1">
-              <button onClick={() => setAddingSubtaskTo(task.id)} className="text-slate-500 hover:text-brand-light transition-colors p-1 rounded-full">
+              <button
+                onClick={() => onAssign?.(task)}
+                className={`text-slate-500 hover:text-brand-light transition-colors p-1 rounded-full ${(!task.assignees || task.assignees.length === 0) ? 'animate-pulse text-slate-600' : ''}`}
+                title="Assign Members"
+              >
+                <UserIcon className="w-5 h-5" />
+              </button>
+              <button onClick={() => setAddingSubtaskTo(task.id)} className="text-slate-500 hover:text-brand-light transition-colors p-1 rounded-full" title="Add Subtask">
                 <PlusCircleIcon className="w-5 h-5" />
               </button>
-              <button onClick={() => onRequestDelete(task.id)} className="text-slate-500 hover:text-red-500 transition-colors p-1 rounded-full">
+              <button onClick={() => onRequestDelete(task.id)} className="text-slate-500 hover:text-red-500 transition-colors p-1 rounded-full" title="Delete Task">
                 <TrashIcon className="w-5 h-5" />
               </button>
             </div>
@@ -350,6 +397,8 @@ const TaskRow: React.FC<TaskRowProps> = ({ task, level, isExpanded, onToggleExpa
             draggedItemId={draggedItemId}
             dropTarget={dropTarget}
             checkPermission={checkPermission}
+            getUserDisplayName={getUserDisplayName}
+            getUserPhotoURL={getUserPhotoURL}
           />
         ))
       )}
@@ -397,6 +446,13 @@ const ProjectDetail: React.FC<ProjectDetailProps> = ({ project, onBack, canEdit,
   const [editingPhase, setEditingPhase] = useState<{ id: string; field: 'name' | 'weekRange' } | null>(null);
   const [editingInfoCard, setEditingInfoCard] = useState<'duration' | 'cost' | 'team' | null>(null);
   const [phaseToDelete, setPhaseToDelete] = useState<Phase | null>(null);
+
+  const [assigningTo, setAssigningTo] = useState<{
+    type: 'phase' | 'task';
+    id: string;
+    currentAssignees: TeamMember[];
+    name: string;
+  } | null>(null);
 
   // --- Accordion State ---
   const [isCardsCollapsed, setIsCardsCollapsed] = useState(false);
@@ -737,6 +793,38 @@ const ProjectDetail: React.FC<ProjectDetailProps> = ({ project, onBack, canEdit,
 
     onUpdateProject(updatedProject);
     setEditingField(null);
+
+    // Award points if completed
+    if (field === 'status' && (value === TaskStatus.Hundred || value === 'Completed')) {
+      const findTask = (phases: Phase[]): Task | undefined => {
+        for (const p of phases) {
+          const t = findInTasks(p.tasks);
+          if (t) return t;
+        }
+        return undefined;
+      }
+      const findInTasks = (tasks: Task[]): Task | undefined => {
+        for (const t of tasks) {
+          if (t.id === taskId) return t;
+          if (t.subTasks) {
+            const sub = findInTasks(t.subTasks);
+            if (sub) return sub;
+          }
+        }
+        return undefined;
+      }
+
+      const completedTask = findTask(updatedProject.phases);
+      if (completedTask && completedTask.assignees && completedTask.assignees.length > 0) {
+        // Award points to all assignees
+        completedTask.assignees.forEach(async (member) => {
+          if (member.uid) {
+            await achievementService.awardPoints(member.uid, 5, 'task_complete', `Completed task: ${completedTask.name}`);
+          }
+        });
+        showToast('Task completed! 5 points awarded to assignees.');
+      }
+    }
   };
 
   const handleRequestDeleteTask = (taskId: string) => {
@@ -790,6 +878,39 @@ const ProjectDetail: React.FC<ProjectDetailProps> = ({ project, onBack, canEdit,
       onUpdateProject(updatedProject);
     }
     setEditingInfoCard(null);
+  };
+
+  const handleAssign = async (members: TeamMember[], notify: boolean) => {
+    if (!assigningTo) return;
+    const updatedProject = JSON.parse(JSON.stringify(project), reviveDates);
+
+    if (assigningTo.type === 'phase') {
+      const phase = updatedProject.phases.find((p: Phase) => p.id === assigningTo.id);
+      if (phase) {
+        phase.assignees = members;
+      }
+    } else {
+      const findAndUpdateTask = (tasks: Task[]): boolean => {
+        for (const task of tasks) {
+          if (task.id === assigningTo.id) {
+            task.assignees = members;
+            return true;
+          }
+          if (task.subTasks && findAndUpdateTask(task.subTasks)) return true;
+        }
+        return false;
+      };
+      updatedProject.phases.forEach((p: Phase) => findAndUpdateTask(p.tasks));
+    }
+
+    onUpdateProject(updatedProject);
+
+    if (notify) {
+      await notificationService.notifyResponsibilityAssigned(members, project, assigningTo.type, assigningTo.name);
+      showToast('Notifications sent');
+    }
+
+    setAssigningTo(null);
   };
 
 
@@ -1061,6 +1182,48 @@ const ProjectDetail: React.FC<ProjectDetailProps> = ({ project, onBack, canEdit,
                   </div>
 
                   <div className="flex items-center gap-2 pl-2" onClick={(e) => e.stopPropagation()}>
+                    {/* Phase Assignees */}
+                    <div
+                      className="flex -space-x-1 hover:space-x-1 transition-all mr-2 cursor-pointer"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        if (!canEdit) return;
+                        setAssigningTo({
+                          type: 'phase',
+                          id: phase.id,
+                          currentAssignees: phase.assignees || [],
+                          name: phase.name
+                        });
+                      }}
+                    >
+                      {(phase.assignees && phase.assignees.length > 0) ? (
+                        phase.assignees.slice(0, 3).map((assignee, i) => {
+                          // Dynamic lookup for fresh data
+                          const lookupName = getUserDisplayName(assignee.uid, assignee.email);
+                          const lookupPhoto = getUserPhotoURL(assignee.uid, assignee.email);
+                          const displayName = lookupName || assignee.displayName;
+                          const photoURL = lookupPhoto || assignee.photoURL;
+
+                          let name = displayName;
+                          if (!name || name.includes('@')) {
+                            name = assignee.email.split('@')[0];
+                            name = name.charAt(0).toUpperCase() + name.slice(1);
+                          }
+
+                          return (
+                            <div key={i} className="w-6 h-6 rounded-full bg-slate-700 border border-slate-800 flex items-center justify-center text-xs overflow-hidden"
+                              title={`${name} (${assignee.email})`}>
+                              {photoURL ? <img src={photoURL} alt="" className="w-6 h-6 rounded-full" /> : (displayName?.[0] || assignee.email[0]).toUpperCase()}
+                            </div>
+                          );
+                        })
+                      ) : (
+                        <div className="w-6 h-6 rounded-full bg-slate-700/50 border border-slate-600 border-dashed flex items-center justify-center hover:border-brand-secondary hover:text-brand-secondary transition-colors" title="Assign Phase">
+                          <UserIcon className="w-3 h-3 text-slate-400" />
+                        </div>
+                      )}
+                    </div>
+
                     {checkPermission(phase.ownerId) && (
                       <button onClick={() => handleRequestDeletePhase(phase)} className="text-slate-500 hover:text-red-500 opacity-0 group-hover:opacity-100 transition-opacity">
                         <TrashIcon className="w-4 h-4" />
@@ -1117,6 +1280,18 @@ const ProjectDetail: React.FC<ProjectDetailProps> = ({ project, onBack, canEdit,
                           onDragLeave={handleDragLeave}
                           draggedItemId={draggedItemId}
                           dropTarget={dropTarget}
+                          onAssign={(task) => {
+                            if (!canEdit) return;
+                            setAssigningTo({
+                              type: 'task',
+                              id: task.id,
+                              currentAssignees: task.assignees || [],
+                              name: task.name
+                            });
+                          }}
+                          projectTeam={project.team?.members || []}
+                          getUserDisplayName={getUserDisplayName}
+                          getUserPhotoURL={getUserPhotoURL}
                         />
                       ))}
                     </ul>
@@ -1165,6 +1340,20 @@ const ProjectDetail: React.FC<ProjectDetailProps> = ({ project, onBack, canEdit,
         title="Delete Phase"
         message={<>Are you sure you want to delete the phase "<strong>{phaseToDelete?.name}</strong>"? All tasks and sub-tasks within this phase will also be deleted. This action cannot be undone.</>}
       />
+
+      {assigningTo && (
+        <div className="fixed inset-0 bg-black bg-opacity-70 z-50 flex justify-center items-center p-4" onClick={() => setAssigningTo(null)}>
+          <div onClick={e => e.stopPropagation()}>
+            <ResponsibilitySelector
+              teamMembers={project.team?.members || []}
+              assignedMembers={assigningTo.currentAssignees}
+              onSave={handleAssign}
+              onCancel={() => setAssigningTo(null)}
+              title={`Assign ${assigningTo.type === 'phase' ? 'Phase' : 'Task'}: ${assigningTo.name}`}
+            />
+          </div>
+        </div>
+      )}
 
     </div>
   );

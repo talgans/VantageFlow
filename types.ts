@@ -34,9 +34,9 @@ export interface Task {
   status: TaskStatus;
   startDate: Date;
   endDate: Date;
-  assignee?: string;
-  ownerId?: string;      // User assigned to this task
-  ownerEmail?: string;
+  assignees?: TeamMember[]; // Changed from single ownerId to multiple assignees
+  ownerId?: string;      // Legacy: kept for backward compatibility during migration
+  ownerEmail?: string;   // Legacy
   deliverables?: string[];
   subTasks?: Task[];
 }
@@ -46,8 +46,38 @@ export interface Phase {
   name: string;
   weekRange: string;
   tasks: Task[];
-  ownerId?: string;      // User assigned to this phase
-  ownerEmail?: string;
+  assignees?: TeamMember[]; // Changed from single ownerId to multiple assignees
+  ownerId?: string;      // Legacy
+  ownerEmail?: string;   // Legacy
+}
+
+export interface Notification {
+  id: string;
+  userId: string;
+  type: 'project_added' | 'responsibility_assigned' | 'member_joined';
+  projectId: string;
+  projectName: string;
+  message: string;
+  read: boolean;
+  emailSent: boolean;
+  createdAt: Date;
+  link?: string;
+}
+
+export interface UserAchievement {
+  id: string;
+  userId: string;
+  points: number;
+  category: 'task_complete' | 'milestone' | 'collaboration' | 'quality';
+  description: string;
+  awardedAt: Date;
+}
+
+export interface UserStats {
+  userId: string;
+  totalPoints: number;
+  starRating: 1 | 2 | 3 | 4 | 5;
+  achievements: UserAchievement[];
 }
 
 export interface Project {

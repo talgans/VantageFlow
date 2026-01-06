@@ -8,11 +8,20 @@ import {
   Auth,
   UserCredential
 } from 'firebase/auth';
+import { doc, onSnapshot, deleteDoc, Firestore } from 'firebase/firestore';
 import { UserRole } from '../types';
 
 // Note: Firebase auth instance should be initialized in a separate firebase config file
 // This will be imported once firebase is installed
 // import { auth } from '../services/firebaseConfig';
+
+interface ForceLogoutData {
+  reason: string;
+  previousRole: string;
+  newRole: string;
+  message: string;
+  changedAt: any;
+}
 
 interface AuthUser {
   uid: string;
@@ -30,6 +39,8 @@ interface AuthContextType {
   signUp: (email: string, password: string) => Promise<UserCredential>;
   refreshUserRole: () => Promise<void>;
   error: string | null;
+  pendingLogout: ForceLogoutData | null;
+  acknowledgePendingLogout: () => Promise<void>;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
@@ -37,12 +48,14 @@ const AuthContext = createContext<AuthContextType | undefined>(undefined);
 interface AuthProviderProps {
   children: ReactNode;
   auth: Auth; // Accept auth instance as prop for flexibility
+  firestore?: Firestore; // Optional Firestore instance for forceLogout listener
 }
 
-export const AuthProvider: React.FC<AuthProviderProps> = ({ children, auth }) => {
+export const AuthProvider: React.FC<AuthProviderProps> = ({ children, auth, firestore }) => {
   const [user, setUser] = useState<AuthUser | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [pendingLogout, setPendingLogout] = useState<ForceLogoutData | null>(null);
 
   /**
    * Extract user role from Firebase custom claims
@@ -111,6 +124,20 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children, auth }) =>
   };
 
   /**
+   * Acknowledge pending logout and delete the forceLogout document
+   */
+  const acknowledgePendingLogout = async (): Promise<void> => {
+    if (!user || !firestore || !pendingLogout) return;
+
+    try {
+      await deleteDoc(doc(firestore, 'forceLogout', user.uid));
+      setPendingLogout(null);
+    } catch (err) {
+      console.error('Error acknowledging pending logout:', err);
+    }
+  };
+
+  /**
    * Sign in with email and password
    */
   const signIn = async (email: string, password: string): Promise<UserCredential> => {
@@ -156,6 +183,7 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children, auth }) =>
   const signOut = async (): Promise<void> => {
     try {
       setError(null);
+      setPendingLogout(null); // Clear any pending logout
       await firebaseSignOut(auth);
       setUser(null);
     } catch (err) {
@@ -184,6 +212,7 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children, auth }) =>
           }
         } else {
           setUser(null);
+          setPendingLogout(null);
         }
         setLoading(false);
       },
@@ -200,19 +229,33 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children, auth }) =>
   }, [auth]);
 
   /**
-   * Set up periodic token refresh to sync role changes
-   * Refresh token every 10 minutes to catch role updates
+   * Listen for force logout events (role changes)
+   * This replaces the old periodic token refresh
    */
   useEffect(() => {
-    if (!user) return;
+    if (!user || !firestore) return;
 
-    const intervalId = setInterval(async () => {
-      console.log('Periodic token refresh for role sync...');
-      await refreshUserRole();
-    }, 10 * 60 * 1000); // 10 minutes
+    const forceLogoutRef = doc(firestore, 'forceLogout', user.uid);
 
-    return () => clearInterval(intervalId);
-  }, [user]);
+    const unsubscribe = onSnapshot(
+      forceLogoutRef,
+      (snapshot) => {
+        if (snapshot.exists()) {
+          const data = snapshot.data() as ForceLogoutData;
+          console.log('Force logout event detected:', data);
+          setPendingLogout(data);
+        }
+      },
+      (err) => {
+        // Ignore permission errors if no document exists
+        if (err.code !== 'permission-denied') {
+          console.error('Error listening to forceLogout:', err);
+        }
+      }
+    );
+
+    return () => unsubscribe();
+  }, [user, firestore]);
 
   const value: AuthContextType = {
     user,
@@ -222,6 +265,8 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children, auth }) =>
     signUp,
     refreshUserRole,
     error,
+    pendingLogout,
+    acknowledgePendingLogout,
   };
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
