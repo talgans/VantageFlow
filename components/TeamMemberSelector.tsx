@@ -130,17 +130,23 @@ const TeamMemberSelector: React.FC<TeamMemberSelectorProps> = ({
     };
 
     const getLeadLabel = (member: TeamMember) => {
-        if (member.leadRole === 'primary') return 'Primary Lead';
-        if (member.leadRole === 'secondary') return 'Secondary Lead';
+        if (member.leadRole === 'primary') return '1st Lead';
+        if (member.leadRole === 'secondary') return '2nd Lead';
         return null;
     };
+
+    // Sort members: 1st Lead first, then 2nd Lead, then regular members
+    const sortedSelectedMembers = [...selectedMembers].sort((a, b) => {
+        const order = { primary: 0, secondary: 1, undefined: 2 };
+        return (order[a.leadRole as keyof typeof order] ?? 2) - (order[b.leadRole as keyof typeof order] ?? 2);
+    });
 
     return (
         <div className="space-y-3">
             {/* Selected Members Display */}
-            {selectedMembers.length > 0 && (
+            {sortedSelectedMembers.length > 0 && (
                 <div className="flex flex-wrap gap-2">
-                    {selectedMembers.map((member) => (
+                    {sortedSelectedMembers.map((member) => (
                         <div
                             key={member.uid}
                             className={`flex items-center gap-2 px-3 py-1.5 rounded-full text-sm border ${getLeadBadgeStyle(member)}`}
@@ -152,7 +158,7 @@ const TeamMemberSelector: React.FC<TeamMemberSelectorProps> = ({
                             {member.leadRole && (
                                 <span className={`text-xs px-1.5 py-0.5 rounded ${member.leadRole === 'primary' ? 'bg-blue-500/30' : 'bg-amber-500/30'
                                     }`}>
-                                    {member.leadRole === 'primary' ? 'Primary' : 'Secondary'}
+                                    {member.leadRole === 'primary' ? '1st Lead' : '2nd Lead'}
                                 </span>
                             )}
                             {!disabled && !isPrimaryLead(member.uid) && (
@@ -175,8 +181,8 @@ const TeamMemberSelector: React.FC<TeamMemberSelectorProps> = ({
                     {selectedMembers.length} member{selectedMembers.length !== 1 ? 's' : ''} selected
                     {totalLeads > 0 && (
                         <span className="ml-2">
-                            {primaryLeads.length > 0 && <span className="text-blue-400">• {primaryLeads.length} primary</span>}
-                            {secondaryLeads.length > 0 && <span className="text-amber-400 ml-1">• {secondaryLeads.length} secondary</span>}
+                            {primaryLeads.length > 0 && <span className="text-blue-400">• {primaryLeads.length} 1st lead</span>}
+                            {secondaryLeads.length > 0 && <span className="text-amber-400 ml-1">• {secondaryLeads.length} 2nd lead</span>}
                         </span>
                     )}
                 </p>
@@ -272,14 +278,14 @@ const TeamMemberSelector: React.FC<TeamMemberSelectorProps> = ({
                                                         ? 'bg-amber-500/20 text-amber-400'
                                                         : 'text-slate-500 hover:text-amber-400 hover:bg-slate-700'
                                                         }`}
-                                                    title={member?.leadRole === 'secondary' ? 'Remove as Secondary Lead' : 'Set as Secondary Lead'}
+                                                    title={member?.leadRole === 'secondary' ? 'Remove as 2nd Lead' : 'Set as 2nd Lead'}
                                                 >
                                                     <StarIcon className="w-4 h-4" />
                                                 </button>
                                             )}
                                             {isOwner && selected && (
                                                 <span className="text-xs text-blue-400 bg-blue-500/20 px-2 py-1 rounded">
-                                                    Primary Lead
+                                                    1st Lead
                                                 </span>
                                             )}
                                             {!isOwner && (
