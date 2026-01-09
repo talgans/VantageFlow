@@ -70,27 +70,53 @@ const PasteProjectModal: React.FC<PasteProjectModalProps> = ({ onClose, onParsed
                         <div className="bg-slate-700/50 rounded-lg p-4 border border-slate-600 space-y-4">
                             <h3 className="text-lg font-semibold text-white border-b border-slate-600 pb-2">Preview</h3>
 
-                            <div className="grid grid-cols-1 gap-4">
-                                <div>
+                            <div className="grid grid-cols-2 gap-4">
+                                <div className="col-span-2">
                                     <span className="text-xs text-slate-400 uppercase font-bold">Project Name</span>
                                     <p className="text-white font-medium">{parsedProject.name || 'Untitled Project'}</p>
                                 </div>
 
-                                <div>
+                                <div className="col-span-2">
                                     <span className="text-xs text-slate-400 uppercase font-bold">Description</span>
-                                    <p className="text-slate-300 text-sm whitespace-pre-wrap">{parsedProject.description || 'No description found'}</p>
+                                    <p className="text-slate-300 text-sm whitespace-pre-wrap line-clamp-3">{parsedProject.description || 'No description found'}</p>
                                 </div>
 
                                 <div>
-                                    <span className="text-xs text-slate-400 uppercase font-bold">Phases Found</span>
-                                    <div className="mt-1 space-y-2">
+                                    <span className="text-xs text-slate-400 uppercase font-bold">Est. Cost</span>
+                                    <p className="text-brand-secondary font-medium">
+                                        {parsedProject.currency} {parsedProject.cost?.toLocaleString()}
+                                    </p>
+                                </div>
+
+                                <div>
+                                    <span className="text-xs text-slate-400 uppercase font-bold">Est. Duration</span>
+                                    <p className="text-brand-secondary font-medium">
+                                        {parsedProject.duration} {parsedProject.durationUnit}
+                                    </p>
+                                </div>
+
+                                <div className="col-span-2">
+                                    <span className="text-xs text-slate-400 uppercase font-bold">Phases Found ({parsedProject.phases?.length || 0})</span>
+                                    <div className="mt-1 space-y-2 max-h-60 overflow-y-auto pr-1">
                                         {parsedProject.phases && parsedProject.phases.length > 0 ? (
                                             parsedProject.phases.map((phase, idx) => (
                                                 <div key={idx} className="bg-slate-800 p-2 rounded border border-slate-700">
-                                                    <p className="text-brand-light font-medium text-sm">{phase.name}</p>
-                                                    <ul className="list-disc list-inside mt-1 pl-2">
+                                                    <div className="flex justify-between items-center mb-1">
+                                                        <p className="text-brand-light font-medium text-sm">{phase.name}</p>
+                                                        <span className="text-xs text-slate-500">{phase.tasks.length} tasks</span>
+                                                    </div>
+                                                    <ul className="list-disc list-inside pl-2 space-y-1">
                                                         {phase.tasks.map((task, tIdx) => (
-                                                            <li key={tIdx} className="text-slate-400 text-xs">{task.name}</li>
+                                                            <li key={tIdx} className="text-slate-400 text-xs">
+                                                                {task.name}
+                                                                {task.subTasks && task.subTasks.length > 0 && (
+                                                                    <ul className="list-[circle] list-inside pl-4 mt-0.5 opacity-80">
+                                                                        {task.subTasks.map((st, stIdx) => (
+                                                                            <li key={stIdx}>{st.name}</li>
+                                                                        ))}
+                                                                    </ul>
+                                                                )}
+                                                            </li>
                                                         ))}
                                                     </ul>
                                                 </div>
