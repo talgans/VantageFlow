@@ -344,19 +344,20 @@ export const inviteUser = functions
       console.log(`Setting custom claims: role=${role}`);
       await admin.auth().setCustomUserClaims(userRecord.uid, { role });
 
-      // Generate password reset link
-      console.log('Generating password reset link...');
+      // Generate password reset link with 24-hour expiration
+      console.log('Generating password reset link with 24-hour expiration...');
       const actionCodeSettings = {
         url: 'https://vantageflow.vercel.app',
         handleCodeInApp: false,
+        expiresIn: 86400000, // 24 hours in milliseconds
       };
       const resetLink = await admin.auth().generatePasswordResetLink(email, actionCodeSettings);
 
       const html = `
         <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
-          <h2 style="color: #3b82f6;">Welcome to VantageFlow!</h2>
-          <p>You have been invited to join VantageFlow as a <strong>${role}</strong>.</p>
-          <p>To get started, please set your password by clicking the link below:</p>
+          <h2 style="color: #3b82f6;">VantageFlow Account Setup Required</h2>
+          <p>You have been invited to join <strong>VantageFlow</strong> as a <strong>${role}</strong>.</p>
+          <p>To get started, please set your password by clicking the button below:</p>
           <div style="margin: 30px 0;">
             <a href="${resetLink}" 
                style="background-color: #3b82f6; color: white; padding: 12px 24px; text-decoration: none; border-radius: 6px; display: inline-block;">
@@ -373,7 +374,7 @@ export const inviteUser = functions
         </div>
       `;
 
-      await sendEmail(email, 'You have been invited to VantageFlow', html);
+      await sendEmail(email, 'VantageFlow: Your Account Setup Link', html);
 
       return {
         success: true,
@@ -428,26 +429,32 @@ export const sendReminderEmail = functions
 
       const role = existingUser.customClaims?.role || 'member';
 
-      // Generate a new password reset link
+      // Generate a new password reset link with 24-hour expiration
       const actionCodeSettings = {
         url: 'https://vantageflow.vercel.app',
         handleCodeInApp: false,
+        expiresIn: 86400000, // 24 hours in milliseconds
       };
       const resetLink = await admin.auth().generatePasswordResetLink(email, actionCodeSettings);
 
       const html = `
         <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
-          <h2 style="color: #3b82f6;">Reminder: Complete Your VantageFlow Setup</h2>
-          <p>You were invited to join VantageFlow as a <strong>${role}</strong>, but haven't set your password yet.</p>
-          <p>To get started, please set your password by clicking the link below:</p>
+          <h2 style="color: #3b82f6;">VantageFlow: Action Required - Complete Your Setup</h2>
+          <p>You were invited to join <strong>VantageFlow</strong> as a <strong>${role}</strong>, but haven't set your password yet.</p>
+          <p>To get started, please set your password by clicking the button below:</p>
           <div style="margin: 30px 0;">
             <a href="${resetLink}" 
                style="background-color: #3b82f6; color: white; padding: 12px 24px; text-decoration: none; border-radius: 6px; display: inline-block;">
               Set Your Password
             </a>
           </div>
+          <div style="background-color: #fef3c7; border: 1px solid #f59e0b; border-radius: 6px; padding: 12px; margin: 20px 0;">
+            <p style="color: #92400e; font-size: 13px; margin: 0;">
+              <strong>Important:</strong> If you received multiple emails, please use the link from this most recent email. Previous links are no longer valid.
+            </p>
+          </div>
           <p style="color: #64748b; font-size: 14px;">
-            This link will expire in 24 hours. If you didn't expect this reminder, you can safely ignore this email.
+            This link will expire in 24 hours. If you didn't expect this email, you can safely ignore it.
           </p>
           <hr style="border: none; border-top: 1px solid #e2e8f0; margin: 30px 0;">
           <p style="color: #94a3b8; font-size: 12px;">
@@ -456,7 +463,7 @@ export const sendReminderEmail = functions
         </div>
       `;
 
-      await sendEmail(email, 'Reminder: Complete Your VantageFlow Setup', html);
+      await sendEmail(email, 'VantageFlow: Action Required - Complete Your Account Setup', html);
 
       return {
         success: true,

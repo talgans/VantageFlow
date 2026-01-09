@@ -1040,7 +1040,7 @@ const ProjectDetail: React.FC<ProjectDetailProps> = ({ project, onBack, canEdit,
                         </span>
                         {isLead && (
                           <span className={`text-xs px-1.5 py-0.5 rounded ${isPrimary ? 'bg-blue-500/30 text-blue-300' : 'bg-amber-500/30 text-amber-300'}`}>
-                            {isPrimary ? 'Lead' : 'Secondary'}
+                            {isPrimary ? '1st Lead' : '2nd Lead'}
                           </span>
                         )}
                       </div>
