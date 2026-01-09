@@ -30,15 +30,20 @@ const MasterDashboard: React.FC<MasterDashboardProps> = ({ projects, onSelectPro
   // Extract all unique team members from all projects for the filter dropdown
   const allMembers = useMemo(() => {
     const membersMap = new Map<string, TeamMember>();
+    const emailMap = new Set<string>(); // helper to check for duplicate emails
+
     projects.forEach(p => {
       p.team?.members?.forEach(m => {
-        if (!membersMap.has(m.uid)) {
+        // If we haven't seen this UID AND we haven't seen this email
+        if (!membersMap.has(m.uid) && !emailMap.has(m.email.toLowerCase())) {
           membersMap.set(m.uid, m);
+          emailMap.add(m.email.toLowerCase());
         }
       });
       // Also include owners if not in team list
-      if (p.ownerId && !membersMap.has(p.ownerId)) {
+      if (p.ownerId && !membersMap.has(p.ownerId) && p.ownerEmail && !emailMap.has(p.ownerEmail.toLowerCase())) {
         membersMap.set(p.ownerId, { uid: p.ownerId, email: p.ownerEmail || '', displayName: p.ownerName, photoURL: p.ownerPhotoURL } as TeamMember);
+        emailMap.add(p.ownerEmail.toLowerCase());
       }
     });
     return Array.from(membersMap.values()).sort((a, b) => (a.displayName || a.email).localeCompare(b.displayName || b.email));
@@ -253,7 +258,28 @@ const MasterDashboard: React.FC<MasterDashboardProps> = ({ projects, onSelectPro
               <div className="space-y-4">
                 {(() => {
                   const project = filteredProjects[0];
-                  const members = project?.team?.members || [];
+                  let members = project?.team?.members || [];
+
+                  // Deduplicate by email, prioritizing members with roles
+                  const uniqueMembersMap = new Map<string, TeamMember>();
+                  members.forEach(m => {
+                    const existing = uniqueMembersMap.get(m.email.toLowerCase());
+                    if (!existing) {
+                      uniqueMembersMap.set(m.email.toLowerCase(), m);
+                    } else {
+                      // If existing has no role but current does, replace it
+                      if (!existing.leadRole && m.leadRole) {
+                        uniqueMembersMap.set(m.email.toLowerCase(), m);
+                      }
+                      // If both have roles, prioritize primary? (Assuming valid data shouldn't have conflicting roles for same email)
+                      else if (existing.leadRole === 'secondary' && m.leadRole === 'primary') {
+                        uniqueMembersMap.set(m.email.toLowerCase(), m);
+                      }
+                    }
+                  });
+
+                  members = Array.from(uniqueMembersMap.values());
+
                   // Sort: 1st Lead (primary) -> 2nd Lead (secondary) -> Others
                   const sortedMembers = [...members].sort((a, b) => {
                     const order = { primary: 0, secondary: 1, undefined: 2 };
