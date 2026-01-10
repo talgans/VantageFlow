@@ -1,9 +1,10 @@
 
-import React, { useState, useRef, useEffect } from 'react';
-import { UserRole } from '../types';
+import React, { useState, useRef, useEffect, useMemo } from 'react';
+import { UserRole, Project, TaskStatus } from '../types';
 import { UsersIcon, Bars3Icon, UserIcon, ChevronDownIcon } from './icons';
 import { useAuth } from '../contexts/AuthContext';
 import { useUserLookup } from '../hooks/useUserLookup';
+import UserAchievementBadge from './UserAchievementBadge';
 
 interface HeaderProps {
   currentUserRole: UserRole;
@@ -11,9 +12,10 @@ interface HeaderProps {
   onSignInClick: () => void;
   onMenuClick: () => void;
   onNavigateToProfile?: () => void;
+  projects?: Project[];
 }
 
-const Header: React.FC<HeaderProps> = ({ currentUserRole, onSignOut, onSignInClick, onMenuClick, onNavigateToProfile }) => {
+const Header: React.FC<HeaderProps> = ({ currentUserRole, onSignOut, onSignInClick, onMenuClick, onNavigateToProfile, projects = [] }) => {
   const { user } = useAuth();
   const { getUserById } = useUserLookup();
   const [isUserMenuOpen, setIsUserMenuOpen] = useState(false);
@@ -48,6 +50,32 @@ const Header: React.FC<HeaderProps> = ({ currentUserRole, onSignOut, onSignInCli
 
   const { name: displayName, photo: photoURL } = getUserDisplayInfo();
 
+  // Calculate project stats for the current user
+  const userStats = useMemo(() => {
+    if (!user) return { total: 0, completed: 0, running: 0 };
+
+    // Get projects where user is owner or member
+    const userProjects = projects.filter(p => {
+      const isOwner = p.ownerId === user.uid;
+      const isMember = p.team?.members?.some(m => m.uid === user.uid);
+      return isOwner || isMember;
+    });
+
+    // Check completion status
+    let completed = 0;
+    let running = 0;
+
+    userProjects.forEach(p => {
+      const allTasks = p.phases.flatMap(ph => ph.tasks);
+      const isComplete = allTasks.length > 0 && allTasks.every(t => t.status === TaskStatus.Hundred || t.status === 'Completed');
+
+      if (isComplete) completed++;
+      else running++;
+    });
+
+    return { total: userProjects.length, completed, running };
+  }, [projects, user]);
+
   return (
     <header className="bg-slate-900/70 backdrop-blur-sm sticky top-0 z-10 p-4 border-b border-slate-700 flex justify-between items-center">
       <div className="flex items-center space-x-4">
@@ -77,13 +105,31 @@ const Header: React.FC<HeaderProps> = ({ currentUserRole, onSignOut, onSignInCli
               )}
               <div className="text-sm text-left">
                 <p className="text-white font-medium">{displayName}</p>
-                <p className="text-slate-400 text-xs">{currentUserRole}</p>
+                <div className="flex items-center gap-1">
+                  <p className="text-slate-400 text-xs">{currentUserRole}</p>
+                  <span className="text-slate-600">|</span>
+                  <UserAchievementBadge userId={user.uid} showPoints={false} />
+                </div>
               </div>
               <ChevronDownIcon className={`w-4 h-4 text-slate-400 transition-transform ${isUserMenuOpen ? 'rotate-180' : ''}`} />
             </button>
 
             {isUserMenuOpen && (
-              <div className="absolute right-0 mt-2 w-48 bg-slate-800 rounded-lg border border-slate-700 shadow-xl z-50 overflow-hidden">
+              <div className="absolute right-0 mt-2 w-56 bg-slate-800 rounded-lg border border-slate-700 shadow-xl z-50 overflow-hidden">
+                <div className="px-4 py-3 border-b border-slate-700">
+                  <p className="text-xs text-slate-400 uppercase font-semibold mb-1">My Stats</p>
+                  <div className="flex justify-between text-xs mb-1">
+                    <span className="text-slate-300">Projects Running:</span>
+                    <span className="text-white font-medium">{userStats.running}</span>
+                  </div>
+                  <div className="flex justify-between text-xs mb-2">
+                    <span className="text-slate-300">Projects Completed:</span>
+                    <span className="text-green-400 font-medium">{userStats.completed}</span>
+                  </div>
+                  <div className="pt-1 border-t border-slate-700/50 flex justify-center">
+                    <UserAchievementBadge userId={user.uid} showPoints={true} />
+                  </div>
+                </div>
                 <button
                   onClick={() => {
                     onNavigateToProfile?.();

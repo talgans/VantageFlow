@@ -11,6 +11,7 @@ import GanttChart from './GanttChart';
 import ConfirmationModal from './ConfirmationModal';
 import { useUserLookup } from '../hooks/useUserLookup';
 import PhaseStatusDonut from './charts/PhaseStatusDonut';
+import UserAchievementBadge from './UserAchievementBadge';
 
 // Helper function to calculate task progress recursively
 const calculateTaskProgress = (task: Task): number => {
@@ -794,7 +795,33 @@ const ProjectDetail: React.FC<ProjectDetailProps> = ({ project, onBack, canEdit,
     onUpdateProject(updatedProject);
     setEditingField(null);
 
-    // Award points if completed
+    // Check phase completion and award points
+    if (field === 'status' && (value === TaskStatus.Hundred || value === 'Completed')) {
+      setTimeout(async () => {
+        // We need to use the updatedProject state effectively, or just traverse the current structure if we trust it matches the update.
+        // Since we just called onUpdateProject, 'updatedProject' variable holds the new state.
+        const relevantPhase = updatedProject.phases.find((p: Phase) => p.tasks.some(t => t.id === taskId || (t.subTasks && t.subTasks.some(st => st.id === taskId))));
+
+        if (relevantPhase) {
+          const allPhaseTasks = relevantPhase.tasks.flatMap((t: Task) => [t, ...(t.subTasks || [])]);
+          // Re-check strict 100%
+          const isStrictComplete = allPhaseTasks.every((t: Task) => t.status === TaskStatus.Hundred || t.status === 'Completed');
+
+          if (isStrictComplete) {
+            if (relevantPhase.assignees && relevantPhase.assignees.length > 0) {
+              relevantPhase.assignees.forEach(async (member: TeamMember) => {
+                if (member.uid) {
+                  await achievementService.awardPoints(member.uid, 50, 'phase_complete', `Completed Phase: ${relevantPhase.name}`, project.id);
+                }
+              });
+              showToast(`Phase "${relevantPhase.name}" complete! 50 points to assignees.`);
+            }
+          }
+        }
+      }, 1000);
+    }
+
+    // Award points if completed (Task level)
     if (field === 'status' && (value === TaskStatus.Hundred || value === 'Completed')) {
       const findTask = (phases: Phase[]): Task | undefined => {
         for (const p of phases) {
@@ -819,10 +846,10 @@ const ProjectDetail: React.FC<ProjectDetailProps> = ({ project, onBack, canEdit,
         // Award points to all assignees
         completedTask.assignees.forEach(async (member) => {
           if (member.uid) {
-            await achievementService.awardPoints(member.uid, 5, 'task_complete', `Completed task: ${completedTask.name}`);
+            await achievementService.awardPoints(member.uid, 10, 'task_complete', `Completed task: ${completedTask.name}`, project.id);
           }
         });
-        showToast('Task completed! 5 points awarded to assignees.');
+        showToast('Task completed! 10 points awarded to assignees.');
       }
     }
   };
@@ -1038,6 +1065,9 @@ const ProjectDetail: React.FC<ProjectDetailProps> = ({ project, onBack, canEdit,
                         <span className={`text-sm truncate ${isPrimary ? 'text-blue-300 font-medium' : isSecondary ? 'text-amber-300 font-medium' : 'text-white'}`}>
                           {memberName}
                         </span>
+                        <div className="scale-75 origin-left">
+                          <UserAchievementBadge userId={member.uid} />
+                        </div>
                         {isLead && (
                           <span className={`text-xs px-1.5 py-0.5 rounded ${isPrimary ? 'bg-blue-500/30 text-blue-300' : 'bg-amber-500/30 text-amber-300'}`}>
                             {isPrimary ? '1st Lead' : '2nd Lead'}

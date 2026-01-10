@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { Project } from '../types';
-import { parseProjectText } from '../utils/projectParser';
+import { parseProjectText, ParseResult } from '../utils/projectParser';
 import { XMarkIcon, ArrowPathIcon, CheckIcon } from './icons';
 
 interface PasteProjectModalProps {
@@ -10,16 +10,16 @@ interface PasteProjectModalProps {
 
 const PasteProjectModal: React.FC<PasteProjectModalProps> = ({ onClose, onParsed }) => {
     const [text, setText] = useState('');
-    const [parsedProject, setParsedProject] = useState<Partial<Project> | null>(null);
+    const [parsedResult, setParsedResult] = useState<ParseResult | null>(null);
 
     const handleParse = () => {
         const result = parseProjectText(text);
-        setParsedProject(result);
+        setParsedResult(result);
     };
 
     const handleConfirm = () => {
-        if (parsedProject) {
-            onParsed(parsedProject);
+        if (parsedResult && parsedResult.project) {
+            onParsed(parsedResult.project);
         }
     };
 
@@ -138,7 +138,7 @@ const PasteProjectModal: React.FC<PasteProjectModalProps> = ({ onClose, onParsed
                     <button
                         type="button"
                         onClick={handleConfirm}
-                        disabled={!parsedProject}
+                        disabled={!parsedResult}
                         className="flex items-center gap-2 px-4 py-2 text-sm font-medium text-white bg-brand-secondary rounded-lg hover:bg-blue-500 disabled:opacity-50 disabled:cursor-not-allowed"
                     >
                         <CheckIcon className="w-4 h-4" />

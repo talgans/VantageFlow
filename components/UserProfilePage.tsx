@@ -4,6 +4,8 @@ import { Project } from '../types';
 import { UserIcon, PencilIcon, CameraIcon, XMarkIcon, CheckIcon } from './icons';
 import { updateUserProfile, getInitials } from '../services/userService';
 import { uploadProfilePhoto } from '../services/storageService';
+import UserAchievementBadge from './UserAchievementBadge';
+import UserAnalytics from './UserAnalytics';
 
 interface UserProfilePageProps {
     projects: Project[];
@@ -259,6 +261,9 @@ const UserProfilePage: React.FC<UserProfilePageProps> = ({
                         <span className={`inline-block px-3 py-1 rounded-lg text-sm font-semibold border ${getRoleBadgeColor(user.role)}`}>
                             {user.role}
                         </span>
+                        <div className="mt-3">
+                            <UserAchievementBadge userId={user.uid} showPoints={true} />
+                        </div>
                     </div>
                 </div>
             </div>
@@ -306,7 +311,15 @@ const UserProfilePage: React.FC<UserProfilePageProps> = ({
                     </div>
                 )}
             </div>
-        </div>
+
+
+            {/* Analytics Section */}
+            <div>
+                <h3 className="text-xl font-bold text-white mb-4">Achievement Analytics</h3>
+                <UserAnalytics userId={user.uid} />
+            </div>
+
+        </div >
     );
 };
 

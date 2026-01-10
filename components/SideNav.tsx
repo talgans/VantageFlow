@@ -29,6 +29,7 @@ const SideNav: React.FC<SideNavProps> = ({
   const navItems = [
     { id: 'dashboard', label: 'Dashboard', icon: HomeIcon, adminOnly: false },
     { id: 'projects', label: 'Projects', icon: ChartBarIcon, adminOnly: false },
+    { id: 'performance', label: 'Performance', icon: UserIcon, adminOnly: false },
     { id: 'users', label: 'User Administration', icon: ShieldCheckIcon, adminOnly: true },
   ];
 
