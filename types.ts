@@ -68,7 +68,7 @@ export interface UserAchievement {
   id: string;
   userId: string;
   points: number;
-  category: 'task_complete' | 'milestone' | 'collaboration' | 'quality';
+  category: 'task_complete' | 'phase_complete' | 'milestone' | 'collaboration' | 'quality';
   description: string;
   awardedAt: Date;
 }

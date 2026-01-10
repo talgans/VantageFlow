@@ -109,6 +109,43 @@ export const listUsers = functions.https.onCall(async (data, context) => {
 });
 
 /**
+ * Get public user directory (Available to all authenticated users)
+ * Returns basic info for leaderboard and team display
+ */
+export const getPublicDirectory = functions.https.onCall(async (data, context) => {
+  if (!(context as any).auth) {
+    throw new functions.https.HttpsError('unauthenticated', 'User must be authenticated');
+  }
+
+  try {
+    const users: UserData[] = [];
+    let nextPageToken;
+
+    // Fetch all users with pagination
+    do {
+      const result: admin.auth.ListUsersResult = await admin.auth().listUsers(1000, nextPageToken);
+      result.users.forEach(user => {
+        users.push({
+          uid: user.uid,
+          email: user.email || '',
+          displayName: user.displayName,
+          photoURL: user.photoURL,
+          role: user.customClaims?.role || 'member',
+          createdAt: user.metadata.creationTime,
+          lastSignIn: user.metadata.lastSignInTime,
+        });
+      });
+      nextPageToken = result.pageToken;
+    } while (nextPageToken);
+
+    return { users };
+  } catch (error) {
+    console.error('Error getting public directory:', error);
+    throw new functions.https.HttpsError('internal', 'Failed to get user directory');
+  }
+});
+
+/**
  * Set user role (Admin only)
  */
 export const setUserRole = functions.https.onCall(async (data, context) => {
@@ -571,4 +608,70 @@ export const notifyResponsibilityAssigned = functions
   });
 
 // NOTE: Dynamic user lookup via useUserLookup hook is now used on the client.
-// The onUserUpdate trigger is no longer necessary for keeping project team data fresh.
+/**
+ * Listen for new achievements and notify user/team
+ */
+export const onAchievementAwarded = functions.firestore
+  .document('achievements/{achievementId}')
+  .onCreate(async (snap, context) => {
+    const achievement = snap.data();
+    const { userId, points, category, description, projectId } = achievement;
+
+    console.log(`[onAchievementAwarded] New achievement for ${userId}: ${points} pts (${category})`);
+
+    try {
+      const userRecord = await admin.auth().getUser(userId);
+      const userEmail = userRecord.email;
+      const userName = userRecord.displayName || userEmail?.split('@')[0] || 'User';
+
+      // 1. Notify the User (Email) if significant achievement
+      if (userEmail && (category === 'phase_complete' || category === 'milestone' || points >= 50)) {
+        const subject = `Congratulations! You earned ${points} points!`;
+        const html = `
+          <div style="font-family: Arial, sans-serif;">
+             <h2 style="color: #3b82f6;">Achievement Unlocked!</h2>
+             <p>Hi ${userName},</p>
+             <p>You've just earned <strong>${points} points</strong> for:</p>
+             <p style="font-size: 18px; font-weight: bold; color: #1e293b; background-color: #f1f5f9; padding: 10px; border-radius: 8px;">
+               ${description}
+             </p>
+             <p>Keep up the great work!</p>
+             <hr style="border: none; border-top: 1px solid #e2e8f0; margin: 20px 0;">
+             <p style="color: #94a3b8; font-size: 12px;">VantageFlow Team</p>
+          </div>
+        `;
+        await sendEmail(userEmail, subject, html);
+      }
+
+      // 2. Notify Teammates
+      if (projectId) {
+        const projectDoc = await admin.firestore().collection('projects').doc(projectId).get();
+        if (projectDoc.exists) {
+          const projectData = projectDoc.data();
+          const projectName = projectData?.name || 'Unknown Project';
+          const teamMembers = projectData?.team?.members || [];
+
+          const notifyPromises = teamMembers.map(async (member: any) => {
+            // Don't notify the user who got the award
+            if (member.uid === userId) return;
+
+            const message = `${userName} earned ${points} pts in ${projectName}!`;
+
+            // Create In-App Notification
+            await createNotification(
+              member.uid,
+              'achievement_celebration',
+              message,
+              projectId,
+              projectName
+            );
+          });
+
+          await Promise.all(notifyPromises);
+        }
+      }
+
+    } catch (error) {
+      console.error('[onAchievementAwarded] Error processing achievement:', error);
+    }
+  });

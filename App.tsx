@@ -13,6 +13,7 @@ import LoginModal from './components/LoginModal';
 import WelcomeScreen from './components/WelcomeScreen';
 import UserAdministrationPage from './components/UserAdministrationPage';
 import UserProfilePage from './components/UserProfilePage';
+import UserPerformanceDashboard from './components/UserPerformanceDashboard';
 import RoleChangeNotification from './components/RoleChangeNotification';
 import { useAuth } from './contexts/AuthContext';
 import {
@@ -283,6 +284,7 @@ const App: React.FC = () => {
                     setCurrentPage('profile');
                     setSelectedProject(null);
                 }}
+                projects={projects}
             />
             <div className="flex">
                 <SideNav
@@ -319,6 +321,8 @@ const App: React.FC = () => {
                             onSelectProject={handleSelectProject}
                             showToast={showToast}
                         />
+                    ) : currentPage === 'performance' ? (
+                        <UserPerformanceDashboard projects={projects} />
                     ) : currentPage === 'projects' ? (
                         <ProjectsList
                             projects={projects}
