@@ -23,6 +23,55 @@ const UserPerformanceDashboard: React.FC<UserPerformanceDashboardProps> = ({ pro
     const [loading, setLoading] = useState(true);
     const { getUserDisplayName, getUserPhotoURL } = useUserLookup();
 
+    // Build a fallback user lookup from project team members
+    const projectUserLookup = useMemo(() => {
+        const lookup = new Map<string, { displayName?: string; photoURL?: string; email: string }>();
+        projects.forEach(project => {
+            project.team?.members?.forEach(member => {
+                if (!lookup.has(member.uid)) {
+                    lookup.set(member.uid, {
+                        displayName: member.displayName,
+                        photoURL: member.photoURL,
+                        email: member.email
+                    });
+                }
+            });
+        });
+        return lookup;
+    }, [projects]);
+
+    // Enhanced lookup functions with fallback
+    const getDisplayName = (userId: string, fallback: string = 'User'): string => {
+        const name = getUserDisplayName(userId);
+        if (name && name !== 'User' && name !== '?') return name;
+
+        const projectUser = projectUserLookup.get(userId);
+
+        // Try displayName first
+        if (projectUser?.displayName) {
+            return projectUser.displayName;
+        }
+
+        // Extract name from email as last resort
+        if (projectUser?.email) {
+            const emailName = projectUser.email.split('@')[0];
+            // Convert bashir.mahmud -> Bashir Mahmud
+            const formatted = emailName.split(/[._-]/).map(part =>
+                part.charAt(0).toUpperCase() + part.slice(1)
+            ).join(' ');
+            return formatted;
+        }
+
+        return fallback;
+    };
+
+    const getPhotoURL = (userId: string, fallback: string = ''): string => {
+        const photo = getUserPhotoURL(userId);
+        if (photo) return photo;
+        const projectUser = projectUserLookup.get(userId);
+        return projectUser?.photoURL || fallback;
+    };
+
     useEffect(() => {
         const loadData = async () => {
             const [lbData, achData] = await Promise.all([
@@ -52,7 +101,7 @@ const UserPerformanceDashboard: React.FC<UserPerformanceDashboardProps> = ({ pro
                     projectPoints[projName] = { project: projName as any };
                 }
 
-                const userName = getUserDisplayName(a.userId, 'User') || 'User';
+                const userName = getDisplayName(a.userId, 'User');
                 projectPoints[projName][userName] = (projectPoints[projName][userName] || 0) + a.points;
             }
         });
@@ -119,7 +168,7 @@ const UserPerformanceDashboard: React.FC<UserPerformanceDashboardProps> = ({ pro
                         </div>
                         <div>
                             <p className="text-yellow-200 text-xs font-bold uppercase tracking-wider">Top Performer</p>
-                            <p className="text-white font-bold text-lg">{getUserDisplayName(topPerformer.userId, 'Unknown')}</p>
+                            <p className="text-white font-bold text-lg">{getDisplayName(topPerformer.userId, 'Unknown')}</p>
                             <p className="text-yellow-400/80 text-sm">{topPerformer.points} Points</p>
                         </div>
                     </div>
@@ -148,15 +197,15 @@ const UserPerformanceDashboard: React.FC<UserPerformanceDashboardProps> = ({ pro
                                         <div className="flex items-center gap-2">
                                             {/* Avatar if available */}
                                             <div className="w-8 h-8 rounded-full bg-slate-600 overflow-hidden">
-                                                {getUserPhotoURL(entry.userId, '') ?
-                                                    <img src={getUserPhotoURL(entry.userId, '')} alt="" className="w-full h-full object-cover" /> :
+                                                {getPhotoURL(entry.userId, '') ?
+                                                    <img src={getPhotoURL(entry.userId, '')} alt="" className="w-full h-full object-cover" /> :
                                                     <div className="w-full h-full flex items-center justify-center text-xs text-white">
-                                                        {(getUserDisplayName(entry.userId, '?') || '?').charAt(0).toUpperCase()}
+                                                        {(getDisplayName(entry.userId, '?') || '?').charAt(0).toUpperCase()}
                                                     </div>
                                                 }
                                             </div>
                                             <span className={`font-medium ${isTop3 ? 'text-white' : 'text-slate-300'}`}>
-                                                {getUserDisplayName(entry.userId, 'User')}
+                                                {getDisplayName(entry.userId, 'User')}
                                             </span>
                                         </div>
                                     </div>
