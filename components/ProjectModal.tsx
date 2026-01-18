@@ -375,13 +375,26 @@ const ProjectModal: React.FC<ProjectModalProps> = ({ onClose, onSave, projectToE
               </div>
 
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <InputField
-                  name="coreSystem"
-                  label="Core System"
-                  value={formData.coreSystem}
-                  onChange={handleChange}
-                  error={errors.coreSystem}
-                />
+                <div>
+                  <label htmlFor="coreSystem" className="block mb-2 text-sm font-medium text-slate-300">
+                    Project Type
+                  </label>
+                  <select
+                    id="coreSystem"
+                    name="coreSystem"
+                    value={formData.coreSystem}
+                    onChange={(e) => setFormData(prev => ({ ...prev, coreSystem: e.target.value }))}
+                    className="bg-slate-700 border border-slate-600 text-white text-sm rounded-lg focus:ring-blue-500 focus:border-blue-500 block w-full p-2.5"
+                  >
+                    <option value="">Select Type</option>
+                    <option value="Technical">Technical</option>
+                    <option value="Business">Business</option>
+                    <option value="Creative">Creative</option>
+                    <option value="Research">Research</option>
+                    <option value="Compliance">Compliance</option>
+                  </select>
+                  {errors.coreSystem && <p className="mt-1 text-xs text-red-500">{errors.coreSystem}</p>}
+                </div>
                 <InputField
                   name="startDate"
                   label="Start Date"
