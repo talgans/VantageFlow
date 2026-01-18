@@ -45,6 +45,7 @@ const App: React.FC = () => {
         setPrevUser(user);
     }, [user, prevUser]);
     const [isSideNavOpen, setIsSideNavOpen] = useState(false);
+    const [isSideNavCollapsed, setIsSideNavCollapsed] = useState(false);
 
     const [isProjectModalOpen, setIsProjectModalOpen] = useState(false);
     const [editingProject, setEditingProject] = useState<Project | null>(null);
@@ -296,6 +297,8 @@ const App: React.FC = () => {
                     isOpen={isSideNavOpen}
                     onClose={() => setIsSideNavOpen(false)}
                     userRole={currentUserRole}
+                    isCollapsed={isSideNavCollapsed}
+                    onToggleCollapse={() => setIsSideNavCollapsed(!isSideNavCollapsed)}
                 />
                 <main className="flex-1 p-4 sm:p-6 lg:p-8">
                     {selectedProject ? (
