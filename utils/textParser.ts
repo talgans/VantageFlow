@@ -10,10 +10,11 @@ interface ParsedProject {
 
 /**
  * Parses pasted text into a structured project format
- * Infers project structure from text patterns:
- * - Headers/questions become phases
- * - Bullet points/lists become tasks
- * - Indented items become subtasks
+ * Structure inference:
+ * - First non-list line becomes project title
+ * - Numbered items (1. 2. 3.) become phases
+ * - Bullet points (- * •) under numbered items become tasks
+ * - Nested bullet points become subtasks
  */
 export function parseTextToProject(text: string): ParsedProject {
   const lines = text.split('\n').map(line => line.trimEnd());
@@ -31,31 +32,29 @@ export function parseTextToProject(text: string): ParsedProject {
 }
 
 function inferProjectMetadata(text: string): Omit<ParsedProject, 'phases'> {
-  const words = text.toLowerCase();
+  const lines = text.split('\n').map(l => l.trim()).filter(l => l.length > 0);
 
-  // Infer project name from first question or key topic
+  // Find project name: first line that is NOT a numbered/bulleted item
   let name = 'New Project';
-  const firstLine = text.split('\n')[0];
-  if (firstLine.includes('?')) {
-    name = firstLine.replace('?', '').trim().slice(0, 80);
-  } else if (firstLine.length > 5 && firstLine.length < 100) {
-    name = firstLine.trim();
+  for (const line of lines) {
+    if (!isNumberedItem(line) && !isBulletItem(line)) {
+      name = cleanTitle(line);
+      break;
+    }
   }
 
-  // Generate description from first few meaningful sentences
-  const sentences = text.split(/[.?!]\s+/).filter(s => s.trim().length > 20);
-  const description = sentences.slice(0, 2).join('. ').slice(0, 300);
+  // Generate description from first meaningful sentence or title
+  const description = name.length > 30 ? name : `Project: ${name}`;
 
   // Infer core system from keywords
-  let coreSystem = 'General';
+  const words = text.toLowerCase();
+  let coreSystem = '';
   const systemKeywords: Record<string, string[]> = {
-    'EMIS': ['emis', 'data system', 'information system', 'database'],
-    'Infrastructure': ['infrastructure', 'facility', 'building', 'equipment'],
-    'Training': ['training', 'professional development', 'capacity building', 'teacher'],
-    'Procurement': ['procurement', 'purchasing', 'acquisition'],
-    'Governance': ['governance', 'policy', 'reform', 'leadership'],
-    'Technology': ['technology', 'digital', 'edtech', 'innovation', 'platform'],
-    'Curriculum': ['curriculum', 'pedagogy', 'learning', 'instruction'],
+    'Technical': ['technical', 'system', 'api', 'database', 'code', 'software', 'platform', 'infrastructure'],
+    'Business': ['business', 'strategy', 'revenue', 'sales', 'marketing', 'customer'],
+    'Creative': ['creative', 'design', 'brand', 'ui', 'ux', 'graphic', 'visual'],
+    'Research': ['research', 'analysis', 'study', 'survey', 'data', 'investigation'],
+    'Compliance': ['compliance', 'regulation', 'audit', 'legal', 'policy', 'governance'],
   };
 
   for (const [system, keywords] of Object.entries(systemKeywords)) {
@@ -65,13 +64,13 @@ function inferProjectMetadata(text: string): Omit<ParsedProject, 'phases'> {
     }
   }
 
-  // Infer duration based on text complexity and task count
-  const taskIndicators = (text.match(/^[\s-]*[\u2022\-*•]/gm) || []).length;
-  const duration = Math.max(4, Math.min(52, Math.ceil(taskIndicators * 0.5)));
+  // Infer duration based on task count
+  const bulletCount = (text.match(/^[\s]*[•\-*]\s+/gm) || []).length;
+  const duration = Math.max(4, Math.min(52, Math.ceil(bulletCount * 0.5)));
 
   return {
-    name: name || 'New Project',
-    description: description || text.slice(0, 200),
+    name,
+    description,
     coreSystem,
     duration,
   };
@@ -81,7 +80,7 @@ function parseStructure(lines: string[]): Phase[] {
   const phases: Phase[] = [];
   let currentPhase: Phase | null = null;
   let currentTask: Task | null = null;
-  let lastIndent = 0;
+  let projectTitleFound = false;
 
   for (let i = 0; i < lines.length; i++) {
     const line = lines[i];
@@ -89,41 +88,56 @@ function parseStructure(lines: string[]): Phase[] {
 
     if (!trimmed) continue;
 
-    const indent = line.search(/\S/);
+    // Skip first non-list line (it's the project title)
+    if (!projectTitleFound && !isNumberedItem(trimmed) && !isBulletItem(trimmed)) {
+      projectTitleFound = true;
+      continue;
+    }
 
-    // Detect phase headers (questions, headings, or standalone bold statements)
-    if (isPhaseHeader(trimmed, i, lines)) {
-      // Save previous phase if it has content
-      if (currentPhase && currentPhase.tasks.length > 0) {
+    // Numbered items (1. 2. 3.) become PHASES
+    if (isNumberedItem(trimmed)) {
+      // Save previous phase if it exists
+      if (currentPhase) {
         phases.push(currentPhase);
       }
 
+      const phaseName = cleanNumberedItem(trimmed);
       currentPhase = {
         id: `phase-${Date.now()}-${phases.length}`,
-        name: cleanPhaseName(trimmed),
+        name: phaseName,
         weekRange: 'TBD',
         tasks: [],
       };
       currentTask = null;
-      lastIndent = 0;
       continue;
     }
 
-    // Detect tasks (bullet points, dashes, numbered items)
-    if (isTaskLine(trimmed)) {
-      const taskName = cleanTaskName(trimmed);
+    // Bullet points become TASKS (or subtasks if deeply nested)
+    if (isBulletItem(trimmed)) {
+      const indent = getIndentLevel(line);
+      const taskName = cleanBulletItem(trimmed);
 
-      // Skip if task name is too short or just whitespace
       if (taskName.length < 3) continue;
 
-      // Determine if this is a subtask based on indentation
-      const isSubtask = currentTask && indent > lastIndent && indent > 0;
+      // If no phase exists, create a default one
+      if (!currentPhase) {
+        currentPhase = {
+          id: `phase-${Date.now()}-0`,
+          name: 'Tasks',
+          weekRange: 'TBD',
+          tasks: [],
+        };
+      }
 
-      if (isSubtask) {
-        // Add as subtask to current task
-        if (!currentTask!.subTasks) currentTask!.subTasks = [];
-        currentTask!.subTasks.push({
-          id: `subtask-${Date.now()}-${currentTask!.subTasks.length}`,
+      // Check if this is a nested bullet (subtask) vs top-level bullet (task)
+      // A subtask has higher indent than the previous task
+      const isSubtask = currentTask && indent > 0 && isNestedBullet(line);
+
+      if (isSubtask && currentTask) {
+        // Add as subtask
+        if (!currentTask.subTasks) currentTask.subTasks = [];
+        currentTask.subTasks.push({
+          id: `subtask-${Date.now()}-${currentTask.subTasks.length}`,
           name: taskName,
           status: TaskStatus.Zero,
           startDate: new Date(),
@@ -131,16 +145,6 @@ function parseStructure(lines: string[]): Phase[] {
         });
       } else {
         // Add as main task
-        if (!currentPhase) {
-          // Create default phase if none exists
-          currentPhase = {
-            id: `phase-${Date.now()}-0`,
-            name: 'Implementation Tasks',
-            weekRange: 'TBD',
-            tasks: [],
-          };
-        }
-
         currentTask = {
           id: `task-${Date.now()}-${currentPhase.tasks.length}`,
           name: taskName,
@@ -150,54 +154,20 @@ function parseStructure(lines: string[]): Phase[] {
           subTasks: [],
         };
         currentPhase.tasks.push(currentTask);
-        lastIndent = indent;
-      }
-    }
-    // Handle multi-line descriptions or continuation text
-    else if (trimmed.length > 10 && !trimmed.endsWith(':')) {
-      // Look ahead to see if next line is a bullet - if so, this might be a phase description
-      const nextLine = lines[i + 1]?.trim();
-      const isFollowedByBullet = nextLine && isTaskLine(nextLine);
-
-      if (isFollowedByBullet && !currentTask) {
-        // This is likely a phase description, create a new phase
-        if (currentPhase && currentPhase.tasks.length > 0) {
-          phases.push(currentPhase);
-        }
-        currentPhase = {
-          id: `phase-${Date.now()}-${phases.length}`,
-          name: trimmed.slice(0, 100),
-          weekRange: 'TBD',
-          tasks: [],
-        };
-        currentTask = null;
-        lastIndent = 0;
-      } else if (currentTask && trimmed.length < 150) {
-        // Add as subtask detail if we have a current task and text is reasonable length
-        if (!currentTask.subTasks) currentTask.subTasks = [];
-        currentTask.subTasks.push({
-          id: `subtask-${Date.now()}-${currentTask.subTasks.length}`,
-          name: trimmed,
-          status: TaskStatus.Zero,
-          startDate: new Date(),
-          endDate: addDays(new Date(), 7),
-        });
       }
     }
   }
 
   // Add last phase
-  if (currentPhase && currentPhase.tasks.length > 0) {
+  if (currentPhase) {
     phases.push(currentPhase);
   }
 
-  // If no phases detected, create one default phase with any orphaned content
+  // If no phases detected, create a default one
   if (phases.length === 0) {
-    // Try to extract at least one phase from the content
-    const firstMeaningfulLine = lines.find(l => l.trim().length > 10);
     phases.push({
       id: `phase-${Date.now()}-0`,
-      name: firstMeaningfulLine?.trim().slice(0, 100) || 'Project Implementation',
+      name: 'Project Tasks',
       weekRange: 'TBD',
       tasks: [],
     });
@@ -206,80 +176,52 @@ function parseStructure(lines: string[]): Phase[] {
   return phases;
 }
 
-function isPhaseHeader(line: string, index: number, allLines: string[]): boolean {
-  // Questions are often phase headers
-  if (line.endsWith('?')) return true;
-
-  // Lines ending with colon (like "What's missing:")
-  if (line.endsWith(':') && line.length < 100 && line.length > 5) return true;
-
-  // Check if line is followed by bullet points (strong indicator of a header)
-  const nextLine = allLines[index + 1]?.trim();
-  if (nextLine && isTaskLine(nextLine) && line.length < 100 && line.length > 5) {
-    return true;
-  }
-
-  // Short standalone lines at the start or after empty line
-  if (line.length < 100 && line.length > 5) {
-    if (index === 0) return true;
-    const prevLine = allLines[index - 1]?.trim();
-    if (!prevLine || prevLine.length === 0) {
-      // Check if this line is NOT a continuation of a previous bullet
-      return !isTaskLine(line);
-    }
-  }
-
-  // ALL CAPS lines (but not single words)
-  if (line === line.toUpperCase() && line.split(' ').length > 1 && line.length > 3 && line.length < 100) {
-    return true;
-  }
-
-  // Headers with common keywords
-  const headerKeywords = ['phase', 'stage', 'step', 'objective', 'goal', 'requirement', 'component', 'section'];
-  const lowerLine = line.toLowerCase();
-  if (headerKeywords.some(kw => lowerLine.startsWith(kw)) && line.length < 100) {
-    return true;
-  }
-
-  return false;
+// Check if line is a numbered item like "1. " or "1) " or "1: "
+function isNumberedItem(line: string): boolean {
+  return /^\d+[\.\):\s]\s*/.test(line);
 }
 
-function isTaskLine(line: string): boolean {
-  // Bullet points: -, *, •, ⁃, ◦, ▪, ▫
-  if (/^[\-*•⁃◦▪▫]\s+/.test(line)) return true;
-
-  // Numbered lists: 1. 2. 1) 2) etc
-  if (/^\d+[\.)]\s+/.test(line)) return true;
-
-  // Letter lists: a. b. a) b) A. B. etc
-  if (/^[a-zA-Z][\.)]\s+/.test(line)) return true;
-
-  // Indented dashes or bullets
-  if (/^\s+[\-*•⁃◦▪▫]\s+/.test(line)) return true;
-
-  // Checkboxes: [ ] [x] [X]
-  if (/^\s*\[[\sxX]\]\s+/.test(line)) return true;
-
-  return false;
+// Check if line is a bullet point
+function isBulletItem(line: string): boolean {
+  // Bullet points: -, *, •, ⁃, ◦, ▪, ▫ (with or without leading spaces)
+  return /^[\s]*[•\-*⁃◦▪▫]\s+/.test(line);
 }
 
-function cleanPhaseName(text: string): string {
+// Check if bullet is nested (has leading whitespace before the bullet)
+function isNestedBullet(line: string): boolean {
+  return /^\s{2,}[•\-*⁃◦▪▫]\s+/.test(line);
+}
+
+// Get indentation level
+function getIndentLevel(line: string): number {
+  const match = line.match(/^(\s*)/);
+  return match ? match[1].length : 0;
+}
+
+// Clean a numbered item to get just the text
+function cleanNumberedItem(text: string): string {
   return text
-    .replace(/^[#\-*•⁃]+\s*/, '') // Remove leading symbols
-    .replace(/[:?]+$/, '') // Remove trailing colons/questions
+    .replace(/^\d+[\.\):\s]\s*/, '')  // Remove "1. " or "1) " or "1: "
     .trim()
     .slice(0, 100);
 }
 
-function cleanTaskName(text: string): string {
+// Clean a bullet item to get just the text
+function cleanBulletItem(text: string): string {
   return text
-    .replace(/^[\s\-*•⁃◦▪▫\d.()a-zA-Z)]+/, '') // Remove bullets, numbers, dashes, letters
-    .replace(/^\[[\sxX]\]\s*/, '') // Remove checkboxes
-    .replace(/^Yes\s*[–—-]\s*/i, '') // Remove "Yes –" prefix
-    .replace(/^No\s*[–—-]\s*/i, '') // Remove "No –" prefix
-    .replace(/^[–—-]\s*/, '') // Remove leading dash
+    .replace(/^[\s]*[•\-*⁃◦▪▫]\s+/, '')  // Remove bullet and spaces
     .trim()
     .slice(0, 200);
+}
+
+// Clean title text
+function cleanTitle(text: string): string {
+  return text
+    .replace(/^#+\s*/, '')  // Remove markdown headers
+    .replace(/\*\*/g, '')   // Remove bold markers
+    .replace(/[:?]+$/, '')  // Remove trailing colons/questions
+    .trim()
+    .slice(0, 100);
 }
 
 function addDays(date: Date, days: number): Date {
