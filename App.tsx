@@ -261,7 +261,6 @@ const App: React.FC = () => {
         return (
             <>
                 <WelcomeScreen
-                    onRequestAccess={() => setIsLoginModalOpen(true)}
                     onLogin={() => setIsLoginModalOpen(true)}
                 />
                 <LoginModal
