@@ -114,10 +114,13 @@ const ProjectModal: React.FC<ProjectModalProps> = ({ onClose, onSave, projectToE
     setFormData(prev => ({ ...prev, [name]: value }));
   };
 
+  const [teamError, setTeamError] = useState<string | null>(null);
+
   const validate = () => {
     const newErrors: Partial<typeof formData> = {};
     if (!formData.name.trim()) newErrors.name = 'Project name is required';
     if (!formData.description.trim()) newErrors.description = 'Description is required';
+    if (!formData.coreSystem) newErrors.coreSystem = 'Project type is required';
     if (!formData.startDate) newErrors.startDate = 'Start date is required';
     if (!formData.duration || isNaN(Number(formData.duration)) || Number(formData.duration) <= 0) {
       newErrors.duration = 'Duration must be a positive number';
@@ -125,8 +128,16 @@ const ProjectModal: React.FC<ProjectModalProps> = ({ onClose, onSave, projectToE
     if (formData.cost && isNaN(Number(formData.cost))) {
       newErrors.cost = 'Cost must be a number';
     }
+
+    // Validate team members
+    if (teamMembers.length === 0) {
+      setTeamError('At least one team member is required');
+    } else {
+      setTeamError(null);
+    }
+
     setErrors(newErrors);
-    return Object.keys(newErrors).length === 0;
+    return Object.keys(newErrors).length === 0 && teamMembers.length > 0;
   };
 
   const handleSubmit = (e: React.FormEvent) => {
@@ -375,13 +386,26 @@ const ProjectModal: React.FC<ProjectModalProps> = ({ onClose, onSave, projectToE
               </div>
 
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <InputField
-                  name="coreSystem"
-                  label="Core System"
-                  value={formData.coreSystem}
-                  onChange={handleChange}
-                  error={errors.coreSystem}
-                />
+                <div>
+                  <label htmlFor="coreSystem" className="block mb-2 text-sm font-medium text-slate-300">
+                    Project Type <span className="text-red-500">*</span>
+                  </label>
+                  <select
+                    id="coreSystem"
+                    name="coreSystem"
+                    value={formData.coreSystem}
+                    onChange={(e) => setFormData(prev => ({ ...prev, coreSystem: e.target.value }))}
+                    className="bg-slate-700 border border-slate-600 text-white text-sm rounded-lg focus:ring-blue-500 focus:border-blue-500 block w-full p-2.5"
+                  >
+                    <option value="">Select Type</option>
+                    <option value="Technical">Technical</option>
+                    <option value="Business">Business</option>
+                    <option value="Creative">Creative</option>
+                    <option value="Research">Research</option>
+                    <option value="Compliance">Compliance</option>
+                  </select>
+                  {errors.coreSystem && <p className="mt-1 text-xs text-red-500">{errors.coreSystem}</p>}
+                </div>
                 <InputField
                   name="startDate"
                   label="Start Date"
@@ -450,12 +474,13 @@ const ProjectModal: React.FC<ProjectModalProps> = ({ onClose, onSave, projectToE
 
               {/* Team Selection Section */}
               <div className="pt-4 border-t border-slate-600">
-                <h3 className="text-lg font-semibold text-white mb-3">Team Members</h3>
+                <h3 className="text-lg font-semibold text-white mb-3">Team Members <span className="text-red-500">*</span></h3>
                 <TeamMemberSelector
                   selectedMembers={teamMembers}
                   onChange={setTeamMembers}
                   projectOwnerId={projectOwnerId}
                 />
+                {teamError && <p className="mt-2 text-xs text-red-500">{teamError}</p>}
               </div>
 
               {/* --- Project Structure --- */}

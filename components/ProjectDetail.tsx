@@ -992,7 +992,7 @@ const ProjectDetail: React.FC<ProjectDetailProps> = ({ project, onBack, canEdit,
         </button>
         <div className={`transition-all duration-300 ease-in-out ${isCardsCollapsed ? 'max-h-0 opacity-0' : 'max-h-[1000px] opacity-100'}`}>
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 p-4 pt-0">
-            <InfoCard icon={<InfoIcon />} title="Core System" value={project.coreSystem} />
+            <InfoCard icon={<InfoIcon />} title="Project Type" value={project.coreSystem} />
 
             {/* Editable Duration Card */}
             <div
