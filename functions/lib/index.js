@@ -33,7 +33,7 @@ var __importStar = (this && this.__importStar) || (function () {
     };
 })();
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.notifyResponsibilityAssigned = exports.notifyProjectMemberAdded = exports.sendReminderEmail = exports.inviteUser = exports.configureCors = exports.updateUserProfile = exports.deleteUser = exports.setUserRole = exports.listUsers = void 0;
+exports.onAchievementAwarded = exports.notifyResponsibilityAssigned = exports.notifyProjectMemberAdded = exports.sendReminderEmail = exports.inviteUser = exports.configureCors = exports.updateUserProfile = exports.deleteUser = exports.setUserRole = exports.getPublicDirectory = exports.listUsers = void 0;
 const functions = __importStar(require("firebase-functions/v1"));
 const admin = __importStar(require("firebase-admin"));
 const resend_1 = require("resend");
@@ -122,6 +122,41 @@ exports.listUsers = functions.https.onCall(async (data, context) => {
     catch (error) {
         console.error('Error listing users:', error);
         throw new functions.https.HttpsError('internal', 'Failed to list users');
+    }
+});
+/**
+ * Get public user directory (Available to all authenticated users)
+ * Returns basic info for leaderboard and team display
+ */
+exports.getPublicDirectory = functions.https.onCall(async (data, context) => {
+    if (!context.auth) {
+        throw new functions.https.HttpsError('unauthenticated', 'User must be authenticated');
+    }
+    try {
+        const users = [];
+        let nextPageToken;
+        // Fetch all users with pagination
+        do {
+            const result = await admin.auth().listUsers(1000, nextPageToken);
+            result.users.forEach(user => {
+                var _a;
+                users.push({
+                    uid: user.uid,
+                    email: user.email || '',
+                    displayName: user.displayName,
+                    photoURL: user.photoURL,
+                    role: ((_a = user.customClaims) === null || _a === void 0 ? void 0 : _a.role) || 'member',
+                    createdAt: user.metadata.creationTime,
+                    lastSignIn: user.metadata.lastSignInTime,
+                });
+            });
+            nextPageToken = result.pageToken;
+        } while (nextPageToken);
+        return { users };
+    }
+    catch (error) {
+        console.error('Error getting public directory:', error);
+        throw new functions.https.HttpsError('internal', 'Failed to get user directory');
     }
 });
 /**
@@ -528,5 +563,59 @@ exports.notifyResponsibilityAssigned = functions
     return { success: true };
 });
 // NOTE: Dynamic user lookup via useUserLookup hook is now used on the client.
-// The onUserUpdate trigger is no longer necessary for keeping project team data fresh.
+/**
+ * Listen for new achievements and notify user/team
+ */
+exports.onAchievementAwarded = functions.firestore
+    .document('achievements/{achievementId}')
+    .onCreate(async (snap, context) => {
+    var _a;
+    const achievement = snap.data();
+    const { userId, points, category, description, projectId } = achievement;
+    console.log(`[onAchievementAwarded] New achievement for ${userId}: ${points} pts (${category})`);
+    try {
+        const userRecord = await admin.auth().getUser(userId);
+        const userEmail = userRecord.email;
+        const userName = userRecord.displayName || (userEmail === null || userEmail === void 0 ? void 0 : userEmail.split('@')[0]) || 'User';
+        // 1. Notify the User (Email) if significant achievement
+        if (userEmail && (category === 'phase_complete' || category === 'milestone' || points >= 50)) {
+            const subject = `Congratulations! You earned ${points} points!`;
+            const html = `
+          <div style="font-family: Arial, sans-serif;">
+             <h2 style="color: #3b82f6;">Achievement Unlocked!</h2>
+             <p>Hi ${userName},</p>
+             <p>You've just earned <strong>${points} points</strong> for:</p>
+             <p style="font-size: 18px; font-weight: bold; color: #1e293b; background-color: #f1f5f9; padding: 10px; border-radius: 8px;">
+               ${description}
+             </p>
+             <p>Keep up the great work!</p>
+             <hr style="border: none; border-top: 1px solid #e2e8f0; margin: 20px 0;">
+             <p style="color: #94a3b8; font-size: 12px;">VantageFlow Team</p>
+          </div>
+        `;
+            await sendEmail(userEmail, subject, html);
+        }
+        // 2. Notify Teammates
+        if (projectId) {
+            const projectDoc = await admin.firestore().collection('projects').doc(projectId).get();
+            if (projectDoc.exists) {
+                const projectData = projectDoc.data();
+                const projectName = (projectData === null || projectData === void 0 ? void 0 : projectData.name) || 'Unknown Project';
+                const teamMembers = ((_a = projectData === null || projectData === void 0 ? void 0 : projectData.team) === null || _a === void 0 ? void 0 : _a.members) || [];
+                const notifyPromises = teamMembers.map(async (member) => {
+                    // Don't notify the user who got the award
+                    if (member.uid === userId)
+                        return;
+                    const message = `${userName} earned ${points} pts in ${projectName}!`;
+                    // Create In-App Notification
+                    await createNotification(member.uid, 'achievement_celebration', message, projectId, projectName);
+                });
+                await Promise.all(notifyPromises);
+            }
+        }
+    }
+    catch (error) {
+        console.error('[onAchievementAwarded] Error processing achievement:', error);
+    }
+});
 //# sourceMappingURL=index.js.map

@@ -84,5 +84,13 @@ service cloud.firestore {
       // Only admin can modify/delete history
       allow update, delete: if isAdmin();
     }
+
+    // Role Permissions configuration
+    match /rolePermissions/{docId} {
+      // All authenticated users can read permissions (needed to check their role's capabilities)
+      allow read: if isAuthenticated();
+      // Only admins can modify permission configurations
+      allow write: if isAdmin();
+    }
   }
 }

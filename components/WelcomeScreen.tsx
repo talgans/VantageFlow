@@ -1,7 +1,8 @@
-import React, { useEffect, useRef } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
+import TermsOfServiceModal from './TermsOfServiceModal';
+import PrivacyPolicyModal from './PrivacyPolicyModal';
 
 interface WelcomeScreenProps {
-  onRequestAccess: () => void;
   onLogin: () => void;
 }
 
@@ -13,8 +14,10 @@ interface Particle {
   connections: number[];
 }
 
-const WelcomeScreen: React.FC<WelcomeScreenProps> = ({ onRequestAccess, onLogin }) => {
+const WelcomeScreen: React.FC<WelcomeScreenProps> = ({ onLogin }) => {
   const canvasRef = useRef<HTMLCanvasElement>(null);
+  const [isTermsOpen, setIsTermsOpen] = useState(false);
+  const [isPrivacyOpen, setIsPrivacyOpen] = useState(false);
 
   useEffect(() => {
     const canvas = canvasRef.current;
@@ -131,14 +134,8 @@ const WelcomeScreen: React.FC<WelcomeScreenProps> = ({ onRequestAccess, onLogin 
         {/* CTA Buttons */}
         <div className="flex flex-col sm:flex-row gap-4 mb-8">
           <button
-            onClick={onRequestAccess}
-            className="px-8 py-4 bg-blue-500 hover:bg-blue-600 text-white text-lg font-semibold rounded-lg transition-colors shadow-lg shadow-blue-500/50"
-          >
-            Request Access
-          </button>
-          <button
             onClick={onLogin}
-            className="px-8 py-4 bg-transparent hover:bg-slate-700/50 text-white text-lg font-semibold rounded-lg border-2 border-slate-400 transition-colors"
+            className="px-8 py-4 bg-blue-500 hover:bg-blue-600 text-white text-lg font-semibold rounded-lg transition-colors shadow-lg shadow-blue-500/50"
           >
             Log In
           </button>
@@ -146,11 +143,17 @@ const WelcomeScreen: React.FC<WelcomeScreenProps> = ({ onRequestAccess, onLogin 
 
         {/* Footer links */}
         <div className="flex gap-6 text-slate-400 text-sm">
-          <button className="hover:text-white transition-colors">
+          <button
+            onClick={() => setIsTermsOpen(true)}
+            className="hover:text-white transition-colors"
+          >
             Terms of Service
           </button>
           <span className="text-slate-600">|</span>
-          <button className="hover:text-white transition-colors">
+          <button
+            onClick={() => setIsPrivacyOpen(true)}
+            className="hover:text-white transition-colors"
+          >
             Privacy Policy
           </button>
         </div>
@@ -159,13 +162,34 @@ const WelcomeScreen: React.FC<WelcomeScreenProps> = ({ onRequestAccess, onLogin 
       {/* Bottom footer */}
       <footer className="relative z-10 px-8 py-6 flex justify-between items-center text-slate-500 text-sm">
         <div className="flex gap-6">
-          <button className="hover:text-white transition-colors">Privacy</button>
-          <button className="hover:text-white transition-colors">Terms</button>
+          <button
+            onClick={() => setIsPrivacyOpen(true)}
+            className="hover:text-white transition-colors"
+          >
+            Privacy
+          </button>
+          <button
+            onClick={() => setIsTermsOpen(true)}
+            className="hover:text-white transition-colors"
+          >
+            Terms
+          </button>
         </div>
         <div>VantageFlow v1.0</div>
       </footer>
+
+      {/* Modals */}
+      <TermsOfServiceModal
+        isOpen={isTermsOpen}
+        onClose={() => setIsTermsOpen(false)}
+      />
+      <PrivacyPolicyModal
+        isOpen={isPrivacyOpen}
+        onClose={() => setIsPrivacyOpen(false)}
+      />
     </div>
   );
 };
 
 export default WelcomeScreen;
+
