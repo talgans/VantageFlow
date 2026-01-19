@@ -10,7 +10,7 @@ import { ArrowLeftIcon, SparklesIcon, InfoIcon, TeamIcon, CalendarIcon, MoneyIco
 import GanttChart from './GanttChart';
 import ConfirmationModal from './ConfirmationModal';
 import { useUserLookup } from '../hooks/useUserLookup';
-import PhaseStatusDonut from './charts/PhaseStatusDonut';
+import SectionStatusDonut from './charts/SectionStatusDonut';
 import UserAchievementBadge from './UserAchievementBadge';
 
 // Helper function to calculate task progress recursively
@@ -666,7 +666,7 @@ const ProjectDetail: React.FC<ProjectDetailProps> = ({ project, onBack, canEdit,
   const handleAddPhase = () => {
     const newPhase: Phase = {
       id: `phase-${Date.now()}`,
-      name: `Phase: ${project.phases.length + 1}`,
+      name: `Section: ${project.phases.length + 1}`,
       weekRange: 'TBD',
       tasks: [],
       ownerId: currentUserId,
@@ -675,7 +675,7 @@ const ProjectDetail: React.FC<ProjectDetailProps> = ({ project, onBack, canEdit,
     const updatedProject = JSON.parse(JSON.stringify(project), reviveDates);
     updatedProject.phases.unshift(newPhase);
     onUpdateProject(updatedProject);
-    showToast("New phase created below.");
+    showToast("New section created below.");
   };
 
   const handleUpdatePhase = (phaseId: string, field: 'name' | 'weekRange', value: string) => {
@@ -811,10 +811,10 @@ const ProjectDetail: React.FC<ProjectDetailProps> = ({ project, onBack, canEdit,
             if (relevantPhase.assignees && relevantPhase.assignees.length > 0) {
               relevantPhase.assignees.forEach(async (member: TeamMember) => {
                 if (member.uid) {
-                  await achievementService.awardPoints(member.uid, 50, 'phase_complete', `Completed Phase: ${relevantPhase.name}`, project.id);
+                  await achievementService.awardPoints(member.uid, 50, 'phase_complete', `Completed Section: ${relevantPhase.name}`, project.id);
                 }
               });
-              showToast(`Phase "${relevantPhase.name}" complete! 50 points to assignees.`);
+              showToast(`Section "${relevantPhase.name}" complete! 50 points to assignees.`);
             }
           }
         }
@@ -983,101 +983,98 @@ const ProjectDetail: React.FC<ProjectDetailProps> = ({ project, onBack, canEdit,
 
       {/* Collapsible Project Details Section */}
       <div className="bg-slate-800/50 rounded-xl border border-slate-700 overflow-hidden">
+        {/* Header with Project Type, Duration, and Cost inline */}
         <button
           onClick={() => setIsCardsCollapsed(!isCardsCollapsed)}
           className="w-full p-4 flex items-center justify-between text-left hover:bg-slate-700/30 transition-colors"
         >
-          <h3 className="font-semibold text-lg text-white">Project Details</h3>
+          <div className="flex items-center gap-6 flex-wrap">
+            <h3 className="font-semibold text-lg text-white">Project Details</h3>
+            {/* Project Type - inline */}
+            <div className="flex items-center gap-2">
+              <div className="bg-slate-700 p-1.5 rounded-lg text-brand-light">
+                <InfoIcon className="w-4 h-4" />
+              </div>
+              <div>
+                <span className="text-xs text-slate-400">Project Type</span>
+                <p className="text-sm font-semibold text-white">{project.coreSystem}</p>
+              </div>
+            </div>
+            {/* Duration - inline */}
+            <div className="flex items-center gap-2">
+              <div className="bg-slate-700 p-1.5 rounded-lg text-brand-light">
+                <CalendarIcon className="w-4 h-4" />
+              </div>
+              <div>
+                <span className="text-xs text-slate-400">Duration</span>
+                <p className="text-sm font-semibold text-white">{project.duration} {project.durationUnit || 'weeks'}</p>
+              </div>
+            </div>
+            {/* Cost/Funding - inline */}
+            <div className="flex items-center gap-2">
+              <div className="bg-slate-700 p-1.5 rounded-lg text-brand-light">
+                <MoneyIcon className="w-4 h-4" />
+              </div>
+              <div>
+                <span className="text-xs text-slate-400">Cost / Funding</span>
+                <p className="text-sm font-semibold text-white">{project.cost ? `${project.currency === Currency.USD ? '$' : '₦'}${project.cost.toLocaleString()}` : '—'}</p>
+              </div>
+            </div>
+          </div>
           <ChevronDownIcon className={`w-5 h-5 text-slate-400 transition-transform duration-300 ${isCardsCollapsed ? '-rotate-90' : ''}`} />
         </button>
         <div className={`transition-all duration-300 ease-in-out ${isCardsCollapsed ? 'max-h-0 opacity-0' : 'max-h-[1000px] opacity-100'}`}>
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 p-4 pt-0">
-            <InfoCard icon={<InfoIcon />} title="Project Type" value={project.coreSystem} />
-
-            {/* Editable Duration Card */}
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-6 p-4 pt-0">
+            {/* Team Card - Expanded to 2 columns */}
             <div
-              className={`bg-slate-800/50 p-4 rounded-xl border ${canEdit && !editingInfoCard ? 'border-slate-700 hover:border-brand-secondary cursor-pointer transition-colors' : 'border-slate-700'} flex items-start space-x-4`}
-              onClick={() => canEdit && !editingInfoCard && setEditingInfoCard('duration')}
-            >
-              <div className="bg-slate-700 p-3 rounded-lg text-brand-light">
-                <CalendarIcon className="w-6 h-6" />
-              </div>
-              <div className="flex-1">
-                <h4 className="text-sm text-slate-400 font-medium">Duration</h4>
-                {editingInfoCard === 'duration' ? (
-                  <div className="mt-1 flex gap-2 items-center" onClick={e => e.stopPropagation()}>
-                    <input
-                      type="number"
-                      defaultValue={project.duration}
-                      className="bg-slate-900 border border-slate-600 rounded px-2 py-1 w-20 text-white text-sm focus:border-brand-secondary outline-none"
-                      onKeyDown={(e) => {
-                        if (e.key === 'Enter') handleUpdateDuration(e.currentTarget.value, (e.currentTarget.nextSibling as HTMLSelectElement).value as DurationUnit);
-                        if (e.key === 'Escape') setEditingInfoCard(null);
-                      }}
-                      autoFocus
-                    />
-                    <select
-                      defaultValue={project.durationUnit || DurationUnit.Weeks}
-                      className="bg-slate-900 border border-slate-600 rounded px-2 py-1 text-white text-sm focus:border-brand-secondary outline-none"
-                      onChange={(e) => {
-                        const input = e.target.previousSibling as HTMLInputElement;
-                        handleUpdateDuration(input.value, e.target.value as DurationUnit);
-                      }}
-                    >
-                      {Object.values(DurationUnit).map(unit => (
-                        <option key={unit} value={unit}>{unit}</option>
-                      ))}
-                    </select>
-                  </div>
-                ) : (
-                  <p className="text-base font-semibold text-white mt-1">{project.duration} {project.durationUnit || 'weeks'}</p>
-                )}
-              </div>
-            </div>
-
-            {/* Team Card - Click to Edit Project */}
-            <div
-              className={`bg-slate-800/50 p-4 rounded-xl border ${canEdit && onEditProject ? 'border-slate-700 hover:border-brand-secondary cursor-pointer transition-colors' : 'border-slate-700'}`}
+              className={`md:col-span-2 bg-slate-800/50 p-4 rounded-xl border ${canEdit && onEditProject ? 'border-slate-700 hover:border-brand-secondary cursor-pointer transition-colors' : 'border-slate-700'}`}
               onClick={() => canEdit && onEditProject && onEditProject()}
             >
-              <div className="flex items-center space-x-3 text-slate-400 mb-2">
+              <div className="flex items-center space-x-3 text-slate-400 mb-3">
                 <TeamIcon className="w-5 h-5" />
-                <span className="text-sm">Team Members</span>
+                <span className="text-sm font-medium">Team Members</span>
               </div>
               {project.team?.members && project.team.members.length > 0 ? (
-                <div className="space-y-2">
-                  {project.team.members.slice(0, 4).map((member) => {
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-4 gap-y-2">
+                  {[...project.team.members].sort((a, b) => {
+                    const getRank = (role?: string) => {
+                      if (role === 'primary') return 1;
+                      if (role === 'secondary') return 2;
+                      return 3;
+                    };
+                    return getRank(a.leadRole) - getRank(b.leadRole);
+                  }).slice(0, 8).map((member) => {
                     const isPrimary = member.leadRole === 'primary';
                     const isSecondary = member.leadRole === 'secondary';
                     const isLead = isPrimary || isSecondary;
                     const memberPhoto = getUserPhotoURL(member.uid, member.email);
                     const memberName = getUserDisplayName(member.uid, member.email) || member.displayName || member.email;
                     return (
-                      <div key={member.uid} className="flex items-center gap-2">
+                      <div key={member.uid} className="flex items-center gap-2 min-w-0">
                         {memberPhoto ? (
-                          <img src={memberPhoto} alt={memberName} className="w-6 h-6 rounded-full object-cover" />
+                          <img src={memberPhoto} alt={memberName} className="w-6 h-6 rounded-full object-cover flex-shrink-0" />
                         ) : (
-                          <div className={`w-6 h-6 rounded-full flex items-center justify-center ${isPrimary ? 'bg-blue-500/20' : isSecondary ? 'bg-amber-500/20' : 'bg-slate-700'
+                          <div className={`w-6 h-6 rounded-full flex items-center justify-center flex-shrink-0 ${isPrimary ? 'bg-blue-500/20' : isSecondary ? 'bg-amber-500/20' : 'bg-slate-700'
                             }`}>
                             {isLead ? <StarIcon className={`w-3 h-3 ${isPrimary ? 'text-blue-400' : 'text-amber-400'}`} /> : <UserIcon className="w-3 h-3 text-slate-400" />}
                           </div>
                         )}
-                        <span className={`text-sm truncate ${isPrimary ? 'text-blue-300 font-medium' : isSecondary ? 'text-amber-300 font-medium' : 'text-white'}`}>
+                        <span className={`text-sm ${isPrimary ? 'text-blue-300 font-medium' : isSecondary ? 'text-amber-300 font-medium' : 'text-white'}`}>
                           {memberName}
                         </span>
-                        <div className="scale-75 origin-left">
+                        <div className="scale-75 origin-left flex-shrink-0">
                           <UserAchievementBadge userId={member.uid} />
                         </div>
                         {isLead && (
-                          <span className={`text-xs px-1.5 py-0.5 rounded ${isPrimary ? 'bg-blue-500/30 text-blue-300' : 'bg-amber-500/30 text-amber-300'}`}>
+                          <span className={`text-xs px-1.5 py-0.5 rounded flex-shrink-0 ${isPrimary ? 'bg-blue-500/30 text-blue-300' : 'bg-amber-500/30 text-amber-300'}`}>
                             {isPrimary ? '1st Lead' : '2nd Lead'}
                           </span>
                         )}
                       </div>
                     );
                   })}
-                  {project.team.members.length > 4 && (
-                    <p className="text-xs text-slate-400">+{project.team.members.length - 4} more</p>
+                  {project.team.members.length > 8 && (
+                    <p className="text-xs text-slate-400 col-span-full">+{project.team.members.length - 8} more</p>
                   )}
                 </div>
               ) : project.team?.name ? (
@@ -1087,46 +1084,87 @@ const ProjectDetail: React.FC<ProjectDetailProps> = ({ project, onBack, canEdit,
               )}
             </div>
 
-            {/* Editable Cost Card */}
-            <div
-              className={`bg-slate-800/50 p-4 rounded-xl border ${canEdit && !editingInfoCard ? 'border-slate-700 hover:border-brand-secondary cursor-pointer transition-colors' : 'border-slate-700'} flex items-start space-x-4`}
-              onClick={() => canEdit && !editingInfoCard && setEditingInfoCard('cost')}
-            >
-              <div className="bg-slate-700 p-3 rounded-lg text-brand-light">
-                <MoneyIcon className="w-6 h-6" />
-              </div>
-              <div className="flex-1">
-                <h4 className="text-sm text-slate-400 font-medium">Cost / Funding</h4>
-                {editingInfoCard === 'cost' ? (
-                  <div className="mt-1 flex gap-2 items-center" onClick={e => e.stopPropagation()}>
-                    <select
-                      defaultValue={project.currency}
-                      className="bg-slate-900 border border-slate-600 rounded px-2 py-1 text-white text-sm focus:border-brand-secondary outline-none w-20"
-                      onChange={(e) => {
-                        const input = e.target.nextSibling as HTMLInputElement;
-                        handleUpdateCost(input.value, e.target.value as Currency);
-                      }}
-                    >
-                      {Object.values(Currency).map(curr => (
-                        <option key={curr} value={curr}>{curr}</option>
-                      ))}
-                    </select>
-                    <input
-                      type="text"
-                      defaultValue={project.cost}
-                      className="bg-slate-900 border border-slate-600 rounded px-2 py-1 w-24 text-white text-sm focus:border-brand-secondary outline-none"
-                      onKeyDown={(e) => {
-                        if (e.key === 'Enter') handleUpdateCost(e.currentTarget.value, (e.currentTarget.previousSibling as HTMLSelectElement).value as Currency);
-                        if (e.key === 'Escape') setEditingInfoCard(null);
-                      }}
-                      autoFocus
-                    />
+            {/* Project Status Card */}
+            {(() => {
+              const allTasks = project.phases.flatMap(ph => ph.tasks.flatMap(t => t.subTasks ? [t, ...t.subTasks] : [t]));
+              const now = new Date();
+              const atRiskCount = allTasks.filter(t => t.status === TaskStatus.AtRisk).length;
+              const overdueCount = allTasks.filter(t => {
+                const endDate = new Date(t.endDate);
+                const progress = (() => {
+                  const statusStr = t.status as string;
+                  if (statusStr === TaskStatus.Hundred || statusStr === 'Completed') return 100;
+                  const pct = parseInt(statusStr.replace('%', ''));
+                  return isNaN(pct) ? 0 : pct;
+                })();
+                return endDate < now && progress < 100;
+              }).length;
+              const lateDeliveryCount = allTasks.filter(t => {
+                const endDate = new Date(t.endDate);
+                const progress = (() => {
+                  const statusStr = t.status as string;
+                  if (statusStr === TaskStatus.Hundred || statusStr === 'Completed') return 100;
+                  const pct = parseInt(statusStr.replace('%', ''));
+                  return isNaN(pct) ? 0 : pct;
+                })();
+                // Late delivery: completed but after end date (simplified: just count overdue for now)
+                return endDate < now && progress === 100;
+              }).length;
+              const totalIssues = atRiskCount + overdueCount;
+
+              return (
+                <div className="bg-slate-800/50 p-4 rounded-xl border border-slate-700">
+                  <div className="flex items-center space-x-3 text-slate-400 mb-3">
+                    <ChartBarIcon className="w-5 h-5" />
+                    <span className="text-sm font-medium">Project Status</span>
                   </div>
-                ) : (
-                  <p className="text-base font-semibold text-white mt-1">{project.cost ? `${project.currency === Currency.USD ? '$' : '₦'}${project.cost.toLocaleString()}` : '—'}</p>
-                )}
-              </div>
-            </div>
+                  <div className="space-y-3">
+                    {/* At Risk */}
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-2">
+                        <div className={`w-2 h-2 rounded-full ${atRiskCount > 0 ? 'bg-red-500' : 'bg-green-500'}`} />
+                        <span className="text-sm text-slate-300">At Risk</span>
+                      </div>
+                      <span className={`text-sm font-semibold ${atRiskCount > 0 ? 'text-red-400' : 'text-green-400'}`}>
+                        {atRiskCount} {atRiskCount === 1 ? 'item' : 'items'}
+                      </span>
+                    </div>
+                    {/* Overdue */}
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-2">
+                        <div className={`w-2 h-2 rounded-full ${overdueCount > 0 ? 'bg-amber-500' : 'bg-green-500'}`} />
+                        <span className="text-sm text-slate-300">Overdue</span>
+                      </div>
+                      <span className={`text-sm font-semibold ${overdueCount > 0 ? 'text-amber-400' : 'text-green-400'}`}>
+                        {overdueCount} {overdueCount === 1 ? 'task' : 'tasks'}
+                      </span>
+                    </div>
+                    {/* Late Deliveries */}
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-2">
+                        <div className={`w-2 h-2 rounded-full ${lateDeliveryCount > 0 ? 'bg-orange-500' : 'bg-green-500'}`} />
+                        <span className="text-sm text-slate-300">Late Deliveries</span>
+                      </div>
+                      <span className={`text-sm font-semibold ${lateDeliveryCount > 0 ? 'text-orange-400' : 'text-green-400'}`}>
+                        {lateDeliveryCount}
+                      </span>
+                    </div>
+                    {/* Summary */}
+                    <div className="pt-2 border-t border-slate-700">
+                      {totalIssues === 0 ? (
+                        <p className="text-sm text-green-400 font-medium flex items-center gap-2">
+                          <CheckCircleIcon className="w-4 h-4" /> All on track
+                        </p>
+                      ) : (
+                        <p className="text-sm text-amber-400 font-medium">
+                          {totalIssues} {totalIssues === 1 ? 'issue' : 'issues'} need attention
+                        </p>
+                      )}
+                    </div>
+                  </div>
+                </div>
+              );
+            })()}
           </div>
         </div>
       </div>
@@ -1138,7 +1176,7 @@ const ProjectDetail: React.FC<ProjectDetailProps> = ({ project, onBack, canEdit,
             {canEdit && viewMode === 'list' && (
               <button onClick={handleAddPhase} className="flex items-center space-x-2 bg-slate-700 hover:bg-slate-600 text-slate-300 font-semibold py-1 px-3 rounded-lg transition-colors text-sm">
                 <PlusCircleIcon className="w-4 h-4" />
-                <span>Add Phase</span>
+                <span>Add Section</span>
               </button>
             )}
             <div className="flex items-center rounded-lg bg-slate-900 p-1">
@@ -1174,8 +1212,8 @@ const ProjectDetail: React.FC<ProjectDetailProps> = ({ project, onBack, canEdit,
                     <ChevronDownIcon className={`w-5 h-5 transition-transform duration-300 ${collapsedPhases.has(phase.id) ? '-rotate-90' : ''}`} />
                   </button>
 
-                  {/* Phase Status Donut Chart */}
-                  <PhaseStatusDonut
+                  {/* Section Status Donut Chart */}
+                  <SectionStatusDonut
                     tasks={phase.tasks}
                     size={46}
                     animationKey={phaseAnimationKeys[phase.id] || 0}
@@ -1248,7 +1286,7 @@ const ProjectDetail: React.FC<ProjectDetailProps> = ({ project, onBack, canEdit,
                           );
                         })
                       ) : (
-                        <div className="w-6 h-6 rounded-full bg-slate-700/50 border border-slate-600 border-dashed flex items-center justify-center hover:border-brand-secondary hover:text-brand-secondary transition-colors" title="Assign Phase">
+                        <div className="w-6 h-6 rounded-full bg-slate-700/50 border border-slate-600 border-dashed flex items-center justify-center hover:border-brand-secondary hover:text-brand-secondary transition-colors" title="Assign Section">
                           <UserIcon className="w-3 h-3 text-slate-400" />
                         </div>
                       )}
@@ -1367,8 +1405,8 @@ const ProjectDetail: React.FC<ProjectDetailProps> = ({ project, onBack, canEdit,
         isOpen={!!phaseToDelete}
         onClose={() => setPhaseToDelete(null)}
         onConfirm={handleConfirmDeletePhase}
-        title="Delete Phase"
-        message={<>Are you sure you want to delete the phase "<strong>{phaseToDelete?.name}</strong>"? All tasks and sub-tasks within this phase will also be deleted. This action cannot be undone.</>}
+        title="Delete Section"
+        message={<>Are you sure you want to delete the section "<strong>{phaseToDelete?.name}</strong>"? All tasks and sub-tasks within this section will also be deleted. This action cannot be undone.</>}
       />
 
       {assigningTo && (
@@ -1379,7 +1417,7 @@ const ProjectDetail: React.FC<ProjectDetailProps> = ({ project, onBack, canEdit,
               assignedMembers={assigningTo.currentAssignees}
               onSave={handleAssign}
               onCancel={() => setAssigningTo(null)}
-              title={`Assign ${assigningTo.type === 'phase' ? 'Phase' : 'Task'}: ${assigningTo.name}`}
+              title={`Assign ${assigningTo.type === 'phase' ? 'Section' : 'Task'}: ${assigningTo.name}`}
             />
           </div>
         </div>

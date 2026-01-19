@@ -199,8 +199,8 @@ const MasterDashboard: React.FC<MasterDashboardProps> = ({ projects, onSelectPro
                           <button
                             onClick={(e) => toggleProjectAnalysis(project.id, e)}
                             className={`flex items-center gap-1 px-3 py-1.5 rounded-lg text-xs font-medium transition-all ${expandedProjectId === project.id
-                                ? 'bg-brand-primary/20 text-brand-light'
-                                : 'bg-slate-700/50 hover:bg-slate-700 text-slate-300'
+                              ? 'bg-brand-primary/20 text-brand-light'
+                              : 'bg-slate-700/50 hover:bg-slate-700 text-slate-300'
                               }`}
                           >
                             <span>Analysis</span>

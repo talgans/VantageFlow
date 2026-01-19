@@ -186,7 +186,7 @@ const ProjectModal: React.FC<ProjectModalProps> = ({ onClose, onSave, projectToE
   const handleAddPhase = () => {
     const newPhase: Phase = {
       id: `new-phase-${Date.now()}`,
-      name: `New Phase ${phases.length + 1}`,
+      name: `New Section ${phases.length + 1}`,
       weekRange: 'TBD',
       tasks: [],
     };
@@ -518,7 +518,7 @@ const ProjectModal: React.FC<ProjectModalProps> = ({ onClose, onSave, projectToE
                     </div>
                   ))}
                   <button type="button" onClick={handleAddPhase} className="flex items-center gap-2 text-sm font-semibold text-white bg-slate-700 hover:bg-slate-600 px-3 py-2 rounded-lg">
-                    <PlusCircleIcon className="w-5 h-5" /> Add Phase
+                    <PlusCircleIcon className="w-5 h-5" /> Add Section
                   </button>
                 </div>
               </div>
@@ -569,7 +569,7 @@ const ProjectModal: React.FC<ProjectModalProps> = ({ onClose, onSave, projectToE
                   Paste any text with project information. The system will automatically detect:
                 </p>
                 <ul className="text-xs text-slate-500 mb-4 space-y-1 list-disc list-inside">
-                  <li>Questions or headings → Phases</li>
+                  <li>Questions or headings → Sections</li>
                   <li>Bullet points or lists → Tasks</li>
                   <li>Indented items → Subtasks</li>
                   <li>Keywords → Project type and duration</li>

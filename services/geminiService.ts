@@ -15,7 +15,7 @@ export const getProjectInsights = async (project: Project): Promise<string> => {
     const ai = new GoogleGenAI({ apiKey });
 
     const formatTasks = (tasks: Task[], indent = ''): string => {
-        return tasks.map(task => 
+        return tasks.map(task =>
             `${indent}- Task: "${task.name}"
 ${indent}  Status: ${task.status}
 ${indent}  Duration: ${task.startDate.toLocaleDateString()} to ${task.endDate.toLocaleDateString()}

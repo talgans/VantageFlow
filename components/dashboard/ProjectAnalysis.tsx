@@ -30,12 +30,12 @@ const ProjectAnalysis: React.FC<ProjectAnalysisProps> = ({ project }) => {
             .map(([id, value]) => ({ id, label: id, value }));
     }, [tasks]);
 
-    const phaseData = useMemo(() => {
+    const sectionData = useMemo(() => {
         return project.phases.map(ph => {
             const phTasks = ph.tasks.flatMap(t => t.subTasks ? [t, ...t.subTasks] : [t]);
             const completed = phTasks.filter(t => t.status === TaskStatus.Hundred || (t.status as string) === 'Completed').length;
             return {
-                phase: ph.name.length > 12 ? ph.name.substring(0, 12) + '...' : ph.name,
+                section: ph.name.length > 12 ? ph.name.substring(0, 12) + '...' : ph.name,
                 completed: completed,
                 remaining: phTasks.length - completed
             };
@@ -86,14 +86,14 @@ const ProjectAnalysis: React.FC<ProjectAnalysisProps> = ({ project }) => {
                 )}
 
                 {/* Phase Progress */}
-                {phaseData.length > 0 && (
+                {sectionData.length > 0 && (
                     <div className="bg-slate-800/50 p-4 rounded-lg border border-slate-700/50 h-[280px] flex flex-col">
-                        <h4 className="text-sm font-semibold text-slate-300 mb-3">Phase Progress</h4>
+                        <h4 className="text-sm font-semibold text-slate-300 mb-3">Section Progress</h4>
                         <div className="flex-grow">
                             <ResponsiveBar
-                                data={phaseData}
+                                data={sectionData}
                                 keys={['completed', 'remaining']}
-                                indexBy="phase"
+                                indexBy="section"
                                 margin={{ top: 10, right: 10, bottom: 40, left: 80 }}
                                 padding={0.3}
                                 layout="horizontal"

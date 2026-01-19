@@ -42,7 +42,7 @@ const countTasksByStatus = (tasks: Task[]): Record<string, number> => {
     return counts;
 };
 
-const PhaseStatusDonut: React.FC<PhaseStatusDonutProps> = ({ tasks, size = 36, animationKey = 0 }) => {
+const SectionStatusDonut: React.FC<PhaseStatusDonutProps> = ({ tasks, size = 36, animationKey = 0 }) => {
     const statusCounts = useMemo(() => countTasksByStatus(tasks), [tasks]);
 
     const totalTasks = useMemo(() => {
@@ -179,4 +179,4 @@ const PhaseStatusDonut: React.FC<PhaseStatusDonutProps> = ({ tasks, size = 36, a
     );
 };
 
-export default PhaseStatusDonut;
+export default SectionStatusDonut;
