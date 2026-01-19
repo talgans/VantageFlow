@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { useLocation, useNavigate } from 'react-router-dom';
 import { Project, UserRole, Phase, Task } from './types';
 import { MOCK_PROJECTS } from './constants';
 import MasterDashboard from './components/MasterDashboard';
@@ -26,24 +27,56 @@ import {
 
 const App: React.FC = () => {
     const { user, loading: authLoading, signOut } = useAuth();
+    const location = useLocation();
+    const navigate = useNavigate();
     const [projects, setProjects] = useState<Project[]>([]);
     const [selectedProject, setSelectedProject] = useState<Project | null>(null);
     const [loading, setLoading] = useState(true);
     const [isLoginModalOpen, setIsLoginModalOpen] = useState(false);
     const [currentPage, setCurrentPage] = useState<string>('dashboard');
+    const [pendingProjectId, setPendingProjectId] = useState<string | null>(null);
 
     // Track previous user to detect login vs token refresh
     const [prevUser, setPrevUser] = useState<typeof user>(null);
 
+    // Handle deep links from notification emails (e.g., /project/:id)
+    useEffect(() => {
+        const match = location.pathname.match(/^\/project\/([^/]+)$/);
+        if (match) {
+            const projectId = match[1];
+            console.log('[DeepLink] Detected project deep link:', projectId);
+            setPendingProjectId(projectId);
+            // Clear the URL to prevent the match from triggering repeatedly
+            navigate('/', { replace: true });
+        }
+    }, [location.pathname, navigate]);
+
+    // Once projects are loaded and we have a pending project ID, navigate to it
+    useEffect(() => {
+        if (pendingProjectId && projects.length > 0) {
+            const project = projects.find(p => p.id === pendingProjectId);
+            if (project) {
+                console.log('[DeepLink] Found project, navigating to:', project.name);
+                setSelectedProject(project);
+                setCurrentPage('projects');
+                showToast(`Opened project: ${project.name}`);
+            } else {
+                console.warn('[DeepLink] Project not found:', pendingProjectId);
+                showToast('Project not found or you do not have access');
+            }
+            setPendingProjectId(null);
+        }
+    }, [pendingProjectId, projects]);
+
     // Reset to dashboard only when user logs in (null -> user), not on token refresh updates
     useEffect(() => {
-        // Only reset navigation when user transitions from null to logged-in
-        if (user && !prevUser) {
+        // Only reset navigation when user transitions from null to logged-in (and no pending deep link)
+        if (user && !prevUser && !pendingProjectId) {
             setCurrentPage('dashboard');
             setSelectedProject(null);
         }
         setPrevUser(user);
-    }, [user, prevUser]);
+    }, [user, prevUser, pendingProjectId]);
     const [isSideNavOpen, setIsSideNavOpen] = useState(false);
     const [isSideNavCollapsed, setIsSideNavCollapsed] = useState(false);
 

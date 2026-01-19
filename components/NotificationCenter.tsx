@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { getFirestore, collection, query, where, orderBy, onSnapshot, updateDoc, doc, limit } from 'firebase/firestore';
 import { getAuth } from 'firebase/auth';
+import { useNavigate } from 'react-router-dom';
 import { Notification } from '../types';
 import { EnvelopeIcon, CheckCircleIcon, BellIcon } from './icons';
 
@@ -11,6 +12,28 @@ const NotificationCenter: React.FC = () => {
     const dropdownRef = useRef<HTMLDivElement>(null);
     const auth = getAuth();
     const db = getFirestore();
+    const navigate = useNavigate();
+
+    // Helper to handle notification link clicks - convert external VantageFlow links to internal navigation
+    const handleLinkClick = (e: React.MouseEvent<HTMLAnchorElement>, link: string) => {
+        e.preventDefault();
+        setIsOpen(false); // Close dropdown
+
+        // Extract path from VantageFlow URLs and use router navigation
+        try {
+            const url = new URL(link);
+            if (url.hostname.includes('vantageflow')) {
+                // Internal link - use router navigation
+                navigate(url.pathname, { replace: false });
+            } else {
+                // External link - open in new tab
+                window.open(link, '_blank');
+            }
+        } catch {
+            // If not a valid URL, try to navigate directly
+            navigate(link, { replace: false });
+        }
+    };
 
     useEffect(() => {
         const user = auth.currentUser;
@@ -139,10 +162,7 @@ const NotificationCenter: React.FC = () => {
                                                     {notification.link && (
                                                         <a
                                                             href={notification.link}
-                                                            onClick={(e) => {
-                                                                // e.stopPropagation(); // Don't stop propagation so we can mark as read on click
-                                                                // markAsRead(notification.id); // Handled by LI click
-                                                            }}
+                                                            onClick={(e) => handleLinkClick(e, notification.link!)}
                                                             className="text-xs text-brand-secondary hover:text-blue-400 font-medium flex items-center"
                                                         >
                                                             View
