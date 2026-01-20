@@ -143,19 +143,29 @@ const StatusEditButtons: React.FC<{
   const ref = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
-    ref.current?.focus();
-  }, []);
+    // Handle click outside to close - use 'click' instead of 'mousedown' so button onClick fires first
+    const handleClickOutside = (event: MouseEvent) => {
+      if (ref.current && !ref.current.contains(event.target as Node)) {
+        onClose();
+      }
+    };
+
+    // Add listener with a small delay to prevent immediate close from the opening click
+    const timer = setTimeout(() => {
+      document.addEventListener('click', handleClickOutside);
+    }, 10);
+
+    return () => {
+      clearTimeout(timer);
+      document.removeEventListener('click', handleClickOutside);
+    };
+  }, [onClose]);
+
+
 
   return (
     <div
       ref={ref}
-      tabIndex={-1}
-      onBlur={(e) => {
-        // Close only if focus moves outside the component
-        if (!e.currentTarget.contains(e.relatedTarget as Node)) {
-          onClose();
-        }
-      }}
       className="absolute top-1/2 -translate-y-1/2 left-0 z-20 flex items-center space-x-1 outline-none p-1 bg-slate-900 rounded-lg shadow-xl"
     >
       {Object.values(TaskStatus).map((status) => (
@@ -300,7 +310,12 @@ const TaskRow: React.FC<TaskRowProps> = ({ task, level, isExpanded, onToggleExpa
           ) : (
             <div
               className="inline-block cursor-pointer"
-              onClick={() => canEditTask && setEditingField({ taskId: task.id, field: 'status' })}
+              onClick={(e) => {
+                e.stopPropagation();
+                if (canEditTask) {
+                  setEditingField({ taskId: task.id, field: 'status' });
+                }
+              }}
             >
               <StatusBadge status={task.status} />
             </div>
@@ -514,7 +529,8 @@ const ProjectDetail: React.FC<ProjectDetailProps> = ({ project, onBack, canEdit,
     const member = project.team?.members?.find(m => m.uid === currentUserId);
     if (!member) return true;
     if (member.leadRole === 'primary' || member.leadRole === 'secondary') return true;
-    if (!itemOwnerId) return false;
+    // If no owner is set on the item, allow any team member to edit
+    if (!itemOwnerId) return true;
     return itemOwnerId === currentUserId;
   };
 
@@ -708,7 +724,7 @@ const ProjectDetail: React.FC<ProjectDetailProps> = ({ project, onBack, canEdit,
     if (!taskName.trim()) return;
 
     const newTask: Task = {
-      id: `task-${Date.now()}`,
+      id: `task-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
       name: taskName.trim(),
       status: TaskStatus.Zero,
       startDate: new Date(),
@@ -732,7 +748,7 @@ const ProjectDetail: React.FC<ProjectDetailProps> = ({ project, onBack, canEdit,
     if (!subTaskName.trim()) return;
 
     const newSubTask: Task = {
-      id: `subtask-${Date.now()}`,
+      id: `subtask-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
       name: subTaskName.trim(),
       status: TaskStatus.Zero,
       startDate: new Date(),
@@ -771,6 +787,7 @@ const ProjectDetail: React.FC<ProjectDetailProps> = ({ project, onBack, canEdit,
       setEditingField(null);
       return;
     }
+
     const updatedProject = JSON.parse(JSON.stringify(project), reviveDates);
 
     const findAndUpdate = (tasks: Task[]): boolean => {

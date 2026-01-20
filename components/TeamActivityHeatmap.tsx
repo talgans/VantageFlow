@@ -252,12 +252,11 @@ const TeamActivityHeatmap: React.FC<TeamActivityHeatmapProps> = ({
         return { total, currentStreak, longestStreak };
     }, [data, dataMap]);
 
-    // Generate grid data based on view
+    // Generate grid data based on view - organized by months with individual days
     const gridData = useMemo(() => {
         const todayDate = new Date();
         todayDate.setHours(0, 0, 0, 0);
 
-        let weeks: number;
         let cellSize: number;
         let startDate: Date;
         let endDate: Date;
@@ -269,127 +268,113 @@ const TeamActivityHeatmap: React.FC<TeamActivityHeatmapProps> = ({
             startDate.setHours(0, 0, 0, 0);
             endDate.setHours(0, 0, 0, 0);
 
-            // Calculate weeks between dates
-            const diffTime = endDate.getTime() - startDate.getTime();
-            const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
-            weeks = Math.ceil(diffDays / 7) + 1;
-
-            // Dynamically size cells based on range
-            if (weeks <= 5) {
-                cellSize = 18;
-            } else if (weeks <= 13) {
-                cellSize = 14;
-            } else if (weeks <= 26) {
-                cellSize = 12;
-            } else {
-                cellSize = 10;
-            }
+            const diffDays = Math.ceil((endDate.getTime() - startDate.getTime()) / (1000 * 60 * 60 * 24));
+            cellSize = diffDays <= 60 ? 14 : diffDays <= 180 ? 10 : 8;
         } else if (activeView === 'month') {
-            // Calendar month view - show entire current month (1st to last day)
             const currentYear = todayDate.getFullYear();
             const currentMonth = todayDate.getMonth();
-
-            // First day of current month
             startDate = new Date(currentYear, currentMonth, 1);
-            startDate.setHours(0, 0, 0, 0);
-
-            // Last day of current month (show entire month, not just up to today)
             endDate = new Date(currentYear, currentMonth + 1, 0);
-            endDate.setHours(0, 0, 0, 0);
-
-            // Calculate weeks needed (from start of week containing 1st, to end of week containing last day)
-            const firstWeekStart = getStartOfWeek(startDate);
-            const lastWeekStart = getStartOfWeek(endDate);
-
-            const diffTime = lastWeekStart.getTime() - firstWeekStart.getTime();
-            weeks = Math.ceil(diffTime / (1000 * 60 * 60 * 24) / 7) + 1;
-            cellSize = 18;
+            cellSize = 16;
+        } else if (activeView === 'week') {
+            startDate = getStartOfWeek(todayDate);
+            endDate = addDays(startDate, 6);
+            cellSize = 24;
+        } else if (activeView === 'quarter') {
+            const currentMonth = todayDate.getMonth();
+            const quarterStart = Math.floor(currentMonth / 3) * 3;
+            startDate = new Date(todayDate.getFullYear(), quarterStart, 1);
+            endDate = new Date(todayDate.getFullYear(), quarterStart + 3, 0);
+            cellSize = 10;
         } else {
-            const config = VIEW_CONFIG[activeView];
-            weeks = config.weeks;
-            cellSize = config.cellSize;
-
-            // Calculate start date (beginning of the week, N weeks ago)
-            const endOfWeek = getStartOfWeek(todayDate);
-            endOfWeek.setDate(endOfWeek.getDate() + 6);
-            startDate = addDays(endOfWeek, -(weeks * 7) + 1);
-            endDate = todayDate;
+            // Year view - show all 12 months
+            startDate = new Date(todayDate.getFullYear(), 0, 1);
+            endDate = new Date(todayDate.getFullYear(), 11, 31);
+            cellSize = 8;
         }
 
-        // Build grid: columns = weeks, rows = days of week
-        const weeksData: Array<{
-            weekStart: Date;
-            days: Array<{ date: Date; dateKey: string; value: number; futureValue: number; overdueValue: number }>;
-        }> = [];
+        // Build month-based structure
+        interface DayData {
+            date: Date;
+            dateKey: string;
+            dayOfMonth: number;
+            value: number;
+            futureValue: number;
+            overdueValue: number;
+            isToday: boolean;
+            isFuture: boolean;
+        }
 
-        let currentWeekStart = getStartOfWeek(startDate);
+        interface MonthData {
+            month: number;
+            year: number;
+            monthName: string;
+            days: DayData[];
+            daysInMonth: number;
+        }
 
-        for (let w = 0; w < weeks; w++) {
-            const week = {
-                weekStart: new Date(currentWeekStart),
-                days: [] as Array<{ date: Date; dateKey: string; value: number; futureValue: number; overdueValue: number }>,
-            };
+        const monthsData: MonthData[] = [];
+        let currentMonth = startDate.getMonth();
+        let currentYear = startDate.getFullYear();
 
-            for (let d = 0; d < 7; d++) {
-                const date = addDays(currentWeekStart, d);
+        // Iterate through all months in range
+        while (new Date(currentYear, currentMonth, 1) <= endDate) {
+            const monthStart = new Date(currentYear, currentMonth, 1);
+            const monthEnd = new Date(currentYear, currentMonth + 1, 0);
+            const daysInMonth = monthEnd.getDate();
+
+            const days: DayData[] = [];
+
+            for (let d = 1; d <= daysInMonth; d++) {
+                const date = new Date(currentYear, currentMonth, d);
                 const dateKey = getDateKey(date);
-                const value = dataMap.get(dateKey) || 0;
-                const futureValue = futureDataMap.get(dateKey) || 0;
-                const overdueValue = overdueDataMap.get(dateKey) || 0;
 
-                // Check if date is within range
-                const isInRange = date >= startDate && date <= endDate;
-                const isFuture = date > todayDate;
+                // Check if within display range
+                if (date >= startDate && date <= endDate) {
+                    const value = dataMap.get(dateKey) || 0;
+                    const futureValue = futureDataMap.get(dateKey) || 0;
+                    const overdueValue = overdueDataMap.get(dateKey) || 0;
+                    const isToday = dateKey === getDateKey(todayDate);
+                    const isFuture = date > todayDate;
 
-                if (isInRange && !isFuture) {
-                    // Past or today, in range - show with actual value and overdue info
-                    week.days.push({ date, dateKey, value, futureValue: 0, overdueValue });
-                } else if (isInRange && isFuture) {
-                    // Future day but within month range - show with future task value (amber)
-                    week.days.push({ date, dateKey, value: -2, futureValue, overdueValue: 0 });
-                } else {
-                    week.days.push({ date, dateKey, value: -1, futureValue: 0, overdueValue: 0 }); // -1 = out of range
+                    days.push({
+                        date,
+                        dateKey,
+                        dayOfMonth: d,
+                        value: isFuture ? -2 : value,
+                        futureValue: isFuture ? futureValue : 0,
+                        overdueValue: isFuture ? 0 : overdueValue,
+                        isToday,
+                        isFuture,
+                    });
                 }
             }
 
-            weeksData.push(week);
-            currentWeekStart = addDays(currentWeekStart, 7);
+            if (days.length > 0) {
+                monthsData.push({
+                    month: currentMonth,
+                    year: currentYear,
+                    monthName: MONTHS[currentMonth],
+                    days,
+                    daysInMonth,
+                });
+            }
+
+            // Move to next month
+            currentMonth++;
+            if (currentMonth > 11) {
+                currentMonth = 0;
+                currentYear++;
+            }
         }
 
-        // Find max value for intensity calculation
         const maxValue = Math.max(...data.map((d) => d.value), 1);
 
-        // Calculate month labels
-        const monthLabels: Array<{ month: string; colStart: number }> = [];
-        let lastMonth = -1;
-
-        weeksData.forEach((week, index) => {
-            const monthOfWeek = week.weekStart.getMonth();
-            if (monthOfWeek !== lastMonth) {
-                monthLabels.push({
-                    month: MONTHS[monthOfWeek],
-                    colStart: index,
-                });
-                lastMonth = monthOfWeek;
-            }
-        });
-
-        // For month view, only show the current month label
-        if (activeView === 'month') {
-            const currentMonth = new Date().getMonth();
-            return {
-                weeks: weeksData,
-                maxValue,
-                monthLabels: [{ month: MONTHS[currentMonth], colStart: 0 }],
-                config: { weeks, cellSize, label: 'Month' }
-            };
-        }
-
         return {
-            weeks: weeksData,
+            months: monthsData,
             maxValue,
-            monthLabels,
-            config: { weeks, cellSize, label: activeView === 'range' ? 'Range' : VIEW_CONFIG[activeView].label }
+            cellSize,
+            viewLabel: activeView === 'range' ? 'Range' : VIEW_CONFIG[activeView]?.label || activeView,
         };
     }, [activeView, dataMap, futureDataMap, overdueDataMap, data, rangeStart, rangeEnd]);
 
@@ -423,8 +408,8 @@ const TeamActivityHeatmap: React.FC<TeamActivityHeatmapProps> = ({
     return (
         <div className="w-full">
             {/* Header with title and view toggle */}
-            <div className="flex flex-wrap items-center justify-between gap-4 mb-4">
-                <h3 className="text-xl font-bold text-white flex items-center gap-2">
+            <div className="flex flex-wrap items-center justify-between gap-3 mb-3">
+                <h3 className="text-lg font-bold text-white flex items-center gap-2">
                     <svg className="w-5 h-5 text-orange-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17.657 18.657A8 8 0 016.343 7.343S7 9 9 10c0-2 .5-5 2.986-7C14 5 16.09 5.777 17.656 7.343A7.975 7.975 0 0120 13a7.975 7.975 0 01-2.343 5.657z" />
                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9.879 16.121A3 3 0 1012.015 11L11 14H9c0 .768.293 1.536.879 2.121z" />
@@ -433,12 +418,12 @@ const TeamActivityHeatmap: React.FC<TeamActivityHeatmapProps> = ({
                 </h3>
 
                 {/* View Toggle */}
-                <div className="flex bg-slate-700/50 rounded-lg p-1">
+                <div className="flex bg-slate-700/50 rounded-lg p-0.5">
                     {(Object.keys(VIEW_CONFIG) as ViewType[]).map((viewKey) => (
                         <button
                             key={viewKey}
                             onClick={() => setActiveView(viewKey)}
-                            className={`px-3 py-1.5 text-sm font-medium rounded-md transition-all duration-200 ${activeView === viewKey
+                            className={`px-2.5 py-1 text-xs font-medium rounded-md transition-all duration-200 ${activeView === viewKey
                                 ? 'bg-cyan-600 text-white shadow-sm'
                                 : 'text-slate-400 hover:text-white hover:bg-slate-600/50'
                                 }`}
@@ -449,7 +434,7 @@ const TeamActivityHeatmap: React.FC<TeamActivityHeatmapProps> = ({
                     {/* Range button */}
                     <button
                         onClick={() => setActiveView('range')}
-                        className={`px-3 py-1.5 text-sm font-medium rounded-md transition-all duration-200 ${activeView === 'range'
+                        className={`px-2.5 py-1 text-xs font-medium rounded-md transition-all duration-200 ${activeView === 'range'
                             ? 'bg-cyan-600 text-white shadow-sm'
                             : 'text-slate-400 hover:text-white hover:bg-slate-600/50'
                             }`}
@@ -494,176 +479,111 @@ const TeamActivityHeatmap: React.FC<TeamActivityHeatmapProps> = ({
                 </div>
             )}
 
-            {/* Statistics */}
+            {/* Statistics - Compact inline layout */}
             {showStats && (
-                <div className="grid grid-cols-3 gap-4 mb-6">
-                    <div className="bg-slate-700/30 rounded-lg p-3 border border-slate-700/50">
-                        <div className="text-slate-400 text-xs uppercase tracking-wider mb-1">All Activity</div>
-                        <div className="text-2xl font-bold text-white">
+                <div className="flex flex-wrap gap-2 mb-4">
+                    <div className="bg-slate-700/30 rounded-lg px-4 py-2 border border-slate-700/50 flex items-center gap-2">
+                        <span className="text-slate-400 text-xs uppercase tracking-wider">All Activity</span>
+                        <span className="text-xl font-bold text-white">
                             {stats.total.toLocaleString()}
-                            <span className="text-sm font-normal text-slate-400 ml-1">total</span>
-                        </div>
+                        </span>
+                        <span className="text-xs text-slate-400">total</span>
                     </div>
 
-                    <div className="bg-slate-700/30 rounded-lg p-3 border border-slate-700/50">
-                        <div className="text-slate-400 text-xs uppercase tracking-wider mb-1">Longest Streak</div>
-                        <div className="text-2xl font-bold text-white">
+                    <div className="bg-slate-700/30 rounded-lg px-4 py-2 border border-slate-700/50 flex items-center gap-2">
+                        <span className="text-slate-400 text-xs uppercase tracking-wider">Longest Streak</span>
+                        <span className="text-xl font-bold text-white">
                             {stats.longestStreak}
-                            <span className="text-sm font-normal text-slate-400 ml-1">days</span>
-                        </div>
+                        </span>
+                        <span className="text-xs text-slate-400">days</span>
                     </div>
 
-                    <div className="bg-slate-700/30 rounded-lg p-3 border border-slate-700/50">
-                        <div className="text-slate-400 text-xs uppercase tracking-wider mb-1">Current Streak</div>
-                        <div className="text-2xl font-bold text-white flex items-center gap-2">
+                    <div className="bg-slate-700/30 rounded-lg px-4 py-2 border border-slate-700/50 flex items-center gap-2">
+                        <span className="text-slate-400 text-xs uppercase tracking-wider">Current Streak</span>
+                        <span className="text-xl font-bold text-white">
                             {stats.currentStreak}
-                            <span className="text-sm font-normal text-slate-400">days</span>
-                            {stats.currentStreak > 0 && (
-                                <span className="text-xs text-emerald-400 flex items-center">
-                                    <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 10l7-7m0 0l7 7m-7-7v18" />
-                                    </svg>
-                                </span>
-                            )}
-                        </div>
+                        </span>
+                        <span className="text-xs text-slate-400">days</span>
+                        {stats.currentStreak > 0 && (
+                            <span className="text-xs text-emerald-400 flex items-center">
+                                <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 10l7-7m0 0l7 7m-7-7v18" />
+                                </svg>
+                            </span>
+                        )}
                     </div>
                 </div>
             )}
 
-            {/* Heatmap Grid */}
+            {/* Heatmap Grid - Month-based layout */}
             <div className="heatmap-container relative overflow-x-auto pb-2">
-                {/* Month labels */}
-                <div
-                    className="flex mb-1 text-xs text-slate-400"
-                    style={{
-                        marginLeft: activeView === 'week' ? 0 : '36px',
-                    }}
-                >
-                    {gridData.monthLabels.map((label, index) => (
-                        <div
-                            key={`${label.month}-${index}`}
-                            className="text-left"
-                            style={{
-                                marginLeft: index === 0
-                                    ? `${label.colStart * (gridData.config.cellSize + 3)}px`
-                                    : `${(label.colStart - (gridData.monthLabels[index - 1]?.colStart || 0) - 1) * (gridData.config.cellSize + 3)}px`,
-                                minWidth: `${gridData.config.cellSize + 3}px`,
-                            }}
-                        >
-                            {label.month}
+                {/* Month rows - each month shows its days horizontally */}
+                <div className="flex flex-col gap-1">
+                    {gridData.months.map((month, monthIndex) => (
+                        <div key={`${month.year}-${month.month}`} className="flex items-center">
+                            {/* Month label */}
+                            <div
+                                className="text-xs text-slate-400 font-medium w-8 flex-shrink-0 text-right pr-2"
+                            >
+                                {month.monthName}
+                            </div>
+
+                            {/* Days grid for this month */}
+                            <div className="flex gap-[2px] flex-wrap" style={{ maxWidth: `${31 * (gridData.cellSize + 2)}px` }}>
+                                {month.days.map((day) => {
+                                    // Determine cell styling
+                                    const isFutureDay = day.isFuture;
+                                    const hasFutureTasks = isFutureDay && day.futureValue > 0;
+                                    const hasOverdueTasks = !isFutureDay && day.overdueValue > 0;
+                                    const hasActivity = !isFutureDay && day.value > 0;
+                                    const isInteractive = hasActivity || hasFutureTasks || hasOverdueTasks;
+
+                                    // Determine background color
+                                    let bgColor = INTENSITY_COLORS[0]; // Default empty
+                                    let hoverRingColor = 'hover:ring-cyan-400/50';
+
+                                    if (hasOverdueTasks) {
+                                        bgColor = OVERDUE_INTENSITY_COLORS[getIntensityLevel(day.overdueValue, maxOverdueValue)];
+                                        hoverRingColor = 'hover:ring-rose-400/50';
+                                    } else if (hasActivity) {
+                                        bgColor = INTENSITY_COLORS[getIntensityLevel(day.value, gridData.maxValue)];
+                                    } else if (hasFutureTasks) {
+                                        bgColor = FUTURE_INTENSITY_COLORS[getIntensityLevel(day.futureValue, maxFutureValue)];
+                                        hoverRingColor = 'hover:ring-amber-400/50';
+                                    }
+
+                                    return (
+                                        <div
+                                            key={day.dateKey}
+                                            className={`rounded transition-all duration-150 relative ${isInteractive
+                                                    ? `cursor-pointer hover:scale-125 hover:ring-2 ${hoverRingColor}`
+                                                    : isFutureDay
+                                                        ? 'opacity-50'
+                                                        : ''
+                                                } ${day.isToday ? 'ring-2 ring-cyan-400' : ''}`}
+                                            style={{
+                                                width: gridData.cellSize,
+                                                height: gridData.cellSize,
+                                                backgroundColor: bgColor,
+                                                borderRadius: gridData.cellSize >= 12 ? '3px' : '2px',
+                                            }}
+                                            onMouseEnter={(e) => {
+                                                if (hasOverdueTasks) {
+                                                    handleCellMouseEnter(e, day.dateKey, day.overdueValue, false, true);
+                                                } else if (hasActivity) {
+                                                    handleCellMouseEnter(e, day.dateKey, day.value, false, false);
+                                                } else if (hasFutureTasks) {
+                                                    handleCellMouseEnter(e, day.dateKey, day.futureValue, true, false);
+                                                }
+                                            }}
+                                            onMouseLeave={handleCellMouseLeave}
+                                            title={`${day.dayOfMonth}`}
+                                        />
+                                    );
+                                })}
+                            </div>
                         </div>
                     ))}
-                </div>
-
-                {/* Grid with day labels */}
-                <div className="flex">
-                    {/* Day labels */}
-                    {activeView !== 'week' && (
-                        <div className="flex flex-col justify-around mr-2 text-xs text-slate-400" style={{ height: `${7 * (gridData.config.cellSize + 3) - 3}px` }}>
-                            {DAYS_OF_WEEK.filter((_, i) => i % 2 === 1).map((day) => (
-                                <div key={day} className="h-3 flex items-center">{day}</div>
-                            ))}
-                        </div>
-                    )}
-
-                    {/* Cells grid */}
-                    <div
-                        className="flex gap-[3px] transition-all duration-300"
-                        style={{
-                            flexDirection: activeView === 'week' ? 'row' : 'column',
-                        }}
-                    >
-                        {activeView === 'week' ? (
-                            // Week view: single row with 7 large cells
-                            <div className="flex gap-[3px]">
-                                {gridData.weeks[gridData.weeks.length - 1]?.days.map((day, dayIndex) => (
-                                    <div
-                                        key={day.dateKey}
-                                        className={`rounded-lg transition-all duration-150 ${day.value >= 0 ? 'cursor-pointer hover:scale-110 hover:ring-2 hover:ring-cyan-400/50' : 'opacity-30'
-                                            }`}
-                                        style={{
-                                            width: gridData.config.cellSize,
-                                            height: gridData.config.cellSize,
-                                            backgroundColor: day.value >= 0
-                                                ? INTENSITY_COLORS[getIntensityLevel(day.value, gridData.maxValue)]
-                                                : INTENSITY_COLORS[0],
-                                        }}
-                                        onMouseEnter={(e) => handleCellMouseEnter(e, day.dateKey, day.value)}
-                                        onMouseLeave={handleCellMouseLeave}
-                                    >
-                                        <div className="text-center text-xs text-slate-400 mt-1">
-                                            {DAYS_OF_WEEK[dayIndex]}
-                                        </div>
-                                    </div>
-                                ))}
-                            </div>
-                        ) : (
-                            // Other views: 7 rows (days) x N columns (weeks)
-                            DAYS_OF_WEEK.map((_, dayIndex) => (
-                                <div key={dayIndex} className="flex gap-[3px]">
-                                    {gridData.weeks.map((week) => {
-                                        const day = week.days[dayIndex];
-                                        if (!day) return null;
-
-                                        // Determine cell styling based on value
-                                        // value >= 0: normal day with data (cyan for activity, rose if overdue)
-                                        // value === -1: out of range (e.g., Dec days when viewing Jan)
-                                        // value === -2: future day in range - check futureValue for tasks (amber)
-                                        const isOutOfRange = day.value === -1;
-                                        const isFutureInRange = day.value === -2;
-                                        const hasFutureTasks = isFutureInRange && day.futureValue > 0;
-                                        const hasOverdueTasks = day.value >= 0 && day.overdueValue > 0;
-                                        const isInteractive = day.value >= 0 || hasFutureTasks;
-
-                                        // Determine background color - overdue takes priority over activity
-                                        let bgColor = INTENSITY_COLORS[0]; // Default empty
-                                        let hoverRingColor = 'hover:ring-cyan-400/50';
-
-                                        if (hasOverdueTasks) {
-                                            // Overdue tasks - rose (priority over regular activity)
-                                            bgColor = OVERDUE_INTENSITY_COLORS[getIntensityLevel(day.overdueValue, maxOverdueValue)];
-                                            hoverRingColor = 'hover:ring-rose-400/50';
-                                        } else if (day.value >= 0 && day.value > 0) {
-                                            // Past activity - cyan
-                                            bgColor = INTENSITY_COLORS[getIntensityLevel(day.value, gridData.maxValue)];
-                                        } else if (hasFutureTasks) {
-                                            // Future with tasks - amber
-                                            bgColor = FUTURE_INTENSITY_COLORS[getIntensityLevel(day.futureValue, maxFutureValue)];
-                                            hoverRingColor = 'hover:ring-amber-400/50';
-                                        }
-
-                                        return (
-                                            <div
-                                                key={day.dateKey}
-                                                className={`rounded transition-all duration-150 ${isInteractive
-                                                    ? `cursor-pointer hover:scale-125 hover:ring-2 ${hoverRingColor}`
-                                                    : isOutOfRange
-                                                        ? 'opacity-15'
-                                                        : 'opacity-40'
-                                                    }`}
-                                                style={{
-                                                    width: gridData.config.cellSize,
-                                                    height: gridData.config.cellSize,
-                                                    backgroundColor: bgColor,
-                                                    borderRadius: gridData.config.cellSize >= 14 ? '4px' : '2px',
-                                                }}
-                                                onMouseEnter={(e) => {
-                                                    if (hasOverdueTasks) {
-                                                        handleCellMouseEnter(e, day.dateKey, day.overdueValue, false, true);
-                                                    } else if (day.value >= 0) {
-                                                        handleCellMouseEnter(e, day.dateKey, day.value, false, false);
-                                                    } else if (hasFutureTasks) {
-                                                        handleCellMouseEnter(e, day.dateKey, day.futureValue, true, false);
-                                                    }
-                                                }}
-                                                onMouseLeave={handleCellMouseLeave}
-                                            />
-                                        );
-                                    })}
-                                </div>
-                            ))
-                        )}
-                    </div>
                 </div>
 
                 {/* Legend */}

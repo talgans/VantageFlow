@@ -176,8 +176,7 @@ const App: React.FC = () => {
     const handleUpdateProject = async (updatedProject: Project) => {
         try {
             await updateFirestoreProject(updatedProject);
-            // Real-time listener will update the state automatically
-            setSelectedProject(updatedProject);
+            // Real-time listener will update the state
             showToast('Project updated successfully');
         } catch (error) {
             console.error('Error updating project:', error);
