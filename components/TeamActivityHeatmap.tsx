@@ -1,9 +1,17 @@
 import React, { useState, useMemo } from 'react';
 
 // Types
+interface TaskDetail {
+    projectName: string;
+    sectionName: string;
+    taskName: string;
+    assignees: string[];
+}
+
 interface CalendarDataPoint {
     day: string; // YYYY-MM-DD format
     value: number;
+    tasks?: TaskDetail[]; // Optional detailed task information
 }
 
 interface TeamActivityHeatmapProps {
@@ -21,8 +29,8 @@ type ViewType = 'week' | 'month' | 'quarter' | 'year' | 'range';
 const VIEW_CONFIG: Record<Exclude<ViewType, 'range'>, { weeks: number; cellSize: number; label: string }> = {
     week: { weeks: 1, cellSize: 24, label: 'Week' },
     month: { weeks: 5, cellSize: 18, label: 'Month' },
-    quarter: { weeks: 13, cellSize: 14, label: 'Quarter' },
-    year: { weeks: 52, cellSize: 10, label: 'Year' },
+    quarter: { weeks: 13, cellSize: 32, label: 'Quarter' },
+    year: { weeks: 52, cellSize: 23, label: 'Year' },
 };
 
 const DAYS_OF_WEEK = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
@@ -141,9 +149,10 @@ const Tooltip: React.FC<{
     value: number;
     isFuture?: boolean;
     isOverdue?: boolean;
+    tasks?: TaskDetail[];
     x: number;
     y: number;
-}> = ({ date, value, isFuture, isOverdue, x, y }) => {
+}> = ({ date, value, isFuture, isOverdue, tasks, x, y }) => {
     const dateObj = new Date(date);
     const formattedDate = dateObj.toLocaleDateString('en-US', {
         weekday: 'short',
@@ -164,16 +173,45 @@ const Tooltip: React.FC<{
         labelText = `${value} ${value === 1 ? 'task' : 'tasks'} due`;
     }
 
+    // Check if we should show task details (for future/overdue tasks)
+    const showTaskDetails = (isFuture || isOverdue) && tasks && tasks.length > 0;
+
     return (
         <div
-            className={`absolute z-50 px-3 py-2 border rounded-lg shadow-xl text-sm pointer-events-none transform -translate-x-1/2 ${bgClass}`}
+            className={`fixed z-[100] px-3 py-2 border rounded-lg shadow-xl text-sm pointer-events-none transform -translate-x-1/2 ${bgClass}`}
             style={{
                 left: x,
-                top: y - 50,
+                top: y - (showTaskDetails ? 100 : 60),
+                maxWidth: '300px',
             }}
         >
             <div className="font-semibold text-white">{labelText}</div>
-            <div className="text-slate-300 text-xs">{formattedDate}</div>
+            <div className="text-slate-300 text-xs mb-1">{formattedDate}</div>
+
+            {/* Task details list */}
+            {showTaskDetails && (
+                <div className="mt-2 max-h-40 overflow-y-auto space-y-2 border-t border-slate-600/50 pt-2">
+                    {tasks!.slice(0, 5).map((task, idx) => (
+                        <div key={idx} className="text-xs">
+                            <div className="text-cyan-400 font-bold mb-0.5 truncate">{task.projectName}</div>
+                            <div className="text-white font-medium truncate mb-0.5">{task.taskName}</div>
+                            <div className="text-slate-400 truncate text-[10px]">
+                                Section: {task.sectionName}
+                            </div>
+                            {task.assignees.length > 0 && (
+                                <div className="text-slate-500 truncate text-[10px] mt-0.5">
+                                    👤 {task.assignees.slice(0, 2).join(', ')}
+                                    {task.assignees.length > 2 && ` +${task.assignees.length - 2}`}
+                                </div>
+                            )}
+                        </div>
+                    ))}
+                    {tasks!.length > 5 && (
+                        <div className="text-xs text-slate-400 italic">+{tasks!.length - 5} more...</div>
+                    )}
+                </div>
+            )}
+
             <div className={`absolute left-1/2 -bottom-1.5 -translate-x-1/2 w-2.5 h-2.5 border-r border-b rotate-45 ${bgClass}`} />
         </div>
     );
@@ -194,6 +232,7 @@ const TeamActivityHeatmap: React.FC<TeamActivityHeatmapProps> = ({
         value: number;
         isFuture?: boolean;
         isOverdue?: boolean;
+        tasks?: TaskDetail[];
         x: number;
         y: number;
     } | null>(null);
@@ -206,6 +245,10 @@ const TeamActivityHeatmap: React.FC<TeamActivityHeatmapProps> = ({
     const [rangeStart, setRangeStart] = useState<string>(defaultStartDate.toISOString().split('T')[0]);
     const [rangeEnd, setRangeEnd] = useState<string>(today.toISOString().split('T')[0]);
 
+    // Navigation offset states for week and month views
+    const [weekOffset, setWeekOffset] = useState(0);
+    const [monthOffset, setMonthOffset] = useState(0);
+
     // Create data map for quick lookups (past activity)
     const dataMap = useMemo(() => {
         const map = new Map<string, number>();
@@ -215,20 +258,30 @@ const TeamActivityHeatmap: React.FC<TeamActivityHeatmapProps> = ({
         return map;
     }, [data]);
 
-    // Create future data map for quick lookups (future tasks)
+    // Create future data map for quick lookups (future tasks) - stores both value and task details
     const futureDataMap = useMemo(() => {
-        const map = new Map<string, number>();
+        const map = new Map<string, { value: number; tasks: TaskDetail[] }>();
         futureData.forEach((d) => {
-            map.set(d.day, (map.get(d.day) || 0) + d.value);
+            const existing = map.get(d.day) || { value: 0, tasks: [] };
+            existing.value += d.value;
+            if (d.tasks) {
+                existing.tasks.push(...d.tasks);
+            }
+            map.set(d.day, existing);
         });
         return map;
     }, [futureData]);
 
-    // Create overdue data map for quick lookups (incomplete past tasks)
+    // Create overdue data map for quick lookups (incomplete past tasks) - stores both value and task details
     const overdueDataMap = useMemo(() => {
-        const map = new Map<string, number>();
+        const map = new Map<string, { value: number; tasks: TaskDetail[] }>();
         overdueData.forEach((d) => {
-            map.set(d.day, (map.get(d.day) || 0) + d.value);
+            const existing = map.get(d.day) || { value: 0, tasks: [] };
+            existing.value += d.value;
+            if (d.tasks) {
+                existing.tasks.push(...d.tasks);
+            }
+            map.set(d.day, existing);
         });
         return map;
     }, [overdueData]);
@@ -251,6 +304,164 @@ const TeamActivityHeatmap: React.FC<TeamActivityHeatmapProps> = ({
 
         return { total, currentStreak, longestStreak };
     }, [data, dataMap]);
+
+    // Week schedule data for columnar view
+    const weekScheduleData = useMemo(() => {
+        const todayDate = new Date();
+        todayDate.setHours(0, 0, 0, 0);
+        const currentStartOfWeek = getStartOfWeek(todayDate);
+        // Apply week offset (positive = future, negative = past)
+        const startOfWeek = addDays(currentStartOfWeek, weekOffset * 7);
+
+        const WEEK_DAY_NAMES = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+        const WEEK_DAY_COLORS = [
+            'bg-purple-500/20 border-purple-500/30', // Sunday
+            'bg-pink-500/20 border-pink-500/30',     // Monday
+            'bg-cyan-500/20 border-cyan-500/30',     // Tuesday
+            'bg-green-500/20 border-green-500/30',   // Wednesday
+            'bg-amber-500/20 border-amber-500/30',   // Thursday
+            'bg-rose-500/20 border-rose-500/30',     // Friday
+            'bg-blue-500/20 border-blue-500/30',     // Saturday
+        ];
+
+        const days = [];
+        for (let i = 0; i < 7; i++) {
+            const date = addDays(startOfWeek, i);
+            const dateKey = getDateKey(date);
+            const isFuture = date > todayDate;
+            const isToday = dateKey === getDateKey(todayDate);
+
+            const futureEntry = futureDataMap.get(dateKey) || { value: 0, tasks: [] };
+            const overdueEntry = overdueDataMap.get(dateKey) || { value: 0, tasks: [] };
+
+            // Combine all tasks for the day
+            const allTasks: TaskDetail[] = [];
+            if (isFuture) {
+                allTasks.push(...futureEntry.tasks);
+            } else {
+                allTasks.push(...overdueEntry.tasks);
+            }
+
+            days.push({
+                dayName: WEEK_DAY_NAMES[i],
+                date,
+                dateKey,
+                dayOfMonth: date.getDate(),
+                month: MONTHS[date.getMonth()],
+                isFuture,
+                isToday,
+                tasks: allTasks,
+                futureCount: isFuture ? futureEntry.value : 0,
+                overdueCount: !isFuture ? overdueEntry.value : 0,
+                colorClass: WEEK_DAY_COLORS[i],
+            });
+        }
+
+        // Calculate week label
+        const endOfWeek = addDays(startOfWeek, 6);
+        const weekLabel = `${MONTHS[startOfWeek.getMonth()]} ${startOfWeek.getDate()} - ${MONTHS[endOfWeek.getMonth()]} ${endOfWeek.getDate()}, ${endOfWeek.getFullYear()}`;
+
+        return { days, weekLabel };
+    }, [futureDataMap, overdueDataMap, weekOffset]);
+
+    // Month calendar grid data (7 columns x number of weeks)
+    const monthCalendarData = useMemo(() => {
+        const todayDate = new Date();
+        todayDate.setHours(0, 0, 0, 0);
+        const todayKey = getDateKey(todayDate);
+
+        // Apply month offset
+        const targetDate = new Date(todayDate.getFullYear(), todayDate.getMonth() + monthOffset, 1);
+        const currentYear = targetDate.getFullYear();
+        const currentMonth = targetDate.getMonth();
+
+        // First day of the month
+        const firstDay = new Date(currentYear, currentMonth, 1);
+        const firstDayOfWeek = firstDay.getDay(); // 0 = Sunday
+
+        // Last day of the month
+        const lastDay = new Date(currentYear, currentMonth + 1, 0);
+        const daysInMonth = lastDay.getDate();
+
+        // Calculate number of weeks needed
+        const totalCells = firstDayOfWeek + daysInMonth;
+        const numWeeks = Math.ceil(totalCells / 7);
+
+        const weeks: Array<Array<{
+            date: Date | null;
+            dateKey: string;
+            dayOfMonth: number;
+            value: number;
+            futureValue: number;
+            overdueValue: number;
+            futureTasks: TaskDetail[];
+            overdueTasks: TaskDetail[];
+            isToday: boolean;
+            isFuture: boolean;
+            isEmpty: boolean;
+        }>> = [];
+
+        let dayCounter = 1;
+
+        for (let week = 0; week < numWeeks; week++) {
+            const weekDays = [];
+            for (let dayOfWeek = 0; dayOfWeek < 7; dayOfWeek++) {
+                const cellIndex = week * 7 + dayOfWeek;
+
+                if (cellIndex < firstDayOfWeek || dayCounter > daysInMonth) {
+                    // Empty cell (before first day or after last day)
+                    weekDays.push({
+                        date: null,
+                        dateKey: '',
+                        dayOfMonth: 0,
+                        value: 0,
+                        futureValue: 0,
+                        overdueValue: 0,
+                        futureTasks: [],
+                        overdueTasks: [],
+                        isToday: false,
+                        isFuture: false,
+                        isEmpty: true,
+                    });
+                } else {
+                    const date = new Date(currentYear, currentMonth, dayCounter);
+                    const dateKey = getDateKey(date);
+                    const isFuture = date > todayDate;
+                    const isToday = dateKey === todayKey;
+
+                    const pastValue = dataMap.get(dateKey) || 0;
+                    const futureEntry = futureDataMap.get(dateKey) || { value: 0, tasks: [] };
+                    const overdueEntry = overdueDataMap.get(dateKey) || { value: 0, tasks: [] };
+
+                    weekDays.push({
+                        date,
+                        dateKey,
+                        dayOfMonth: dayCounter,
+                        value: isFuture ? 0 : pastValue,
+                        futureValue: isFuture ? futureEntry.value : 0,
+                        overdueValue: isFuture ? 0 : overdueEntry.value,
+                        futureTasks: isFuture ? futureEntry.tasks : [],
+                        overdueTasks: isFuture ? [] : overdueEntry.tasks,
+                        isToday,
+                        isFuture,
+                        isEmpty: false,
+                    });
+
+                    dayCounter++;
+                }
+            }
+            weeks.push(weekDays);
+        }
+
+        const monthLabel = `${MONTHS[currentMonth]} ${currentYear}`;
+
+        return {
+            weeks,
+            monthName: MONTHS[currentMonth],
+            year: currentYear,
+            monthLabel,
+        };
+    }, [dataMap, futureDataMap, overdueDataMap, monthOffset]);
 
     // Generate grid data based on view - organized by months with individual days
     const gridData = useMemo(() => {
@@ -285,12 +496,12 @@ const TeamActivityHeatmap: React.FC<TeamActivityHeatmapProps> = ({
             const quarterStart = Math.floor(currentMonth / 3) * 3;
             startDate = new Date(todayDate.getFullYear(), quarterStart, 1);
             endDate = new Date(todayDate.getFullYear(), quarterStart + 3, 0);
-            cellSize = 10;
+            cellSize = 15;
         } else {
             // Year view - show all 12 months
             startDate = new Date(todayDate.getFullYear(), 0, 1);
             endDate = new Date(todayDate.getFullYear(), 11, 31);
-            cellSize = 8;
+            cellSize = 12;
         }
 
         // Build month-based structure
@@ -301,6 +512,8 @@ const TeamActivityHeatmap: React.FC<TeamActivityHeatmapProps> = ({
             value: number;
             futureValue: number;
             overdueValue: number;
+            futureTasks: TaskDetail[];
+            overdueTasks: TaskDetail[];
             isToday: boolean;
             isFuture: boolean;
         }
@@ -332,8 +545,8 @@ const TeamActivityHeatmap: React.FC<TeamActivityHeatmapProps> = ({
                 // Check if within display range
                 if (date >= startDate && date <= endDate) {
                     const value = dataMap.get(dateKey) || 0;
-                    const futureValue = futureDataMap.get(dateKey) || 0;
-                    const overdueValue = overdueDataMap.get(dateKey) || 0;
+                    const futureEntry = futureDataMap.get(dateKey) || { value: 0, tasks: [] };
+                    const overdueEntry = overdueDataMap.get(dateKey) || { value: 0, tasks: [] };
                     const isToday = dateKey === getDateKey(todayDate);
                     const isFuture = date > todayDate;
 
@@ -342,8 +555,10 @@ const TeamActivityHeatmap: React.FC<TeamActivityHeatmapProps> = ({
                         dateKey,
                         dayOfMonth: d,
                         value: isFuture ? -2 : value,
-                        futureValue: isFuture ? futureValue : 0,
-                        overdueValue: isFuture ? 0 : overdueValue,
+                        futureValue: isFuture ? futureEntry.value : 0,
+                        overdueValue: isFuture ? 0 : overdueEntry.value,
+                        futureTasks: isFuture ? futureEntry.tasks : [],
+                        overdueTasks: isFuture ? [] : overdueEntry.tasks,
                         isToday,
                         isFuture,
                     });
@@ -383,22 +598,22 @@ const TeamActivityHeatmap: React.FC<TeamActivityHeatmapProps> = ({
         dateKey: string,
         value: number,
         isFuture: boolean = false,
-        isOverdue: boolean = false
+        isOverdue: boolean = false,
+        tasks?: TaskDetail[]
     ) => {
         if (value < 0 && !isFuture && !isOverdue) return; // Out of range
         const rect = e.currentTarget.getBoundingClientRect();
-        const containerRect = e.currentTarget.closest('.heatmap-container')?.getBoundingClientRect();
 
-        if (containerRect) {
-            setTooltip({
-                date: dateKey,
-                value,
-                isFuture,
-                isOverdue,
-                x: rect.left - containerRect.left + rect.width / 2,
-                y: rect.top - containerRect.top,
-            });
-        }
+        // Use viewport coordinates for fixed positioning
+        setTooltip({
+            date: dateKey,
+            value,
+            isFuture,
+            isOverdue,
+            tasks,
+            x: rect.left + rect.width / 2,
+            y: rect.top,
+        });
     };
 
     const handleCellMouseLeave = () => {
@@ -482,28 +697,27 @@ const TeamActivityHeatmap: React.FC<TeamActivityHeatmapProps> = ({
             {/* Statistics - Compact inline layout */}
             {showStats && (
                 <div className="flex flex-wrap gap-2 mb-4">
-                    <div className="bg-slate-700/30 rounded-lg px-4 py-2 border border-slate-700/50 flex items-center gap-2">
-                        <span className="text-slate-400 text-xs uppercase tracking-wider">All Activity</span>
-                        <span className="text-xl font-bold text-white">
+                    <div className="bg-slate-700/30 rounded-lg px-3 py-1.5 border border-slate-700/50 flex items-center gap-2">
+                        <span className="text-slate-400 text-[10px] uppercase tracking-wider font-semibold">Activity</span>
+                        <span className="text-base font-bold text-white">
                             {stats.total.toLocaleString()}
                         </span>
-                        <span className="text-xs text-slate-400">total</span>
                     </div>
 
-                    <div className="bg-slate-700/30 rounded-lg px-4 py-2 border border-slate-700/50 flex items-center gap-2">
-                        <span className="text-slate-400 text-xs uppercase tracking-wider">Longest Streak</span>
-                        <span className="text-xl font-bold text-white">
+                    <div className="bg-slate-700/30 rounded-lg px-3 py-1.5 border border-slate-700/50 flex items-center gap-2">
+                        <span className="text-slate-400 text-[10px] uppercase tracking-wider font-semibold">Longest Streak</span>
+                        <span className="text-base font-bold text-white">
                             {stats.longestStreak}
                         </span>
-                        <span className="text-xs text-slate-400">days</span>
+                        <span className="text-[10px] text-slate-500">days</span>
                     </div>
 
-                    <div className="bg-slate-700/30 rounded-lg px-4 py-2 border border-slate-700/50 flex items-center gap-2">
-                        <span className="text-slate-400 text-xs uppercase tracking-wider">Current Streak</span>
-                        <span className="text-xl font-bold text-white">
+                    <div className="bg-slate-700/30 rounded-lg px-3 py-1.5 border border-slate-700/50 flex items-center gap-2">
+                        <span className="text-slate-400 text-[10px] uppercase tracking-wider font-semibold">Current Streak</span>
+                        <span className="text-base font-bold text-white">
                             {stats.currentStreak}
                         </span>
-                        <span className="text-xs text-slate-400">days</span>
+                        <span className="text-[10px] text-slate-500">days</span>
                         {stats.currentStreak > 0 && (
                             <span className="text-xs text-emerald-400 flex items-center">
                                 <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -515,144 +729,429 @@ const TeamActivityHeatmap: React.FC<TeamActivityHeatmapProps> = ({
                 </div>
             )}
 
-            {/* Heatmap Grid - Month-based layout */}
-            <div className="heatmap-container relative overflow-x-auto pb-2">
-                {/* Month rows - each month shows its days horizontally */}
-                <div className="flex flex-col gap-1">
-                    {gridData.months.map((month, monthIndex) => (
-                        <div key={`${month.year}-${month.month}`} className="flex items-center">
-                            {/* Month label */}
+            {/* Week View - Columnar Schedule Layout */}
+            {activeView === 'week' ? (
+                <div className="week-schedule-container">
+                    {/* Navigation and Week Label */}
+                    <div className="flex items-center justify-between mb-4">
+                        <button
+                            onClick={() => setWeekOffset(weekOffset - 1)}
+                            className="p-2 rounded-lg bg-slate-700/50 hover:bg-cyan-600/30 text-cyan-400 hover:text-cyan-300 transition-colors"
+                            title="Previous Week"
+                        >
+                            <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
+                            </svg>
+                        </button>
+                        <div className="text-center">
+                            <span className="text-sm font-semibold text-white">{weekScheduleData.weekLabel}</span>
+                            {weekOffset !== 0 && (
+                                <button
+                                    onClick={() => setWeekOffset(0)}
+                                    className="ml-2 text-xs text-cyan-400 hover:text-cyan-300"
+                                >
+                                    Today
+                                </button>
+                            )}
+                        </div>
+                        <button
+                            onClick={() => setWeekOffset(weekOffset + 1)}
+                            className="p-2 rounded-lg bg-slate-700/50 hover:bg-cyan-600/30 text-cyan-400 hover:text-cyan-300 transition-colors"
+                            title="Next Week"
+                        >
+                            <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+                            </svg>
+                        </button>
+                    </div>
+
+                    <div className="grid grid-cols-7 gap-2">
+                        {weekScheduleData.days.map((day, index) => (
                             <div
-                                className="text-xs text-slate-400 font-medium w-8 flex-shrink-0 text-right pr-2"
+                                key={day.dateKey}
+                                className={`rounded-lg border ${day.colorClass} ${day.isToday ? 'ring-2 ring-cyan-400' : ''}`}
                             >
-                                {month.monthName}
+                                {/* Day Header */}
+                                <div className={`px-3 py-2 border-b ${day.colorClass.replace('/20', '/30')}`}>
+                                    <div className="text-sm font-bold text-white">{day.dayName}</div>
+                                    <div className="text-xs text-slate-400">{day.month} {day.dayOfMonth}</div>
+                                </div>
+
+                                {/* Tasks List */}
+                                <div className="p-2 min-h-[200px] max-h-[300px] overflow-y-auto space-y-1.5">
+                                    {day.tasks.length === 0 ? (
+                                        <div className="text-xs text-slate-500 italic text-center py-4">
+                                            No tasks
+                                        </div>
+                                    ) : (
+                                        day.tasks.map((task, taskIndex) => (
+                                            <div
+                                                key={`${day.dateKey}-task-${taskIndex}`}
+                                                className={`px-2 py-2 rounded text-xs border transition-all duration-150 cursor-pointer hover:scale-[1.02] ${day.isFuture
+                                                    ? 'bg-amber-900/20 border-amber-700/30 hover:border-amber-500/50'
+                                                    : 'bg-rose-900/20 border-rose-700/30 hover:border-rose-500/50'
+                                                    }`}
+                                                onMouseEnter={(e) => {
+                                                    // Calculate position for tooltip
+                                                    const rect = e.currentTarget.getBoundingClientRect();
+                                                    setTooltip({
+                                                        date: day.dateKey,
+                                                        value: 1,
+                                                        isFuture: day.isFuture,
+                                                        isOverdue: !day.isFuture,
+                                                        tasks: [task],
+                                                        x: rect.left + rect.width / 2,
+                                                        y: rect.top,
+                                                    });
+                                                }}
+                                                onMouseLeave={() => setTooltip(null)}
+                                            >
+                                                <div className="text-cyan-400 font-bold mb-0.5 truncate">{task.projectName}</div>
+                                                <div className="text-white font-medium truncate mb-0.5">{task.taskName}</div>
+                                                <div className="text-slate-400 truncate text-[10px]">
+                                                    Section: {task.sectionName}
+                                                </div>
+                                                {task.assignees.length > 0 && (
+                                                    <div className="text-slate-500 truncate text-[10px] mt-0.5">
+                                                        👤 {task.assignees.slice(0, 2).join(', ')}
+                                                        {task.assignees.length > 2 && ` +${task.assignees.length - 2}`}
+                                                    </div>
+                                                )}
+                                            </div>
+                                        ))
+                                    )}
+                                </div>
+
+                                {/* Task Count Footer */}
+                                {(day.futureCount > 0 || day.overdueCount > 0) && (
+                                    <div className={`px-3 py-1.5 border-t ${day.colorClass.replace('/20', '/30')} text-xs`}>
+                                        {day.isFuture ? (
+                                            <span className="text-amber-400">{day.futureCount} task{day.futureCount !== 1 ? 's' : ''} due</span>
+                                        ) : (
+                                            <span className="text-rose-400">{day.overdueCount} overdue</span>
+                                        )}
+                                    </div>
+                                )}
                             </div>
+                        ))}
+                    </div>
+                </div>
+            ) : activeView === 'month' ? (
+                /* Month View - Calendar Grid Layout (7 columns x weeks) */
+                <div className="month-calendar-container max-w-xl mx-auto">
+                    {/* Navigation and Month Label */}
+                    <div className="flex items-center justify-between mb-4">
+                        <button
+                            onClick={() => setMonthOffset(monthOffset - 1)}
+                            className="p-2 rounded-lg bg-slate-700/50 hover:bg-cyan-600/30 text-cyan-400 hover:text-cyan-300 transition-colors"
+                            title="Previous Month"
+                        >
+                            <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
+                            </svg>
+                        </button>
+                        <div className="text-center">
+                            <span className="text-sm font-semibold text-white">{monthCalendarData.monthLabel}</span>
+                            {monthOffset !== 0 && (
+                                <button
+                                    onClick={() => setMonthOffset(0)}
+                                    className="ml-2 text-xs text-cyan-400 hover:text-cyan-300"
+                                >
+                                    Today
+                                </button>
+                            )}
+                        </div>
+                        <button
+                            onClick={() => setMonthOffset(monthOffset + 1)}
+                            className="p-2 rounded-lg bg-slate-700/50 hover:bg-cyan-600/30 text-cyan-400 hover:text-cyan-300 transition-colors"
+                            title="Next Month"
+                        >
+                            <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+                            </svg>
+                        </button>
+                    </div>
 
-                            {/* Days grid for this month */}
-                            <div className="flex gap-[2px] flex-wrap" style={{ maxWidth: `${31 * (gridData.cellSize + 2)}px` }}>
-                                {month.days.map((day) => {
-                                    // Determine cell styling
-                                    const isFutureDay = day.isFuture;
-                                    const hasFutureTasks = isFutureDay && day.futureValue > 0;
-                                    const hasOverdueTasks = !isFutureDay && day.overdueValue > 0;
-                                    const hasActivity = !isFutureDay && day.value > 0;
-                                    const isInteractive = hasActivity || hasFutureTasks || hasOverdueTasks;
+                    {/* Day of week headers */}
+                    <div className="grid grid-cols-7 gap-1 mb-2">
+                        {['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'].map((dayName) => (
+                            <div
+                                key={dayName}
+                                className="text-center text-xs font-semibold text-slate-400 py-1"
+                            >
+                                {dayName}
+                            </div>
+                        ))}
+                    </div>
 
-                                    // Determine background color
-                                    let bgColor = INTENSITY_COLORS[0]; // Default empty
-                                    let hoverRingColor = 'hover:ring-cyan-400/50';
-
-                                    if (hasOverdueTasks) {
-                                        bgColor = OVERDUE_INTENSITY_COLORS[getIntensityLevel(day.overdueValue, maxOverdueValue)];
-                                        hoverRingColor = 'hover:ring-rose-400/50';
-                                    } else if (hasActivity) {
-                                        bgColor = INTENSITY_COLORS[getIntensityLevel(day.value, gridData.maxValue)];
-                                    } else if (hasFutureTasks) {
-                                        bgColor = FUTURE_INTENSITY_COLORS[getIntensityLevel(day.futureValue, maxFutureValue)];
-                                        hoverRingColor = 'hover:ring-amber-400/50';
-                                    }
-
+                    {/* Calendar grid */}
+                    <div className="grid grid-cols-7 gap-1">
+                        {monthCalendarData.weeks.flatMap((week, weekIndex) =>
+                            week.map((day, dayIndex) => {
+                                if (day.isEmpty) {
                                     return (
                                         <div
-                                            key={day.dateKey}
-                                            className={`rounded transition-all duration-150 relative ${isInteractive
+                                            key={`empty-${weekIndex}-${dayIndex}`}
+                                            className="aspect-square rounded-lg bg-slate-800/30"
+                                        />
+                                    );
+                                }
+
+                                const hasFutureTasks = day.isFuture && day.futureValue > 0;
+                                const hasOverdueTasks = !day.isFuture && day.overdueValue > 0;
+                                const hasActivity = !day.isFuture && day.value > 0;
+                                const isInteractive = hasActivity || hasFutureTasks || hasOverdueTasks;
+
+                                // Determine background color
+                                let bgColor = 'bg-slate-800/50';
+                                let borderColor = 'border-slate-700/50';
+
+                                if (hasOverdueTasks) {
+                                    const intensity = getIntensityLevel(day.overdueValue, maxOverdueValue);
+                                    bgColor = intensity >= 3 ? 'bg-rose-600/40' : intensity >= 2 ? 'bg-rose-700/40' : 'bg-rose-800/40';
+                                    borderColor = 'border-rose-600/50';
+                                } else if (hasActivity) {
+                                    const intensity = getIntensityLevel(day.value, gridData.maxValue);
+                                    bgColor = intensity >= 3 ? 'bg-cyan-600/40' : intensity >= 2 ? 'bg-cyan-700/40' : 'bg-cyan-800/40';
+                                    borderColor = 'border-cyan-600/50';
+                                } else if (hasFutureTasks) {
+                                    const intensity = getIntensityLevel(day.futureValue, maxFutureValue);
+                                    bgColor = intensity >= 3 ? 'bg-amber-600/40' : intensity >= 2 ? 'bg-amber-700/40' : 'bg-amber-800/40';
+                                    borderColor = 'border-amber-600/50';
+                                }
+
+                                return (
+                                    <div
+                                        key={day.dateKey}
+                                        className={`aspect-square rounded-lg border ${bgColor} ${borderColor} p-1.5 flex flex-col transition-all ${isInteractive ? 'cursor-pointer hover:scale-105 hover:shadow-lg' : ''
+                                            } ${day.isToday ? 'ring-2 ring-cyan-400' : ''}`}
+                                        onMouseEnter={(e) => {
+                                            if (hasOverdueTasks) {
+                                                handleCellMouseEnter(e, day.dateKey, day.overdueValue, false, true, day.overdueTasks);
+                                            } else if (hasActivity) {
+                                                handleCellMouseEnter(e, day.dateKey, day.value, false, false);
+                                            } else if (hasFutureTasks) {
+                                                handleCellMouseEnter(e, day.dateKey, day.futureValue, true, false, day.futureTasks);
+                                            }
+                                        }}
+                                        onMouseLeave={handleCellMouseLeave}
+                                    >
+                                        {/* Day number */}
+                                        <div className={`text-xs font-bold ${day.isToday ? 'text-cyan-400' : 'text-slate-300'}`}>
+                                            {day.dayOfMonth}
+                                        </div>
+
+                                        {/* Task indicators */}
+                                        <div className="flex-grow flex flex-col justify-end">
+                                            {hasFutureTasks && (
+                                                <div className="text-[10px] text-amber-400 truncate">
+                                                    {day.futureValue} due
+                                                </div>
+                                            )}
+                                            {hasOverdueTasks && (
+                                                <div className="text-[10px] text-rose-400 truncate">
+                                                    {day.overdueValue} overdue
+                                                </div>
+                                            )}
+                                            {hasActivity && !hasOverdueTasks && (
+                                                <div className="text-[10px] text-cyan-400 truncate">
+                                                    {day.value} pts
+                                                </div>
+                                            )}
+                                        </div>
+                                    </div>
+                                );
+                            })
+                        )}
+                    </div>
+
+                    {/* Legend */}
+                    <div className="flex flex-wrap items-center justify-end gap-4 mt-4 text-xs text-slate-400">
+                        <div className="flex items-center gap-2">
+                            <span>Tasks Due</span>
+                            <div className="w-3 h-3 rounded bg-amber-600/60" />
+                        </div>
+                        <div className="flex items-center gap-2">
+                            <span>Overdue</span>
+                            <div className="w-3 h-3 rounded bg-rose-600/60" />
+                        </div>
+                        <div className="flex items-center gap-2">
+                            <span>Activity</span>
+                            <div className="w-3 h-3 rounded bg-cyan-600/60" />
+                        </div>
+                    </div>
+
+                    {/* Tooltip */}
+                    {tooltip && (
+                        <Tooltip
+                            date={tooltip.date}
+                            value={tooltip.value}
+                            isFuture={tooltip.isFuture}
+                            isOverdue={tooltip.isOverdue}
+                            tasks={tooltip.tasks}
+                            x={tooltip.x}
+                            y={tooltip.y}
+                        />
+                    )}
+                </div>
+            ) : (
+                /* Heatmap Grid - Quarter/Year/Range layout */
+                <div className="heatmap-container relative overflow-x-auto pb-2">
+                    {/* Day of month header row */}
+                    <div className="flex items-center mb-1">
+                        <div className="w-8 flex-shrink-0" /> {/* Spacer for month labels */}
+                        <div className="flex gap-[2px]" style={{ maxWidth: `${31 * (gridData.cellSize + 2)}px` }}>
+                            {Array.from({ length: 31 }, (_, i) => (
+                                <div
+                                    key={`day-header-${i + 1}`}
+                                    className="text-[9px] text-slate-500 text-center"
+                                    style={{ width: gridData.cellSize }}
+                                >
+                                    {i + 1}
+                                </div>
+                            ))}
+                        </div>
+                    </div>
+
+                    {/* Month rows - each month shows its days horizontally */}
+                    <div className="flex flex-col gap-1">
+                        {gridData.months.map((month, monthIndex) => (
+                            <div key={`${month.year}-${month.month}`} className="flex items-center">
+                                {/* Month label */}
+                                <div
+                                    className="text-xs text-slate-400 font-medium w-8 flex-shrink-0 text-right pr-2"
+                                >
+                                    {month.monthName}
+                                </div>
+
+                                {/* Days grid for this month */}
+                                <div className="flex gap-[2px] flex-wrap" style={{ maxWidth: `${31 * (gridData.cellSize + 2)}px` }}>
+                                    {month.days.map((day) => {
+                                        // Determine cell styling
+                                        const isFutureDay = day.isFuture;
+                                        const hasFutureTasks = isFutureDay && day.futureValue > 0;
+                                        const hasOverdueTasks = !isFutureDay && day.overdueValue > 0;
+                                        const hasActivity = !isFutureDay && day.value > 0;
+                                        const isInteractive = hasActivity || hasFutureTasks || hasOverdueTasks;
+
+                                        // Determine background color
+                                        let bgColor = INTENSITY_COLORS[0]; // Default empty
+                                        let hoverRingColor = 'hover:ring-cyan-400/50';
+
+                                        if (hasOverdueTasks) {
+                                            bgColor = OVERDUE_INTENSITY_COLORS[getIntensityLevel(day.overdueValue, maxOverdueValue)];
+                                            hoverRingColor = 'hover:ring-rose-400/50';
+                                        } else if (hasActivity) {
+                                            bgColor = INTENSITY_COLORS[getIntensityLevel(day.value, gridData.maxValue)];
+                                        } else if (hasFutureTasks) {
+                                            bgColor = FUTURE_INTENSITY_COLORS[getIntensityLevel(day.futureValue, maxFutureValue)];
+                                            hoverRingColor = 'hover:ring-amber-400/50';
+                                        }
+
+                                        return (
+                                            <div
+                                                key={day.dateKey}
+                                                className={`rounded transition-all duration-150 relative ${isInteractive
                                                     ? `cursor-pointer hover:scale-125 hover:ring-2 ${hoverRingColor}`
                                                     : isFutureDay
                                                         ? 'opacity-50'
                                                         : ''
-                                                } ${day.isToday ? 'ring-2 ring-cyan-400' : ''}`}
-                                            style={{
-                                                width: gridData.cellSize,
-                                                height: gridData.cellSize,
-                                                backgroundColor: bgColor,
-                                                borderRadius: gridData.cellSize >= 12 ? '3px' : '2px',
-                                            }}
-                                            onMouseEnter={(e) => {
-                                                if (hasOverdueTasks) {
-                                                    handleCellMouseEnter(e, day.dateKey, day.overdueValue, false, true);
-                                                } else if (hasActivity) {
-                                                    handleCellMouseEnter(e, day.dateKey, day.value, false, false);
-                                                } else if (hasFutureTasks) {
-                                                    handleCellMouseEnter(e, day.dateKey, day.futureValue, true, false);
-                                                }
-                                            }}
-                                            onMouseLeave={handleCellMouseLeave}
-                                            title={`${day.dayOfMonth}`}
-                                        />
-                                    );
-                                })}
+                                                    } ${day.isToday ? 'ring-2 ring-cyan-400' : ''}`}
+                                                style={{
+                                                    width: gridData.cellSize,
+                                                    height: gridData.cellSize,
+                                                    backgroundColor: bgColor,
+                                                    borderRadius: gridData.cellSize >= 12 ? '3px' : '2px',
+                                                }}
+                                                onMouseEnter={(e) => {
+                                                    if (hasOverdueTasks) {
+                                                        handleCellMouseEnter(e, day.dateKey, day.overdueValue, false, true, day.overdueTasks);
+                                                    } else if (hasActivity) {
+                                                        handleCellMouseEnter(e, day.dateKey, day.value, false, false);
+                                                    } else if (hasFutureTasks) {
+                                                        handleCellMouseEnter(e, day.dateKey, day.futureValue, true, false, day.futureTasks);
+                                                    }
+                                                }}
+                                                onMouseLeave={handleCellMouseLeave}
+                                                title={`${day.dayOfMonth}`}
+                                            />
+                                        );
+                                    })}
+                                </div>
+                            </div>
+                        ))}
+                    </div>
+
+                    {/* Legend */}
+                    <div className="flex flex-wrap items-center justify-end gap-4 mt-4 text-xs text-slate-400">
+                        {/* Past activity legend */}
+                        <div className="flex items-center gap-2">
+                            <span>Activity</span>
+                            <div className="flex gap-1">
+                                {INTENSITY_COLORS.map((color, index) => (
+                                    <div
+                                        key={`past-${index}`}
+                                        className="rounded"
+                                        style={{
+                                            width: 12,
+                                            height: 12,
+                                            backgroundColor: color,
+                                        }}
+                                    />
+                                ))}
                             </div>
                         </div>
-                    ))}
-                </div>
+                        {/* Future tasks legend */}
+                        <div className="flex items-center gap-2">
+                            <span>Tasks Due</span>
+                            <div className="flex gap-1">
+                                {FUTURE_INTENSITY_COLORS.map((color, index) => (
+                                    <div
+                                        key={`future-${index}`}
+                                        className="rounded"
+                                        style={{
+                                            width: 12,
+                                            height: 12,
+                                            backgroundColor: color,
+                                        }}
+                                    />
+                                ))}
+                            </div>
+                        </div>
+                        {/* Overdue tasks legend */}
+                        <div className="flex items-center gap-2">
+                            <span>Overdue</span>
+                            <div className="flex gap-1">
+                                {OVERDUE_INTENSITY_COLORS.map((color, index) => (
+                                    <div
+                                        key={`overdue-${index}`}
+                                        className="rounded"
+                                        style={{
+                                            width: 12,
+                                            height: 12,
+                                            backgroundColor: color,
+                                        }}
+                                    />
+                                ))}
+                            </div>
+                        </div>
+                    </div>
 
-                {/* Legend */}
-                <div className="flex flex-wrap items-center justify-end gap-4 mt-4 text-xs text-slate-400">
-                    {/* Past activity legend */}
-                    <div className="flex items-center gap-2">
-                        <span>Activity</span>
-                        <div className="flex gap-1">
-                            {INTENSITY_COLORS.map((color, index) => (
-                                <div
-                                    key={`past-${index}`}
-                                    className="rounded"
-                                    style={{
-                                        width: 12,
-                                        height: 12,
-                                        backgroundColor: color,
-                                    }}
-                                />
-                            ))}
-                        </div>
-                    </div>
-                    {/* Future tasks legend */}
-                    <div className="flex items-center gap-2">
-                        <span>Tasks Due</span>
-                        <div className="flex gap-1">
-                            {FUTURE_INTENSITY_COLORS.map((color, index) => (
-                                <div
-                                    key={`future-${index}`}
-                                    className="rounded"
-                                    style={{
-                                        width: 12,
-                                        height: 12,
-                                        backgroundColor: color,
-                                    }}
-                                />
-                            ))}
-                        </div>
-                    </div>
-                    {/* Overdue tasks legend */}
-                    <div className="flex items-center gap-2">
-                        <span>Overdue</span>
-                        <div className="flex gap-1">
-                            {OVERDUE_INTENSITY_COLORS.map((color, index) => (
-                                <div
-                                    key={`overdue-${index}`}
-                                    className="rounded"
-                                    style={{
-                                        width: 12,
-                                        height: 12,
-                                        backgroundColor: color,
-                                    }}
-                                />
-                            ))}
-                        </div>
-                    </div>
                 </div>
+            )}
 
-                {/* Tooltip */}
-                {tooltip && (
-                    <Tooltip
-                        date={tooltip.date}
-                        value={tooltip.value}
-                        isFuture={tooltip.isFuture}
-                        isOverdue={tooltip.isOverdue}
-                        x={tooltip.x}
-                        y={tooltip.y}
-                    />
-                )}
-            </div>
+            {/* Global Tooltip - renders for all views */}
+            {tooltip && (
+                <Tooltip
+                    date={tooltip.date}
+                    value={tooltip.value}
+                    isFuture={tooltip.isFuture}
+                    isOverdue={tooltip.isOverdue}
+                    tasks={tooltip.tasks}
+                    x={tooltip.x}
+                    y={tooltip.y}
+                />
+            )}
         </div>
     );
 };

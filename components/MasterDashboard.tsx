@@ -16,6 +16,7 @@ import DashboardStatsCards from './dashboard/DashboardStatsCards';
 import ProjectAnalysis from './dashboard/ProjectAnalysis';
 import RecommendationsPanel from './dashboard/RecommendationsPanel';
 import CircularProgress from './CircularProgress';
+import TeamActivityHeatmap from './TeamActivityHeatmap';
 
 interface MasterDashboardProps {
   projects: Project[];
@@ -74,6 +75,110 @@ const MasterDashboard: React.FC<MasterDashboardProps> = ({ projects, onSelectPro
     setFilterMemberId('all');
   };
 
+  // --- Data Prep for Future Tasks (upcoming task deadlines) ---
+  const futureTasksData = useMemo(() => {
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+
+    interface TaskInfo {
+      projectName: string;
+      sectionName: string;
+      taskName: string;
+      assignees: string[];
+    }
+
+    const tasksByDate: Record<string, { count: number; tasks: TaskInfo[] }> = {};
+
+    filteredProjects.forEach(project => {
+      project.phases?.forEach(phase => {
+        phase.tasks?.forEach(task => {
+          let endDate: Date;
+          if ((task.endDate as any)?.toDate) {
+            endDate = (task.endDate as any).toDate();
+          } else if (task.endDate) {
+            endDate = new Date(task.endDate);
+          } else {
+            return;
+          }
+
+          endDate.setHours(0, 0, 0, 0);
+
+          if (endDate > today && task.status !== '100%') {
+            const dayKey = endDate.toISOString().split('T')[0];
+            if (!tasksByDate[dayKey]) {
+              tasksByDate[dayKey] = { count: 0, tasks: [] };
+            }
+            tasksByDate[dayKey].count += 1;
+            tasksByDate[dayKey].tasks.push({
+              projectName: project.name || 'Unknown Project',
+              sectionName: phase.name || 'Unknown Section',
+              taskName: task.name || 'Unnamed Task',
+              assignees: task.assignees?.map(a => a.displayName || a.email || 'Unknown') || [],
+            });
+          }
+        });
+      });
+    });
+
+    return Object.keys(tasksByDate).map(day => ({
+      day,
+      value: tasksByDate[day].count,
+      tasks: tasksByDate[day].tasks,
+    }));
+  }, [filteredProjects]);
+
+  // --- Data Prep for Overdue Tasks (incomplete past tasks) ---
+  const overdueTasksData = useMemo(() => {
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+
+    interface TaskInfo {
+      projectName: string;
+      sectionName: string;
+      taskName: string;
+      assignees: string[];
+    }
+
+    const tasksByDate: Record<string, { count: number; tasks: TaskInfo[] }> = {};
+
+    filteredProjects.forEach(project => {
+      project.phases?.forEach(phase => {
+        phase.tasks?.forEach(task => {
+          let endDate: Date;
+          if ((task.endDate as any)?.toDate) {
+            endDate = (task.endDate as any).toDate();
+          } else if (task.endDate) {
+            endDate = new Date(task.endDate);
+          } else {
+            return;
+          }
+
+          endDate.setHours(0, 0, 0, 0);
+
+          if (endDate < today && task.status !== '100%') {
+            const dayKey = endDate.toISOString().split('T')[0];
+            if (!tasksByDate[dayKey]) {
+              tasksByDate[dayKey] = { count: 0, tasks: [] };
+            }
+            tasksByDate[dayKey].count += 1;
+            tasksByDate[dayKey].tasks.push({
+              projectName: project.name || 'Unknown Project',
+              sectionName: phase.name || 'Unknown Section',
+              taskName: task.name || 'Unnamed Task',
+              assignees: task.assignees?.map(a => a.displayName || a.email || 'Unknown') || [],
+            });
+          }
+        });
+      });
+    });
+
+    return Object.keys(tasksByDate).map(day => ({
+      day,
+      value: tasksByDate[day].count,
+      tasks: tasksByDate[day].tasks,
+    }));
+  }, [filteredProjects]);
+
   const toggleProjectAnalysis = (projectId: string, e: React.MouseEvent) => {
     e.stopPropagation();
     setExpandedProjectId(expandedProjectId === projectId ? null : projectId);
@@ -112,11 +217,22 @@ const MasterDashboard: React.FC<MasterDashboardProps> = ({ projects, onSelectPro
       {/* Stats Cards */}
       <DashboardStatsCards projects={filteredProjects} />
 
-      {/* Main Content Grid */}
-      <div className="grid grid-cols-1 xl:grid-cols-3 gap-6">
+      {/* Team Activity Heatmap - Full Width */}
+      <div className="bg-slate-800/50 rounded-xl border border-slate-700 p-6">
+        <TeamActivityHeatmap
+          data={[]}
+          futureData={futureTasksData}
+          overdueData={overdueTasksData}
+          view="month"
+          showStats={true}
+        />
+      </div>
+
+      {/* Main Content Grid - 2 Column Layout (70/30 ratio) */}
+      <div className="grid grid-cols-1 lg:grid-cols-[70fr_30fr] gap-6">
 
         {/* Left Column: Projects List & Filter */}
-        <div className="xl:col-span-2 space-y-6">
+        <div className="space-y-6">
 
           {/* Filters */}
           <div className="bg-slate-800/50 p-4 rounded-xl border border-slate-700 flex flex-wrap gap-4 items-center">
@@ -241,7 +357,7 @@ const MasterDashboard: React.FC<MasterDashboardProps> = ({ projects, onSelectPro
         </div>
 
         {/* Right Column: Recommendations */}
-        <div className="xl:col-span-1">
+        <div>
           <RecommendationsPanel projects={filteredProjects} />
         </div>
       </div>

@@ -172,6 +172,7 @@ const convertProjectToFirestore = (project: Omit<Project, 'id'> | Project): any 
         // Only add optional fields if they have values
         if (phase.ownerId) phaseData.ownerId = phase.ownerId;
         if (phase.ownerEmail) phaseData.ownerEmail = phase.ownerEmail;
+        if (phase.assignees && phase.assignees.length > 0) phaseData.assignees = phase.assignees;
         return phaseData;
       }),
       updatedAt: Timestamp.now(),

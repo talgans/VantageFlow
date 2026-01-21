@@ -37,6 +37,7 @@ exports.onAchievementAwarded = exports.notifyResponsibilityAssigned = exports.no
 const functions = __importStar(require("firebase-functions/v1"));
 const admin = __importStar(require("firebase-admin"));
 const resend_1 = require("resend");
+const emailTemplates_1 = require("./emailTemplates");
 // Prevent double initialization
 if (admin.apps.length === 0) {
     admin.initializeApp();
@@ -377,26 +378,7 @@ exports.inviteUser = functions
             expiresIn: 86400000, // 24 hours in milliseconds
         };
         const resetLink = await admin.auth().generatePasswordResetLink(email, actionCodeSettings);
-        const html = `
-        <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
-          <h2 style="color: #3b82f6;">VantageFlow Account Setup Required</h2>
-          <p>You have been invited to join <strong>VantageFlow</strong> as a <strong>${role}</strong>.</p>
-          <p>To get started, please set your password by clicking the button below:</p>
-          <div style="margin: 30px 0;">
-            <a href="${resetLink}" 
-               style="background-color: #3b82f6; color: white; padding: 12px 24px; text-decoration: none; border-radius: 6px; display: inline-block;">
-              Set Your Password
-            </a>
-          </div>
-          <p style="color: #64748b; font-size: 14px;">
-            This link will expire in 24 hours. If you didn't expect this invitation, you can safely ignore this email.
-          </p>
-          <hr style="border: none; border-top: 1px solid #e2e8f0; margin: 30px 0;">
-          <p style="color: #94a3b8; font-size: 12px;">
-            VantageFlow - Project Management & KPI Dashboard
-          </p>
-        </div>
-      `;
+        const html = (0, emailTemplates_1.getInvitationEmail)(role, resetLink);
         await sendEmail(email, 'VantageFlow: Your Account Setup Link', html);
         return {
             success: true,
@@ -449,31 +431,7 @@ exports.sendReminderEmail = functions
             expiresIn: 86400000, // 24 hours in milliseconds
         };
         const resetLink = await admin.auth().generatePasswordResetLink(email, actionCodeSettings);
-        const html = `
-        <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
-          <h2 style="color: #3b82f6;">VantageFlow: Action Required - Complete Your Setup</h2>
-          <p>You were invited to join <strong>VantageFlow</strong> as a <strong>${role}</strong>, but haven't set your password yet.</p>
-          <p>To get started, please set your password by clicking the button below:</p>
-          <div style="margin: 30px 0;">
-            <a href="${resetLink}" 
-               style="background-color: #3b82f6; color: white; padding: 12px 24px; text-decoration: none; border-radius: 6px; display: inline-block;">
-              Set Your Password
-            </a>
-          </div>
-          <div style="background-color: #fef3c7; border: 1px solid #f59e0b; border-radius: 6px; padding: 12px; margin: 20px 0;">
-            <p style="color: #92400e; font-size: 13px; margin: 0;">
-              <strong>Important:</strong> If you received multiple emails, please use the link from this most recent email. Previous links are no longer valid.
-            </p>
-          </div>
-          <p style="color: #64748b; font-size: 14px;">
-            This link will expire in 24 hours. If you didn't expect this email, you can safely ignore it.
-          </p>
-          <hr style="border: none; border-top: 1px solid #e2e8f0; margin: 30px 0;">
-          <p style="color: #94a3b8; font-size: 12px;">
-            VantageFlow - Project Management & KPI Dashboard
-          </p>
-        </div>
-      `;
+        const html = (0, emailTemplates_1.getReminderEmail)(role, resetLink);
         await sendEmail(email, 'VantageFlow: Action Required - Complete Your Account Setup', html);
         return {
             success: true,
@@ -505,13 +463,7 @@ exports.notifyProjectMemberAdded = functions
     const inviterName = context.auth.token.name || context.auth.token.email;
     const subject = `New Team Member: ${newMemberName || newMemberEmail}`;
     const link = `https://vantageflow.vercel.app/project/${projectId}`;
-    const html = `
-    <div style="font-family: Arial, sans-serif;">
-      <h2 style="color: #3b82f6;">New Project Member</h2>
-      <p><strong>${newMemberName || newMemberEmail}</strong> has been added to project <strong>${projectName}</strong> by ${inviterName}.</p>
-      <p><a href="${link}">View Project</a></p>
-    </div>
-  `;
+    const html = (0, emailTemplates_1.getNewMemberEmail)(newMemberName || newMemberEmail, projectName, inviterName, link);
     const validEmails = (teamEmails || []).filter(e => e && e.includes('@'));
     // Note: For large teams, consider individual sending or BCC to avoid exposing all emails if privacy is concern
     // For internal teams, iterating is fine
@@ -543,13 +495,7 @@ exports.notifyResponsibilityAssigned = functions
     const assignerName = context.auth.token.name || context.auth.token.email;
     const subject = `New Responsibility: ${itemName}`;
     const link = `https://vantageflow.vercel.app/project/${projectId}`;
-    const html = `
-    <div style="font-family: Arial, sans-serif;">
-      <h2 style="color: #3b82f6;">Responsibility Assigned</h2>
-      <p>You have been assigned to <strong>${itemType}: ${itemName}</strong> in project <strong>${projectName}</strong> by ${assignerName}.</p>
-      <p><a href="${link}">View Assignment</a></p>
-    </div>
-  `;
+    const html = (0, emailTemplates_1.getResponsibilityAssignedEmail)(itemType, itemName, projectName, assignerName, link);
     // Send emails and create notifications
     const promises = assignees.map(async (member) => {
         if (member.email) {
@@ -580,19 +526,7 @@ exports.onAchievementAwarded = functions.firestore
         // 1. Notify the User (Email) if significant achievement
         if (userEmail && (category === 'phase_complete' || category === 'milestone' || points >= 50)) {
             const subject = `Congratulations! You earned ${points} points!`;
-            const html = `
-          <div style="font-family: Arial, sans-serif;">
-             <h2 style="color: #3b82f6;">Achievement Unlocked!</h2>
-             <p>Hi ${userName},</p>
-             <p>You've just earned <strong>${points} points</strong> for:</p>
-             <p style="font-size: 18px; font-weight: bold; color: #1e293b; background-color: #f1f5f9; padding: 10px; border-radius: 8px;">
-               ${description}
-             </p>
-             <p>Keep up the great work!</p>
-             <hr style="border: none; border-top: 1px solid #e2e8f0; margin: 20px 0;">
-             <p style="color: #94a3b8; font-size: 12px;">VantageFlow Team</p>
-          </div>
-        `;
+            const html = (0, emailTemplates_1.getAchievementEmail)(userName, points, description);
             await sendEmail(userEmail, subject, html);
         }
         // 2. Notify Teammates

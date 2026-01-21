@@ -64,7 +64,17 @@ const ResponsibilitySelector: React.FC<ResponsibilitySelectorProps> = ({
     };
 
     const finalizeSave = () => {
-        const finalMembers = teamMembers.filter(m => selectedIds.has(m.uid));
+        // Enrich members with fresh user data (including photoURL) before saving
+        const finalMembers = teamMembers
+            .filter(m => selectedIds.has(m.uid))
+            .map(member => {
+                const cachedUser = getUserById(member.uid, member.email);
+                return {
+                    ...member,
+                    displayName: cachedUser?.displayName || member.displayName,
+                    photoURL: cachedUser?.photoURL || member.photoURL,
+                };
+            });
         onSave(finalMembers, notify);
     };
 

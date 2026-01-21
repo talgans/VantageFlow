@@ -5,7 +5,6 @@ import { achievementService } from '../services/achievementService';
 import { UserAchievement, Project } from '../types';
 import { useUserLookup } from '../hooks/useUserLookup';
 import { StarIcon, TrophyIcon } from './icons';
-import TeamActivityHeatmap from './TeamActivityHeatmap';
 
 interface UserPerformanceDashboardProps {
     projects: Project[];
@@ -119,107 +118,6 @@ const UserPerformanceDashboard: React.FC<UserPerformanceDashboardProps> = ({ pro
         });
         return Array.from(keys);
     }, [projectBarData]);
-
-
-    // --- Data Prep for Calendar (Activity Heatmap) ---
-    // Date: YYYY-MM-DD
-    // Value: Points
-    const calendarData = useMemo(() => {
-        const dailyPoints: Record<string, number> = {};
-        achievements.forEach(a => {
-            // Check if awardedAt is a Firestore Timestamp or Date
-            let dateObj: Date;
-            if ((a.awardedAt as any).toDate) {
-                dateObj = (a.awardedAt as any).toDate();
-            } else {
-                dateObj = new Date(a.awardedAt);
-            }
-
-            const dayKey = dateObj.toISOString().split('T')[0];
-            dailyPoints[dayKey] = (dailyPoints[dayKey] || 0) + (a.points || 0);
-        });
-
-        return Object.keys(dailyPoints).map(day => ({
-            day,
-            value: dailyPoints[day]
-        }));
-    }, [achievements]);
-
-    // --- Data Prep for Future Tasks (upcoming task deadlines) ---
-    // Count tasks per future date based on endDate
-    const futureTasksData = useMemo(() => {
-        const today = new Date();
-        today.setHours(0, 0, 0, 0);
-
-        const tasksByDate: Record<string, number> = {};
-
-        projects.forEach(project => {
-            project.phases?.forEach(phase => {
-                phase.tasks?.forEach(task => {
-                    // Get task end date
-                    let endDate: Date;
-                    if ((task.endDate as any)?.toDate) {
-                        endDate = (task.endDate as any).toDate();
-                    } else if (task.endDate) {
-                        endDate = new Date(task.endDate);
-                    } else {
-                        return; // Skip if no end date
-                    }
-
-                    endDate.setHours(0, 0, 0, 0);
-
-                    // Only count future and non-complete tasks
-                    if (endDate > today && task.status !== '100%') {
-                        const dayKey = endDate.toISOString().split('T')[0];
-                        tasksByDate[dayKey] = (tasksByDate[dayKey] || 0) + 1;
-                    }
-                });
-            });
-        });
-
-        return Object.keys(tasksByDate).map(day => ({
-            day,
-            value: tasksByDate[day]
-        }));
-    }, [projects]);
-
-    // --- Data Prep for Overdue Tasks (incomplete past tasks) ---
-    // Count tasks that were due in the past but not completed
-    const overdueTasksData = useMemo(() => {
-        const today = new Date();
-        today.setHours(0, 0, 0, 0);
-
-        const tasksByDate: Record<string, number> = {};
-
-        projects.forEach(project => {
-            project.phases?.forEach(phase => {
-                phase.tasks?.forEach(task => {
-                    // Get task end date
-                    let endDate: Date;
-                    if ((task.endDate as any)?.toDate) {
-                        endDate = (task.endDate as any).toDate();
-                    } else if (task.endDate) {
-                        endDate = new Date(task.endDate);
-                    } else {
-                        return; // Skip if no end date
-                    }
-
-                    endDate.setHours(0, 0, 0, 0);
-
-                    // Only count past dates with incomplete tasks (overdue)
-                    if (endDate < today && task.status !== '100%') {
-                        const dayKey = endDate.toISOString().split('T')[0];
-                        tasksByDate[dayKey] = (tasksByDate[dayKey] || 0) + 1;
-                    }
-                });
-            });
-        });
-
-        return Object.keys(tasksByDate).map(day => ({
-            day,
-            value: tasksByDate[day]
-        }));
-    }, [projects]);
 
     if (loading) return (
         <div className="flex items-center justify-center h-screen bg-slate-900 text-slate-400">
@@ -369,17 +267,6 @@ const UserPerformanceDashboard: React.FC<UserPerformanceDashboardProps> = ({ pro
                         />
                     </div>
                 </div>
-            </div>
-
-            {/* Activity Calendar Heatmap */}
-            <div className="bg-slate-800/50 rounded-xl border border-slate-700 p-6">
-                <TeamActivityHeatmap
-                    data={calendarData}
-                    futureData={futureTasksData}
-                    overdueData={overdueTasksData}
-                    view="month"
-                    showStats={true}
-                />
             </div>
         </div>
     );
