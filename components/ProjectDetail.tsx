@@ -33,10 +33,31 @@ const calculateTaskProgress = (task: Task): number => {
   return Math.round(totalProgress / task.subTasks.length);
 };
 
-const TaskProgressBar: React.FC<{ progress: number }> = ({ progress }) => (
+const getProgressBarColor = (status: TaskStatus | string): string => {
+  switch (status) {
+    case TaskStatus.Hundred:
+    case 'Completed':
+      return 'bg-green-400';
+    case TaskStatus.SeventyFive:
+      return 'bg-indigo-400';
+    case TaskStatus.Fifty:
+    case 'In Progress':
+      return 'bg-blue-400';
+    case TaskStatus.TwentyFive:
+      return 'bg-amber-400';
+    case TaskStatus.AtRisk:
+      return 'bg-red-400';
+    case TaskStatus.Zero:
+    case 'Not Started':
+    default:
+      return 'bg-gray-400';
+  }
+};
+
+const TaskProgressBar: React.FC<{ progress: number; status: TaskStatus | string }> = ({ progress, status }) => (
   <div className="w-full bg-slate-700 rounded-full h-1.5 mt-1.5">
     <div
-      className="bg-brand-secondary h-1.5 rounded-full transition-all duration-500"
+      className={`${getProgressBarColor(status)} h-1.5 rounded-full transition-all duration-500`}
       style={{ width: `${progress}%` }}
     ></div>
   </div>
@@ -131,7 +152,7 @@ const STATUS_BUTTON_STYLES: Record<string, string> = {
   [TaskStatus.Hundred]: 'bg-green-500/10 text-green-400 hover:bg-green-500/20 border-green-500/20',
   [TaskStatus.SeventyFive]: 'bg-indigo-500/10 text-indigo-400 hover:bg-indigo-500/20 border-indigo-500/20',
   [TaskStatus.Fifty]: 'bg-blue-500/10 text-blue-400 hover:bg-blue-500/20 border-blue-500/20',
-  [TaskStatus.TwentyFive]: 'bg-sky-500/10 text-sky-400 hover:bg-sky-500/20 border-sky-500/20',
+  [TaskStatus.TwentyFive]: 'bg-amber-500/10 text-amber-400 hover:bg-amber-500/20 border-amber-500/20',
   [TaskStatus.Zero]: 'bg-gray-500/10 text-gray-400 hover:bg-gray-500/20 border-gray-500/20',
   [TaskStatus.AtRisk]: 'bg-red-500/10 text-red-400 hover:bg-red-500/20 border-red-500/20',
 };
@@ -248,8 +269,18 @@ const TaskRow: React.FC<TaskRowProps> = ({ task, level, isExpanded, onToggleExpa
         <div className="col-span-4 text-white font-medium flex items-center">
           {canEditTask && <GripVerticalIcon className="w-5 h-5 mr-2 text-slate-500 cursor-grab flex-shrink-0" />}
           {hasSubtasks ? (
-            <button onClick={() => onToggleExpand(task.id)} className="mr-2 text-slate-400 hover:text-white flex-shrink-0">
-              {isExpanded ? <ChevronDownIcon className="w-4 h-4" /> : <ChevronRightIcon className="w-4 h-4" />}
+            <button onClick={() => onToggleExpand(task.id)} className="mr-2 text-slate-400 hover:text-white flex-shrink-0" title="Has subtasks">
+              {isExpanded ? (
+                <span className="flex flex-col -space-y-2">
+                  <ChevronDownIcon className="w-4 h-4" />
+                  <ChevronDownIcon className="w-4 h-4" />
+                </span>
+              ) : (
+                <span className="flex -space-x-2">
+                  <ChevronRightIcon className="w-4 h-4" />
+                  <ChevronRightIcon className="w-4 h-4" />
+                </span>
+              )}
             </button>
           ) : <div className="w-4 h-4 mr-2 flex-shrink-0" style={!canEditTask ? { marginLeft: '1.75rem' } : {}} />}
 
@@ -266,7 +297,7 @@ const TaskRow: React.FC<TaskRowProps> = ({ task, level, isExpanded, onToggleExpa
             ) : (
               <span className="w-full cursor-pointer" onClick={() => canEditTask && setEditingField({ taskId: task.id, field: 'name' })}>{task.name}</span>
             )}
-            <TaskProgressBar progress={progress} />
+            <TaskProgressBar progress={progress} status={task.status} />
           </div>
         </div>
 
@@ -822,7 +853,7 @@ const ProjectDetail: React.FC<ProjectDetailProps> = ({ project, onBack, canEdit,
         if (relevantPhase) {
           const allPhaseTasks = relevantPhase.tasks.flatMap((t: Task) => [t, ...(t.subTasks || [])]);
           // Re-check strict 100%
-          const isStrictComplete = allPhaseTasks.every((t: Task) => t.status === TaskStatus.Hundred || t.status === 'Completed');
+          const isStrictComplete = allPhaseTasks.every((t: Task) => t.status === TaskStatus.Hundred || (t.status as string) === 'Completed');
 
           if (isStrictComplete) {
             if (relevantPhase.assignees && relevantPhase.assignees.length > 0) {

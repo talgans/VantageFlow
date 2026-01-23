@@ -1,0 +1,32 @@
+=== TEXT PARSER RESULT ===
+Project Name: Cosmopolitan Organogram
+Description: Project: Cosmopolitan Organogram
+Core System: Creative
+Duration: 4 weeks
+
+=== PHASES (3) ===
+
+Phase 1: Organogram Adjustments
+  Tasks: 2
+  Task 1: Fiscal close to Registrar
+  Task 2: Centres: Collaborative Centre for AI, AI Policy & Practice Lab
+
+Phase 2: Digital Transformation
+  Tasks: 4
+  Task 1: VC = KPIs
+  Task 2: VISION 2030:10-100-1000
+  Task 3: Pillar 3: add devices, Promise: 100% uptime
+  Task 4: Academic and Research Visibility
+    Subtasks: 2
+    Subtask 1: Rejig
+    Subtask 2: Metrics - check cu website
+
+Phase 3: DLOC Dashboards
+  Tasks: 5
+  Task 1: KPIs - DLOC **
+  Task 2: Device acquisition scheme
+  Task 3: Connectivity & Power
+  Task 4: Survey
+  Task 5: Biometrics implementation: MM, HT
+    Subtasks: 1
+    Subtask 1: Timetable, Registration, Attendance, Participation and Examination Eligibility Guidelines

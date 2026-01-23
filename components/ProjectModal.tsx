@@ -2,7 +2,7 @@
 import React, { useState, useEffect } from 'react';
 import { Project, Phase, Task, TaskStatus, DurationUnit, Currency, TeamMember } from '../types';
 import { XMarkIcon, PlusCircleIcon, TrashIcon } from './icons';
-import { parseTextToProject } from '../utils/textParser';
+import { parseProjectText } from '../utils/projectParser';
 import TeamMemberSelector from './TeamMemberSelector';
 import { notificationService } from '../services/notificationService';
 
@@ -304,19 +304,42 @@ const ProjectModal: React.FC<ProjectModalProps> = ({ onClose, onSave, projectToE
     if (!importText.trim()) return;
 
     try {
-      const parsed = parseTextToProject(importText);
+      const result = parseProjectText(importText);
+      const parsed = result.project;
 
       // Auto-fill form fields
       setFormData(prev => ({
         ...prev,
-        name: parsed.name,
-        description: parsed.description,
-        coreSystem: parsed.coreSystem,
-        duration: String(parsed.duration),
+        name: parsed.name || prev.name,
+        description: parsed.description || prev.description,
+        coreSystem: parsed.coreSystem || prev.coreSystem,
+        duration: String(parsed.duration || prev.duration),
+        cost: String(parsed.cost || 0),
+        currency: parsed.currency || prev.currency,
       }));
 
       // Set phases and tasks
-      setPhases(parsed.phases);
+      if (parsed.phases && parsed.phases.length > 0) {
+        setPhases(parsed.phases);
+      }
+
+      // Set team members if extracted
+      if (parsed.team?.members && parsed.team.members.length > 0) {
+        setTeamMembers(prev => {
+          // Merge with existing, keeping current user if present
+          const existingUids = prev.map(m => m.uid);
+          const newMembers = parsed.team!.members.filter(m => !existingUids.includes(m.uid));
+          return [...prev, ...newMembers];
+        });
+      }
+
+      // Log parsing metadata
+      console.log('Parse result:', {
+        confidence: result.metadata.confidence,
+        warnings: result.metadata.warnings,
+        phases: parsed.phases?.length,
+        tasks: parsed.phases?.reduce((acc, p) => acc + p.tasks.length, 0)
+      });
 
       // Close import modal
       setShowTextImport(false);

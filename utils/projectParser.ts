@@ -99,19 +99,31 @@ export const parseProjectText = (text: string): ParseResult => {
     confidence -= 0.2;
   }
 
-  // 4. Description & Timeline
+  // 4. Description & Project Type Inference
   const firstStructureLineIndex = structure.firstStructureLineIndex;
-  if (firstStructureLineIndex > 0) {
-    const descriptionLines = lines.slice(0, firstStructureLineIndex)
-      .map(l => l.trim())
-      .filter(l => l.length > 0 && l !== project.name && !l.startsWith('Cost') && !l.startsWith('Budget'));
 
-    if (descriptionLines.length > 0) {
-      project.description = descriptionLines.join('\n').slice(0, 500);
+  // Generate description from phase names and project context
+  if (!project.description || project.description.length === 0) {
+    const phaseNames = project.phases.map(p => p.name).slice(0, 5);
+    if (phaseNames.length > 0) {
+      project.description = `Project covering: ${phaseNames.join(', ')}.`;
+    } else if (firstStructureLineIndex > 0) {
+      const descriptionLines = lines.slice(0, firstStructureLineIndex)
+        .map(l => l.trim())
+        .filter(l => l.length > 0 && l !== project.name && !l.startsWith('Cost') && !l.startsWith('Budget'));
+      if (descriptionLines.length > 0) {
+        project.description = descriptionLines.join(' ').slice(0, 500);
+      }
+    }
+    if (!project.description) {
+      project.description = `${project.name} - Project plan with ${project.phases.length} sections.`;
     }
   }
 
-  // Infer Duration
+  // 5. Infer Project Type (coreSystem) from keywords
+  project.coreSystem = inferCoreSystem(text);
+
+  // 6. Infer Duration
   const totalTasks = project.phases.reduce((acc, p) => acc + p.tasks.length + p.tasks.reduce((sAcc, t) => sAcc + (t.subTasks?.length || 0), 0), 0);
   project.duration = Math.max(4, Math.ceil(totalTasks * 0.5));
 
@@ -140,28 +152,91 @@ export const parseProjectText = (text: string): ParseResult => {
 
 function extractTotalCost(text: string): number {
   let total = 0;
-  const costRegex = /(?:cost|budget|price|total|amount)[\s:]+(?:[₦$]|NGN|USD)?\s?([\d,]+(\.\d{1,2})?)/gi;
+
+  // Parse shorthand multipliers (K=thousand, M=million, B=billion)
+  const parseAmount = (amountStr: string, suffix?: string): number => {
+    const num = parseFloat(amountStr.replace(/,/g, ''));
+    if (isNaN(num)) return 0;
+    const multiplier = suffix?.toUpperCase();
+    if (multiplier === 'K') return num * 1000;
+    if (multiplier === 'M') return num * 1000000;
+    if (multiplier === 'B') return num * 1000000000;
+    return num;
+  };
+
+  // Extended cost regex with fee/charge keywords and K/M/B support
+  const costRegex = /(?:cost|budget|price|total|amount|fee|charge)[\s:]+(?:[₦$£€¥₹]|NGN|USD|GBP|EUR|JPY|INR)?\s?([\d,]+(?:\.\d{1,2})?)\s*([KMB])?/gi;
   let match;
   while ((match = costRegex.exec(text)) !== null) {
-    const amountStr = match[1].replace(/,/g, '');
-    const amount = parseFloat(amountStr);
-    if (!isNaN(amount)) total += amount;
+    total += parseAmount(match[1], match[2]);
   }
 
   if (total === 0) {
-    const currencyRegex = /(?:[₦$]|NGN|USD)\s?([\d,]+(\.\d{1,2})?)/gi;
+    // Fallback: standalone currency amounts with K/M/B support
+    const currencyRegex = /(?:[₦$£€¥₹]|NGN|USD|GBP|EUR|JPY|INR)\s?([\d,]+(?:\.\d{1,2})?)\s*([KMB])?/gi;
     while ((match = currencyRegex.exec(text)) !== null) {
-      const amountStr = match[1].replace(/,/g, '');
-      const amount = parseFloat(amountStr);
-      if (!isNaN(amount)) total += amount;
+      total += parseAmount(match[1], match[2]);
     }
   }
   return total;
 }
 
 function inferCurrency(text: string): Currency {
+  if (text.includes('£') || text.includes('GBP')) return Currency.USD; // Map to USD as fallback
+  if (text.includes('€') || text.includes('EUR')) return Currency.USD;
   if (text.includes('$') || text.includes('USD')) return Currency.USD;
+  if (text.includes('¥') || text.includes('JPY')) return Currency.USD;
+  if (text.includes('₹') || text.includes('INR')) return Currency.USD;
   return Currency.NGN;
+}
+
+function inferCoreSystem(text: string): string {
+  const lowerText = text.toLowerCase();
+
+  // Keyword mappings for project types
+  const typeKeywords: Record<string, string[]> = {
+    'Technical': [
+      'technical', 'system', 'api', 'database', 'code', 'software', 'platform',
+      'infrastructure', 'server', 'deployment', 'cloud', 'network', 'ict',
+      'digital', 'technology', 'app', 'application', 'integration', 'automation',
+      'biometrics', 'connectivity', 'devices', 'dashboard', 'data'
+    ],
+    'Business': [
+      'business', 'strategy', 'revenue', 'sales', 'marketing', 'customer',
+      'stakeholder', 'kpi', 'budget', 'funding', 'roi', 'profit', 'growth',
+      'operations', 'process', 'workflow', 'efficiency'
+    ],
+    'Creative': [
+      'creative', 'design', 'brand', 'ui', 'ux', 'graphic', 'visual',
+      'media', 'content', 'video', 'animation', 'illustration', 'art'
+    ],
+    'Research': [
+      'research', 'analysis', 'study', 'survey', 'investigation', 'academic',
+      'thesis', 'paper', 'publication', 'experiment', 'hypothesis', 'findings'
+    ],
+    'Compliance': [
+      'compliance', 'regulation', 'audit', 'legal', 'policy', 'governance',
+      'security', 'privacy', 'gdpr', 'standards', 'certification', 'risk'
+    ]
+  };
+
+  // Count keyword matches for each type
+  const scores: Record<string, number> = {};
+  for (const [type, keywords] of Object.entries(typeKeywords)) {
+    scores[type] = keywords.filter(kw => lowerText.includes(kw)).length;
+  }
+
+  // Find the type with most matches
+  let bestType = 'Technical'; // Default
+  let bestScore = 0;
+  for (const [type, score] of Object.entries(scores)) {
+    if (score > bestScore) {
+      bestScore = score;
+      bestType = type;
+    }
+  }
+
+  return bestType;
 }
 
 function extractTeam(text: string): TeamMember[] {
@@ -169,10 +244,19 @@ function extractTeam(text: string): TeamMember[] {
   const seenEmails = new Set<string>();
   const seenNames = new Set<string>();
 
+  // Title prefixes that indicate admin role
+  const adminTitles = /^(Dr\.?|Prof\.?|CEO|VC|Director|Chairman|President)\s+/i;
+
   const addMember = (name: string, email?: string, role?: 'primary' | 'secondary') => {
-    const cleanName = name.replace(/[(),]/g, '').trim();
+    let cleanName = name.replace(/[(),]/g, '').trim();
     if (!cleanName || cleanName.length < 2) return;
     if (seenNames.has(cleanName)) return;
+
+    // Detect admin role from title
+    let detectedRole = role;
+    if (adminTitles.test(cleanName)) {
+      detectedRole = 'primary'; // Admin/leadership role
+    }
 
     const finalEmail = email || `${cleanName.replace(/\s+/g, '.').toLowerCase()}@placeholder.com`;
 
@@ -180,7 +264,7 @@ function extractTeam(text: string): TeamMember[] {
       uid: `temp-${Date.now()}-${members.length}`,
       email: finalEmail,
       displayName: cleanName,
-      leadRole: role
+      leadRole: detectedRole
     });
     seenNames.add(cleanName);
     seenEmails.add(finalEmail);
@@ -239,12 +323,13 @@ function parseStructure(lines: string[]): StructuralResult {
   let firstStructureLineIndex = -1;
 
   const patterns = {
-    // Added specific check to avoid capturing Dates as Phase Headers
-    phaseHeader: /^(Phase|Stage|Step|Part)\s+\d+[:.]?|^(What's missing|Gap Analysis|Strategy|Vision|Inclusivity|Youth|EdTech|Change management|Objectives|Milestones)[:?]?/i,
-    explicitPhase: /^(Phase|Stage|Step)\s+([A-Za-z0-9]+)[:.-]?\s+(.*)/i,
+    // Phase detection with extended keywords (Milestone, Sprint, Quarter, Week)
+    phaseHeader: /^(Phase|Stage|Step|Part|Milestone|Sprint|Quarter|Week)\s+\d*[:.]?|^(What's missing|Gap Analysis|Strategy|Vision|Inclusivity|Youth|EdTech|Change management|Objectives|Milestones)[:?]?/i,
+    explicitPhase: /^(Phase|Stage|Step|Milestone|Sprint)\s+([A-Za-z0-9]+)[:.-]?\s+(.*)/i,
     markdownHeader: /^#\s+(.*)/, // Support # Header (Single # for Phase usually in pasted text)
-    bullet: /^(\s*)([-*•⁃])\s+(.*)/,
-    number: /^(\s*)(\d+)[.)]\s+(.*)/,
+    horizontalRule: /^[-_*]{3,}$/, // Detect --- or ___ or *** as section breaks
+    bullet: /^(\s*)([-*•⁃○◦▪▫])\s+(.*)/,  // Extended bullet symbols
+    number: /^(\s*)(\d+(?:\.\d+)*)[.)]\s+(.*)/,  // Support nested numbering 1.1.1
     letter: /^(\s*)([a-z])[.)]\s+(.*)/i,
     dateHeader: /^\d{1,2}\s(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)\s\d{4}/i
   };
@@ -254,12 +339,40 @@ function parseStructure(lines: string[]): StructuralResult {
     const trimmed = line.trim();
     if (!trimmed) continue;
 
-    // 1. Detect Phase
+    // Detect horizontal rule as section break (starts new phase context)
+    if (patterns.horizontalRule.test(trimmed)) {
+      currentParentTask = null;
+      parentIndent = -1;
+      parentMarkerType = 'none';
+      continue;
+    }
+
+    // 1. Check if this is a numbered item at indent level 0 (should be a phase)
+    const numberMatch = line.match(patterns.number);
+    if (numberMatch && numberMatch[1].length === 0) {
+      // Top-level numbered item = Phase
+      if (firstStructureLineIndex === -1) firstStructureLineIndex = i;
+
+      currentPhase = {
+        id: `phase-${Date.now()}-${phases.length}`,
+        name: numberMatch[3].trim(),
+        weekRange: 'TBD',
+        tasks: []
+      };
+      phases.push(currentPhase);
+
+      currentParentTask = null;
+      parentIndent = -1;
+      parentMarkerType = 'none';
+      continue;
+    }
+
+    // 2. Detect Phase (other patterns)
     const isPhase =
       patterns.phaseHeader.test(trimmed) ||
       patterns.markdownHeader.test(trimmed) ||
       patterns.dateHeader.test(trimmed) ||
-      (trimmed.endsWith(':') && trimmed.length < 60) ||
+      (trimmed.endsWith(':') && trimmed.length < 60 && !trimmed.includes('=')) ||
       (trimmed.endsWith('?') && trimmed.length < 100);
 
     if (isPhase) {
@@ -286,9 +399,8 @@ function parseStructure(lines: string[]): StructuralResult {
       continue;
     }
 
-    // 2. Detect Task / List Item
+    // 3. Detect Task / List Item
     const bulletMatch = line.match(patterns.bullet);
-    const numberMatch = line.match(patterns.number);
     const letterMatch = line.match(patterns.letter);
 
     const match = bulletMatch || numberMatch || letterMatch;
@@ -343,9 +455,43 @@ function parseStructure(lines: string[]): StructuralResult {
       }
     }
     else {
-      // Text line check
-      // Check for ALL CAPS Header
-      if (trimmed.length > 3 && trimmed === trimmed.toUpperCase() && /[A-Z]/.test(trimmed)) {
+      // 4. Check for indented plain text (no bullet/number) when inside a phase
+      const leadingSpaces = line.length - line.trimStart().length;
+
+      if (currentPhase && leadingSpaces >= 2 && trimmed.length > 0) {
+        // This is indented text under a phase - treat as a task
+        if (firstStructureLineIndex === -1) firstStructureLineIndex = i;
+
+        const enrichedTask = enrichTask(trimmed);
+
+        const newTask: Task = {
+          id: `task-${Date.now()}-${Math.random().toString(36).substr(2, 5)}`,
+          ...enrichedTask,
+          startDate: new Date(),
+          endDate: new Date(),
+          subTasks: []
+        };
+
+        // Check if this should be a subtask based on deeper indentation
+        if (currentParentTask && leadingSpaces > parentIndent) {
+          if (!currentParentTask.subTasks) currentParentTask.subTasks = [];
+          currentParentTask.subTasks.push(newTask);
+        } else {
+          currentPhase.tasks.push(newTask);
+          currentParentTask = newTask;
+          parentIndent = leadingSpaces;
+        }
+        continue;
+      }
+
+      // 5. Text line check
+      // Check for ALL CAPS Header (more restrictive - must be standalone, no colons/equals)
+      if (trimmed.length > 10 &&
+        trimmed.length < 50 &&
+        trimmed === trimmed.toUpperCase() &&
+        /^[A-Z\s]+$/.test(trimmed) &&
+        !trimmed.includes(':') &&
+        !trimmed.includes('=')) {
         if (firstStructureLineIndex === -1) firstStructureLineIndex = i;
         currentPhase = {
           id: `phase-${Date.now()}-${phases.length}`,
@@ -367,23 +513,63 @@ function enrichTask(content: string): Partial<Task> {
   let name = content;
   let status = TaskStatus.Zero;
   let priority = 'normal';
+  let assignee: string | undefined;
+  let dueDate: Date | undefined;
 
-  // Status detection
-  if (/\[x\]|\[X\]/.test(name) || /\b(done|completed)\b/i.test(name)) {
+  // Status detection with extended checkbox symbols
+  if (/\[x\]|\[X\]|☑|✓|✔/.test(name) || /\b(done|completed)\b/i.test(name)) {
     status = TaskStatus.Hundred;
-    name = name.replace(/\[x\]|\[X\]/g, '').trim();
-  } else if (/\b(in progress|wip)\b/i.test(name)) {
+    name = name.replace(/\[x\]|\[X\]|☑|✓|✔/g, '').trim();
+  } else if (/\[ \]|☐|□/.test(name)) {
+    status = TaskStatus.Zero;
+    name = name.replace(/\[ \]|☐|□/g, '').trim();
+  } else if (/\b(in progress|wip|ongoing)\b/i.test(name)) {
     status = TaskStatus.TwentyFive;
   }
 
-  // Priority
-  if (/\[High\]|\(High\)|\bPriority: High\b/i.test(name)) {
+  // Priority detection with extended levels
+  if (/\[High\]|\(High\)|\bPriority:\s*High\b|\bP1\b|\bCritical\b/i.test(name)) {
     priority = 'high';
-    name = name.replace(/\[High\]|\(High\)|\bPriority: High\b/i, '').trim();
+    name = name.replace(/\[High\]|\(High\)|\bPriority:\s*High\b|\bP1\b|\bCritical\b/gi, '').trim();
+  } else if (/\[Low\]|\(Low\)|\bPriority:\s*Low\b|\bP3\b/i.test(name)) {
+    priority = 'low';
+    name = name.replace(/\[Low\]|\(Low\)|\bPriority:\s*Low\b|\bP3\b/gi, '').trim();
+  } else if (/\bP2\b|\bMedium\b/i.test(name)) {
+    priority = 'medium';
+    name = name.replace(/\bP2\b|\bMedium\b/gi, '').trim();
   }
 
-  return {
-    name,
-    status,
-  };
+  // Assignee extraction: (assigned to X), (@username), (Owner: X)
+  const assigneeMatch = name.match(/(?:assigned to|@|Owner:\s*)([A-Za-z][A-Za-z\s]{1,20})/i);
+  if (assigneeMatch) {
+    assignee = assigneeMatch[1].trim();
+    name = name.replace(/\(assigned to [^)]+\)|@[A-Za-z]+|\(Owner:\s*[^)]+\)/gi, '').trim();
+  }
+
+  // Due date extraction: "by Jan 15", "due: 2026-01-20", "deadline: next Friday"
+  const dueDatePatterns = [
+    /(?:by|due|deadline)[:\s]+([A-Za-z]+\s+\d{1,2}(?:,?\s*\d{4})?)/i,  // "by Jan 15" or "by Jan 15, 2026"
+    /(?:by|due|deadline)[:\s]+(\d{4}-\d{2}-\d{2})/i,  // "due: 2026-01-20"
+    /(?:by|due|deadline)[:\s]+(\d{1,2}[/-]\d{1,2}[/-]\d{2,4})/i  // "due: 01/20/2026"
+  ];
+
+  for (const pattern of dueDatePatterns) {
+    const dateMatch = name.match(pattern);
+    if (dateMatch) {
+      const parsed = new Date(dateMatch[1]);
+      if (!isNaN(parsed.getTime())) {
+        dueDate = parsed;
+        name = name.replace(pattern, '').trim();
+        break;
+      }
+    }
+  }
+
+  // Clean up extra whitespace and punctuation
+  name = name.replace(/\s{2,}/g, ' ').replace(/^[-–—:,]\s*/, '').trim();
+
+  const result: Partial<Task> = { name, status };
+  if (dueDate) result.endDate = dueDate;
+
+  return result;
 }

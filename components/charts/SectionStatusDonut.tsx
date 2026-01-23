@@ -12,7 +12,7 @@ const STATUS_COLORS = {
     [TaskStatus.Hundred]: '#22c55e',    // green-500
     [TaskStatus.SeventyFive]: '#6366f1', // indigo-500
     [TaskStatus.Fifty]: '#3b82f6',       // blue-500
-    [TaskStatus.TwentyFive]: '#0ea5e9',  // sky-500
+    [TaskStatus.TwentyFive]: '#f59e0b',  // amber-500
     [TaskStatus.Zero]: '#6b7280',        // gray-500
     [TaskStatus.AtRisk]: '#ef4444',      // red-500
 };

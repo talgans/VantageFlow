@@ -18,7 +18,7 @@ const StatusBadge: React.FC<StatusBadgeProps> = ({ status }) => {
       case 'In Progress':
         return { bgColor: 'bg-blue-500/10', textColor: 'text-blue-400', dotColor: 'bg-blue-400' };
       case TaskStatus.TwentyFive:
-        return { bgColor: 'bg-sky-500/10', textColor: 'text-sky-400', dotColor: 'bg-sky-400' };
+        return { bgColor: 'bg-amber-500/10', textColor: 'text-amber-400', dotColor: 'bg-amber-400' };
       case TaskStatus.AtRisk:
         return { bgColor: 'bg-red-500/10', textColor: 'text-red-400', dotColor: 'bg-red-400' };
       case TaskStatus.Zero:
