@@ -54,14 +54,26 @@ const getProgressBarColor = (status: TaskStatus | string): string => {
   }
 };
 
-const TaskProgressBar: React.FC<{ progress: number; status: TaskStatus | string }> = ({ progress, status }) => (
-  <div className="w-full bg-slate-700 rounded-full h-1.5 mt-1.5">
-    <div
-      className={`${getProgressBarColor(status)} h-1.5 rounded-full transition-all duration-500`}
-      style={{ width: `${progress}%` }}
-    ></div>
-  </div>
-);
+// Get progress bar color based on percentage value
+const getProgressBarColorFromPercent = (percent: number): string => {
+  if (percent >= 100) return 'bg-green-400';
+  if (percent >= 75) return 'bg-indigo-400';
+  if (percent >= 50) return 'bg-blue-400';
+  if (percent >= 25) return 'bg-amber-400';
+  return 'bg-gray-400';
+};
+
+const TaskProgressBar: React.FC<{ progress: number; status: TaskStatus | string; useProgressColor?: boolean }> = ({ progress, status, useProgressColor = false }) => {
+  const colorClass = useProgressColor ? getProgressBarColorFromPercent(progress) : getProgressBarColor(status);
+  return (
+    <div className="w-full bg-slate-700 rounded-full h-1.5 mt-1.5">
+      <div
+        className={`${colorClass} h-1.5 rounded-full transition-all duration-500`}
+        style={{ width: `${progress}%` }}
+      ></div>
+    </div>
+  );
+};
 
 interface ProjectDetailProps {
   project: Project;
@@ -297,7 +309,7 @@ const TaskRow: React.FC<TaskRowProps> = ({ task, level, isExpanded, onToggleExpa
             ) : (
               <span className="w-full cursor-pointer" onClick={() => canEditTask && setEditingField({ taskId: task.id, field: 'name' })}>{task.name}</span>
             )}
-            <TaskProgressBar progress={progress} status={task.status} />
+            <TaskProgressBar progress={progress} status={task.status} useProgressColor={hasSubtasks} />
           </div>
         </div>
 
@@ -330,7 +342,29 @@ const TaskRow: React.FC<TaskRowProps> = ({ task, level, isExpanded, onToggleExpa
         </div>
 
         <div className="col-span-2 relative">
-          {isEditing('status') ? (
+          {hasSubtasks ? (
+            // Parent task: show calculated progress from subtasks (non-editable) with color coding
+            (() => {
+              // Get color based on calculated progress
+              const getParentStatusColors = () => {
+                if (progress >= 100) return { bg: 'bg-green-500/10', text: 'text-green-400', dot: 'bg-green-400' };
+                if (progress >= 75) return { bg: 'bg-indigo-500/10', text: 'text-indigo-400', dot: 'bg-indigo-400' };
+                if (progress >= 50) return { bg: 'bg-blue-500/10', text: 'text-blue-400', dot: 'bg-blue-400' };
+                if (progress >= 25) return { bg: 'bg-amber-500/10', text: 'text-amber-400', dot: 'bg-amber-400' };
+                return { bg: 'bg-gray-500/10', text: 'text-gray-400', dot: 'bg-gray-400' };
+              };
+              const colors = getParentStatusColors();
+              return (
+                <span
+                  className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${colors.bg} ${colors.text}`}
+                  title="Calculated from subtasks"
+                >
+                  <span className={`w-2 h-2 mr-1.5 rounded-full ${colors.dot}`}></span>
+                  {progress}%
+                </span>
+              );
+            })()
+          ) : isEditing('status') ? (
             <StatusEditButtons
               onSelect={(status) => {
                 handleUpdateTaskField(task.id, 'status', status);
@@ -499,6 +533,7 @@ const ProjectDetail: React.FC<ProjectDetailProps> = ({ project, onBack, canEdit,
     id: string;
     currentAssignees: TeamMember[];
     name: string;
+    hasChildren: boolean;
   } | null>(null);
 
   // --- Accordion State ---
@@ -955,7 +990,22 @@ const ProjectDetail: React.FC<ProjectDetailProps> = ({ project, onBack, canEdit,
     setEditingInfoCard(null);
   };
 
-  const handleAssign = async (members: TeamMember[], notify: boolean) => {
+  // Helper to propagate assignments down the tree (retains existing assignments)
+  const propagateAssignmentsToChildren = (tasks: Task[], newMembers: TeamMember[]): void => {
+    for (const task of tasks) {
+      // Merge new members with existing (retain manual assignments)
+      const existingUids = new Set(task.assignees?.map(a => a.uid) || []);
+      const membersToAdd = newMembers.filter(m => !existingUids.has(m.uid));
+      task.assignees = [...(task.assignees || []), ...membersToAdd];
+
+      // Recurse into subtasks
+      if (task.subTasks) {
+        propagateAssignmentsToChildren(task.subTasks, newMembers);
+      }
+    }
+  };
+
+  const handleAssign = async (members: TeamMember[], notify: boolean, propagate: boolean = false) => {
     if (!assigningTo) return;
     const updatedProject = JSON.parse(JSON.stringify(project), reviveDates);
 
@@ -963,12 +1013,20 @@ const ProjectDetail: React.FC<ProjectDetailProps> = ({ project, onBack, canEdit,
       const phase = updatedProject.phases.find((p: Phase) => p.id === assigningTo.id);
       if (phase) {
         phase.assignees = members;
+        // Propagate to all tasks in this phase if requested
+        if (propagate && phase.tasks) {
+          propagateAssignmentsToChildren(phase.tasks, members);
+        }
       }
     } else {
       const findAndUpdateTask = (tasks: Task[]): boolean => {
         for (const task of tasks) {
           if (task.id === assigningTo.id) {
             task.assignees = members;
+            // Propagate to subtasks if requested
+            if (propagate && task.subTasks) {
+              propagateAssignmentsToChildren(task.subTasks, members);
+            }
             return true;
           }
           if (task.subTasks && findAndUpdateTask(task.subTasks)) return true;
@@ -1308,7 +1366,8 @@ const ProjectDetail: React.FC<ProjectDetailProps> = ({ project, onBack, canEdit,
                           type: 'phase',
                           id: phase.id,
                           currentAssignees: phase.assignees || [],
-                          name: phase.name
+                          name: phase.name,
+                          hasChildren: phase.tasks && phase.tasks.length > 0
                         });
                       }}
                     >
@@ -1402,7 +1461,8 @@ const ProjectDetail: React.FC<ProjectDetailProps> = ({ project, onBack, canEdit,
                               type: 'task',
                               id: task.id,
                               currentAssignees: task.assignees || [],
-                              name: task.name
+                              name: task.name,
+                              hasChildren: task.subTasks && task.subTasks.length > 0
                             });
                           }}
                           projectTeam={project.team?.members || []}
@@ -1466,6 +1526,8 @@ const ProjectDetail: React.FC<ProjectDetailProps> = ({ project, onBack, canEdit,
               onSave={handleAssign}
               onCancel={() => setAssigningTo(null)}
               title={`Assign ${assigningTo.type === 'phase' ? 'Section' : 'Task'}: ${assigningTo.name}`}
+              showPropagateOption={assigningTo.hasChildren}
+              hasExistingChildren={assigningTo.hasChildren}
             />
           </div>
         </div>

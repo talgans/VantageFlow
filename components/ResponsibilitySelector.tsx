@@ -8,9 +8,11 @@ import { useUserLookup } from '../hooks/useUserLookup';
 interface ResponsibilitySelectorProps {
     teamMembers: TeamMember[];
     assignedMembers: TeamMember[];
-    onSave: (members: TeamMember[], notify: boolean) => void;
+    onSave: (members: TeamMember[], notify: boolean, propagate: boolean) => void;
     onCancel: () => void;
     title?: string;
+    showPropagateOption?: boolean;
+    hasExistingChildren?: boolean;
 }
 
 const ResponsibilitySelector: React.FC<ResponsibilitySelectorProps> = ({
@@ -18,13 +20,16 @@ const ResponsibilitySelector: React.FC<ResponsibilitySelectorProps> = ({
     assignedMembers,
     onSave,
     onCancel,
-    title = 'Assign Responsibility'
+    title = 'Assign Responsibility',
+    showPropagateOption = false,
+    hasExistingChildren = false
 }) => {
     const [selectedIds, setSelectedIds] = useState<Set<string>>(
         new Set(assignedMembers.map(m => m.uid))
     );
     const [searchQuery, setSearchQuery] = useState('');
     const [notify, setNotify] = useState(true);
+    const [propagate, setPropagate] = useState(false);
     const [showConfirmation, setShowConfirmation] = useState(false);
 
     // Use the user lookup hook for dynamic data
@@ -75,7 +80,7 @@ const ResponsibilitySelector: React.FC<ResponsibilitySelectorProps> = ({
                     photoURL: cachedUser?.photoURL || member.photoURL,
                 };
             });
-        onSave(finalMembers, notify);
+        onSave(finalMembers, notify, propagate);
     };
 
     return (
@@ -167,7 +172,7 @@ const ResponsibilitySelector: React.FC<ResponsibilitySelectorProps> = ({
 
             {/* Footer */}
             <div className="p-4 border-t border-slate-700 bg-slate-800/50">
-                <div className="flex items-center mb-4">
+                <div className="space-y-3 mb-4">
                     <label className="flex items-center cursor-pointer select-none">
                         <input
                             type="checkbox"
@@ -177,6 +182,20 @@ const ResponsibilitySelector: React.FC<ResponsibilitySelectorProps> = ({
                         />
                         <span className="text-sm text-slate-300">Notify new assignees via email</span>
                     </label>
+                    {showPropagateOption && (
+                        <label className="flex items-center cursor-pointer select-none">
+                            <input
+                                type="checkbox"
+                                checked={propagate}
+                                onChange={(e) => setPropagate(e.target.checked)}
+                                className="w-4 h-4 rounded border-slate-500 bg-slate-700 text-brand-secondary focus:ring-brand-secondary mr-2"
+                            />
+                            <span className="text-sm text-slate-300">
+                                Apply to all sub-items
+                                {hasExistingChildren && <span className="text-slate-500 ml-1">(existing assignments retained)</span>}
+                            </span>
+                        </label>
+                    )}
                 </div>
                 <div className="flex gap-3">
                     <button
