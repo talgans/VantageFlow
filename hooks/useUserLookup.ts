@@ -7,6 +7,7 @@ export interface UserInfo {
     displayName?: string;
     photoURL?: string;
     role: string;
+    lastSignIn?: string; // ISO date string - undefined if user never logged in
 }
 
 interface UsersCache {
@@ -41,9 +42,17 @@ export const useUserLookup = () => {
                 const usersByEmail = new Map<string, UserInfo>();
 
                 data.users.forEach((user) => {
-                    usersByUid.set(user.uid, user);
+                    const userInfo: UserInfo = {
+                        uid: user.uid,
+                        email: user.email,
+                        displayName: user.displayName,
+                        photoURL: user.photoURL,
+                        role: user.role,
+                        lastSignIn: (user as any).lastSignIn, // Include lastSignIn from Cloud Function response
+                    };
+                    usersByUid.set(user.uid, userInfo);
                     if (user.email) {
-                        usersByEmail.set(user.email.toLowerCase(), user);
+                        usersByEmail.set(user.email.toLowerCase(), userInfo);
                     }
                 });
 
@@ -96,10 +105,22 @@ export const useUserLookup = () => {
         return user?.photoURL;
     }, [getUserById]);
 
+    /**
+     * Check if a user has logged in (accepted their invitation)
+     */
+    const hasUserLoggedIn = useCallback((uid: string, email?: string): boolean => {
+        const user = getUserById(uid, email);
+        // If user not found, we don't know - safer to assume they have logged in
+        if (!user) return true;
+        // If lastSignIn is undefined or empty, user hasn't logged in yet
+        return !!user.lastSignIn;
+    }, [getUserById]);
+
     return {
         getUserById,
         getUserDisplayName,
         getUserPhotoURL,
+        hasUserLoggedIn,
         loading: cache.loading,
         error: cache.error,
     };

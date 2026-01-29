@@ -83,6 +83,7 @@ interface ProjectDetailProps {
   showToast: (message: string) => void;
   currentUserId?: string;  // Current user's ID for creator tracking
   currentUserEmail?: string; // Current user's email
+  userRole?: 'admin' | 'manager' | 'member'; // Current user's role
   onEditProject?: () => void;
 }
 
@@ -514,10 +515,13 @@ const SortableHeaderCell: React.FC<SortableHeaderCellProps> = ({ label, sortKey,
 };
 
 
-const ProjectDetail: React.FC<ProjectDetailProps> = ({ project, onBack, canEdit, onUpdateProject, showToast, currentUserId, currentUserEmail, onEditProject }) => {
+const ProjectDetail: React.FC<ProjectDetailProps> = ({ project, onBack, canEdit, onUpdateProject, showToast, currentUserId, currentUserEmail, userRole, onEditProject }) => {
   const [aiInsight, setAiInsight] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [expandedTasks, setExpandedTasks] = useState<Set<string>>(new Set());
+
+  // Only project owner or admin can archive/unarchive
+  const canArchive = canEdit && (userRole === 'admin' || project.ownerId === currentUserId);
   const [addingSubtaskTo, setAddingSubtaskTo] = useState<string | null>(null);
   const [addingTaskToPhase, setAddingTaskToPhase] = useState<string | null>(null);
   const [editingField, setEditingField] = useState<{ taskId: string; field: string } | null>(null);
@@ -527,6 +531,7 @@ const ProjectDetail: React.FC<ProjectDetailProps> = ({ project, onBack, canEdit,
   const [editingPhase, setEditingPhase] = useState<{ id: string; field: 'name' | 'weekRange' } | null>(null);
   const [editingInfoCard, setEditingInfoCard] = useState<'duration' | 'cost' | 'team' | null>(null);
   const [phaseToDelete, setPhaseToDelete] = useState<Phase | null>(null);
+  const [archiveConfirm, setArchiveConfirm] = useState<{ show: boolean; action: 'archive' | 'unarchive' }>({ show: false, action: 'archive' });
 
   const [assigningTo, setAssigningTo] = useState<{
     type: 'phase' | 'task';
@@ -576,8 +581,13 @@ const ProjectDetail: React.FC<ProjectDetailProps> = ({ project, onBack, canEdit,
       return value;
     });
 
+    // Ensure phases exists (defensive check)
+    if (!projectCopy.phases) {
+      projectCopy.phases = [];
+    }
+
     projectCopy.phases.forEach((phase: Phase) => {
-      phase.tasks = sortTasks(phase.tasks, sortConfig);
+      phase.tasks = sortTasks(phase.tasks || [], sortConfig);
     });
     return projectCopy;
   }, [project, sortConfig]);
@@ -589,8 +599,11 @@ const ProjectDetail: React.FC<ProjectDetailProps> = ({ project, onBack, canEdit,
     return value;
   };
 
+  // Compute effective canEdit - false if project is archived
+  const effectiveCanEdit = canEdit && !project.isArchived;
+
   const checkPermission = (itemOwnerId?: string) => {
-    if (!canEdit || !currentUserId) return false;
+    if (!effectiveCanEdit || !currentUserId) return false;
     if (project.ownerId === currentUserId) return true;
     const member = project.team?.members?.find(m => m.uid === currentUserId);
     if (!member) return true;
@@ -1046,6 +1059,20 @@ const ProjectDetail: React.FC<ProjectDetailProps> = ({ project, onBack, canEdit,
     setAssigningTo(null);
   };
 
+  // --- Archive Functionality ---
+  const handleArchive = (archive: boolean) => {
+    const updatedProject = JSON.parse(JSON.stringify(project), reviveDates);
+    updatedProject.isArchived = archive;
+    if (archive) {
+      updatedProject.archivedAt = new Date();
+      updatedProject.archivedBy = currentUserId;
+    } else {
+      // When unarchiving, keep archivedAt for history but clear archivedBy
+      delete updatedProject.archivedBy;
+    }
+    onUpdateProject(updatedProject);
+    showToast(archive ? 'Project archived' : 'Project unarchived');
+  };
 
   return (
     <div className="space-y-8">
@@ -1054,34 +1081,137 @@ const ProjectDetail: React.FC<ProjectDetailProps> = ({ project, onBack, canEdit,
         <span>Back to Projects</span>
       </button>
 
-      <div className="bg-slate-800/50 p-6 rounded-xl border border-slate-700">
-        <div className="flex items-center space-x-4">
-          <CircularProgress
-            percentage={(() => {
-              const allTasks = project.phases.flatMap(ph =>
-                ph.tasks.flatMap(t => t.subTasks ? [t, ...t.subTasks] : [t])
-              );
-              if (allTasks.length === 0) return 0;
-              const completed = allTasks.filter(t => t.status === TaskStatus.Hundred || (t.status as string) === 'Completed').length;
-              return Math.round((completed / allTasks.length) * 100);
-            })()}
-            size={60}
-          />
-          <div>
-            <h2 className="text-3xl font-bold text-white">{project.name}</h2>
-            {project.ownerId && (
-              <div className="flex items-center gap-2 mt-1">
-                <span className="text-sm text-slate-400">Owner:</span>
-                {getUserPhotoURL(project.ownerId, project.ownerEmail) ? (
-                  <img src={getUserPhotoURL(project.ownerId, project.ownerEmail)} alt="Owner" className="w-6 h-6 rounded-full object-cover" />
-                ) : (
-                  <div className="w-6 h-6 rounded-full bg-brand-secondary/30 flex items-center justify-center">
-                    <UserIcon className="w-3 h-3 text-brand-light" />
-                  </div>
-                )}
-                <span className="text-sm text-brand-light">{getUserDisplayName(project.ownerId, project.ownerEmail) || project.ownerEmail}</span>
-              </div>
+      <div className={`p-6 rounded-xl border ${project.isArchived
+        ? 'bg-amber-500/10 border-amber-500/50'
+        : 'bg-slate-800/50 border-slate-700'}`}>
+        {/* Archived Notice */}
+        {project.isArchived && (
+          <div className="flex items-center gap-2 mb-4 pb-4 border-b border-amber-500/30">
+            <svg className="w-5 h-5 text-amber-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M5 8h14M5 8a2 2 0 110-4h14a2 2 0 110 4M5 8v10a2 2 0 002 2h10a2 2 0 002-2V8m-9 4h4" />
+            </svg>
+            <span className="text-amber-200 font-medium flex-1">This project is archived. No edits can be made until it is unarchived.</span>
+            {canArchive && (
+              <button
+                onClick={() => setArchiveConfirm({ show: true, action: 'unarchive' })}
+                className="px-3 py-1 bg-amber-500 hover:bg-amber-400 text-black text-sm font-medium rounded-lg transition-colors"
+              >
+                Unarchive
+              </button>
             )}
+          </div>
+        )}
+        <div className="flex items-start justify-between">
+          <div className="flex items-center space-x-4">
+            <CircularProgress
+              percentage={(() => {
+                const allTasks = (project.phases || []).flatMap(ph =>
+                  (ph.tasks || []).flatMap(t => t.subTasks ? [t, ...t.subTasks] : [t])
+                );
+                if (allTasks.length === 0) return 0;
+                const completed = allTasks.filter(t => t.status === TaskStatus.Hundred || (t.status as string) === 'Completed').length;
+                return Math.round((completed / allTasks.length) * 100);
+              })()}
+              size={60}
+            />
+            <div>
+              <h2 className="text-3xl font-bold text-white">{project.name}</h2>
+              {project.ownerId && (
+                <div className="flex items-center gap-2 mt-1">
+                  <span className="text-sm text-slate-400">Owner:</span>
+                  {getUserPhotoURL(project.ownerId, project.ownerEmail) ? (
+                    <img src={getUserPhotoURL(project.ownerId, project.ownerEmail)} alt="Owner" className="w-6 h-6 rounded-full object-cover" />
+                  ) : (
+                    <div className="w-6 h-6 rounded-full bg-brand-secondary/30 flex items-center justify-center">
+                      <UserIcon className="w-3 h-3 text-brand-light" />
+                    </div>
+                  )}
+                  <span className="text-sm text-brand-light">{getUserDisplayName(project.ownerId, project.ownerEmail) || project.ownerEmail}</span>
+                </div>
+              )}
+            </div>
+            {/* Archive Button - visible to owner/admin when not archived */}
+            {canArchive && !project.isArchived && (
+              <button
+                onClick={() => setArchiveConfirm({ show: true, action: 'archive' })}
+                className="ml-4 px-3 py-1.5 bg-slate-700 hover:bg-slate-600 text-slate-300 text-sm font-medium rounded-lg transition-colors flex items-center gap-1.5"
+                title="Archive Project"
+              >
+                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M5 8h14M5 8a2 2 0 110-4h14a2 2 0 110 4M5 8v10a2 2 0 002 2h10a2 2 0 002-2V8m-9 4h4" />
+                </svg>
+                Archive
+              </button>
+            )}
+          </div>
+          {/* Sections, Tasks Count and Section Progress Bar Charts */}
+          <div className="flex items-center gap-6">
+            {/* Sections Count */}
+            <div className="text-center">
+              <p className="text-2xl font-bold text-white">{(project.phases || []).length}</p>
+              <span className="text-xs text-slate-400">Sections</span>
+            </div>
+            {/* Tasks Count */}
+            <div className="text-center">
+              <p className="text-2xl font-bold text-white">
+                {(project.phases || []).reduce((acc, phase) =>
+                  acc + (phase.tasks || []).reduce((taskAcc, task) =>
+                    taskAcc + 1 + (task.subTasks?.length || 0), 0), 0)}
+              </p>
+              <span className="text-xs text-slate-400">Tasks</span>
+            </div>
+            {/* Section Progress Stacked Bar Charts */}
+            <div className="flex flex-col items-center">
+              <div className="flex gap-1 items-end h-8">
+                {(project.phases || []).length === 0 ? (
+                  <div className="w-5 h-full bg-slate-600 rounded-sm" title="No sections" />
+                ) : (project.phases || []).map((phase) => {
+                  const allTasks = (phase.tasks || []).flatMap(t => t.subTasks ? [t, ...t.subTasks] : [t]);
+                  const totalTasks = allTasks.length;
+                  if (totalTasks === 0) {
+                    return (
+                      <div key={phase.id} className="w-5 h-full bg-slate-600 rounded-sm" title={`${phase.name}: No tasks`} />
+                    );
+                  }
+
+                  const statusCounts = {
+                    hundred: allTasks.filter(t => t.status === TaskStatus.Hundred || (t.status as string) === 'Completed').length,
+                    seventyFive: allTasks.filter(t => t.status === TaskStatus.SeventyFive).length,
+                    fifty: allTasks.filter(t => t.status === TaskStatus.Fifty || (t.status as string) === 'In Progress').length,
+                    twentyFive: allTasks.filter(t => t.status === TaskStatus.TwentyFive).length,
+                    atRisk: allTasks.filter(t => t.status === TaskStatus.AtRisk).length,
+                    zero: allTasks.filter(t => t.status === TaskStatus.Zero || (t.status as string) === 'Not Started').length,
+                  };
+
+                  const pcts = {
+                    hundred: (statusCounts.hundred / totalTasks) * 100,
+                    seventyFive: (statusCounts.seventyFive / totalTasks) * 100,
+                    fifty: (statusCounts.fifty / totalTasks) * 100,
+                    twentyFive: (statusCounts.twentyFive / totalTasks) * 100,
+                    atRisk: (statusCounts.atRisk / totalTasks) * 100,
+                    zero: (statusCounts.zero / totalTasks) * 100,
+                  };
+
+                  const completionPct = Math.round((statusCounts.hundred / totalTasks) * 100);
+
+                  return (
+                    <div
+                      key={phase.id}
+                      className="w-5 h-full bg-slate-700 rounded-sm overflow-hidden flex flex-col-reverse"
+                      title={`${phase.name}: ${completionPct}% complete (${statusCounts.hundred}/${totalTasks} tasks)`}
+                    >
+                      {pcts.hundred > 0 && <div className="bg-green-400" style={{ height: `${pcts.hundred}%` }} />}
+                      {pcts.seventyFive > 0 && <div className="bg-indigo-400" style={{ height: `${pcts.seventyFive}%` }} />}
+                      {pcts.fifty > 0 && <div className="bg-blue-400" style={{ height: `${pcts.fifty}%` }} />}
+                      {pcts.twentyFive > 0 && <div className="bg-amber-400" style={{ height: `${pcts.twentyFive}%` }} />}
+                      {pcts.atRisk > 0 && <div className="bg-red-400" style={{ height: `${pcts.atRisk}%` }} />}
+                      {pcts.zero > 0 && <div className="bg-gray-400" style={{ height: `${pcts.zero}%` }} />}
+                    </div>
+                  );
+                })}
+              </div>
+              <span className="text-xs text-slate-400 mt-1">Section Progress</span>
+            </div>
           </div>
         </div>
         <p className="text-slate-400 mt-4 max-w-4xl">{project.description}</p>
@@ -1133,8 +1263,8 @@ const ProjectDetail: React.FC<ProjectDetailProps> = ({ project, onBack, canEdit,
           <div className="grid grid-cols-1 md:grid-cols-3 gap-6 p-4 pt-0">
             {/* Team Card - Expanded to 2 columns */}
             <div
-              className={`md:col-span-2 bg-slate-800/50 p-4 rounded-xl border ${canEdit && onEditProject ? 'border-slate-700 hover:border-brand-secondary cursor-pointer transition-colors' : 'border-slate-700'}`}
-              onClick={() => canEdit && onEditProject && onEditProject()}
+              className={`md:col-span-2 bg-slate-800/50 p-4 rounded-xl border ${effectiveCanEdit && onEditProject ? 'border-slate-700 hover:border-brand-secondary cursor-pointer transition-colors' : 'border-slate-700'}`}
+              onClick={() => effectiveCanEdit && onEditProject && onEditProject()}
             >
               <div className="flex items-center space-x-3 text-slate-400 mb-3">
                 <TeamIcon className="w-5 h-5" />
@@ -1192,7 +1322,7 @@ const ProjectDetail: React.FC<ProjectDetailProps> = ({ project, onBack, canEdit,
 
             {/* Project Status Card */}
             {(() => {
-              const allTasks = project.phases.flatMap(ph => ph.tasks.flatMap(t => t.subTasks ? [t, ...t.subTasks] : [t]));
+              const allTasks = (project.phases || []).flatMap(ph => (ph.tasks || []).flatMap(t => t.subTasks ? [t, ...t.subTasks] : [t]));
               const now = new Date();
               const atRiskCount = allTasks.filter(t => t.status === TaskStatus.AtRisk).length;
               const overdueCount = allTasks.filter(t => {
@@ -1279,7 +1409,7 @@ const ProjectDetail: React.FC<ProjectDetailProps> = ({ project, onBack, canEdit,
         <div className="p-4 border-b border-slate-700 flex justify-between items-center">
           <h3 className="font-semibold text-lg text-white">Project Timeline</h3>
           <div className="flex items-center gap-4">
-            {canEdit && viewMode === 'list' && (
+            {effectiveCanEdit && viewMode === 'list' && (
               <button onClick={handleAddPhase} className="flex items-center space-x-2 bg-slate-700 hover:bg-slate-600 text-slate-300 font-semibold py-1 px-3 rounded-lg transition-colors text-sm">
                 <PlusCircleIcon className="w-4 h-4" />
                 <span>Add Section</span>
@@ -1361,7 +1491,7 @@ const ProjectDetail: React.FC<ProjectDetailProps> = ({ project, onBack, canEdit,
                       className="flex -space-x-1 hover:space-x-1 transition-all mr-2 cursor-pointer"
                       onClick={(e) => {
                         e.stopPropagation();
-                        if (!canEdit) return;
+                        if (!effectiveCanEdit) return;
                         setAssigningTo({
                           type: 'phase',
                           id: phase.id,
@@ -1404,7 +1534,7 @@ const ProjectDetail: React.FC<ProjectDetailProps> = ({ project, onBack, canEdit,
                         <TrashIcon className="w-4 h-4" />
                       </button>
                     )}
-                    {canEdit && (
+                    {effectiveCanEdit && (
                       <button onClick={() => setAddingTaskToPhase(phase.id)} className="flex items-center space-x-2 bg-slate-700 hover:bg-slate-600 text-slate-300 font-semibold py-1 px-3 rounded-lg transition-colors text-sm">
                         <PlusCircleIcon className="w-4 h-4" />
                         <span>Add Item</span>
@@ -1440,7 +1570,7 @@ const ProjectDetail: React.FC<ProjectDetailProps> = ({ project, onBack, canEdit,
                           onToggleExpand={handleToggleExpand}
                           addingSubtaskTo={addingSubtaskTo}
                           setAddingSubtaskTo={setAddingSubtaskTo}
-                          canEdit={canEdit}
+                          canEdit={effectiveCanEdit}
                           handleSaveSubtask={handleSaveSubtask}
                           editingField={editingField}
                           setEditingField={setEditingField}
@@ -1456,7 +1586,7 @@ const ProjectDetail: React.FC<ProjectDetailProps> = ({ project, onBack, canEdit,
                           draggedItemId={draggedItemId}
                           dropTarget={dropTarget}
                           onAssign={(task) => {
-                            if (!canEdit) return;
+                            if (!effectiveCanEdit) return;
                             setAssigningTo({
                               type: 'task',
                               id: task.id,
@@ -1484,7 +1614,7 @@ const ProjectDetail: React.FC<ProjectDetailProps> = ({ project, onBack, canEdit,
       <div className="bg-slate-800/50 p-6 rounded-xl border border-slate-700">
         <div className="flex flex-col sm:flex-row justify-between sm:items-center">
           <h3 className="text-xl font-bold text-white mb-2 sm:mb-0">AI-Powered Analytics</h3>
-          {canEdit && <button
+          {effectiveCanEdit && <button
             onClick={handleGetInsights}
             disabled={isLoading}
             className="bg-brand-secondary hover:bg-blue-500 disabled:bg-slate-600 text-white font-bold py-2 px-4 rounded-lg flex items-center justify-center transition-colors disabled:cursor-not-allowed"
@@ -1493,7 +1623,7 @@ const ProjectDetail: React.FC<ProjectDetailProps> = ({ project, onBack, canEdit,
             {isLoading ? 'Analyzing...' : 'Get Insights'}
           </button>}
         </div>
-        {!canEdit && <p className="text-sm text-slate-400 mt-2">You don't have permission to run AI analysis.</p>}
+        {!effectiveCanEdit && <p className="text-sm text-slate-400 mt-2">You don't have permission to run AI analysis.</p>}
         {isLoading && <div className="text-center p-8 text-slate-400">Generating insights, please wait...</div>}
         {aiInsight && (
           <div className="mt-4 prose prose-invert prose-sm max-w-none text-slate-300" dangerouslySetInnerHTML={{ __html: aiInsight.replace(/\n/g, '<br />') }}>
@@ -1515,6 +1645,20 @@ const ProjectDetail: React.FC<ProjectDetailProps> = ({ project, onBack, canEdit,
         onConfirm={handleConfirmDeletePhase}
         title="Delete Section"
         message={<>Are you sure you want to delete the section "<strong>{phaseToDelete?.name}</strong>"? All tasks and sub-tasks within this section will also be deleted. This action cannot be undone.</>}
+      />
+
+      <ConfirmationModal
+        isOpen={archiveConfirm.show}
+        onClose={() => setArchiveConfirm({ show: false, action: 'archive' })}
+        onConfirm={() => {
+          handleArchive(archiveConfirm.action === 'archive');
+          setArchiveConfirm({ show: false, action: 'archive' });
+        }}
+        title={archiveConfirm.action === 'archive' ? 'Archive Project' : 'Unarchive Project'}
+        message={archiveConfirm.action === 'archive'
+          ? <>Are you sure you want to archive "<strong>{project.name}</strong>"? Team members will no longer be able to make edits until the project is unarchived.</>
+          : <>Are you sure you want to unarchive "<strong>{project.name}</strong>"? Team members will be able to resume making edits.</>
+        }
       />
 
       {assigningTo && (

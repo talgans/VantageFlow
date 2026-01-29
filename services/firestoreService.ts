@@ -6,6 +6,7 @@ import {
   deleteDoc,
   onSnapshot,
   query,
+  where,
   orderBy,
   Timestamp,
   QuerySnapshot,
@@ -182,6 +183,28 @@ const convertProjectToFirestore = (project: Omit<Project, 'id'> | Project): any 
     if (project.ownerId) data.ownerId = project.ownerId;
     if (project.ownerEmail) data.ownerEmail = project.ownerEmail;
 
+    // RBAC: Compute memberUids from team members + owner for efficient security rules
+    const memberUids = new Set<string>();
+    if (project.ownerId) {
+      memberUids.add(project.ownerId);
+    }
+    (project.team?.members || []).forEach((m: any) => {
+      if (m.uid) memberUids.add(m.uid);
+    });
+    data.memberUids = Array.from(memberUids);
+
+    // Project Lifecycle: Archive fields
+    if ((project as any).isArchived !== undefined) {
+      data.isArchived = (project as any).isArchived;
+    }
+    if ((project as any).archivedAt) {
+      const archivedAt = (project as any).archivedAt;
+      data.archivedAt = archivedAt instanceof Date ? Timestamp.fromDate(archivedAt) : archivedAt;
+    }
+    if ((project as any).archivedBy) {
+      data.archivedBy = (project as any).archivedBy;
+    }
+
     console.log('Converted Firestore data:', data);
 
     // Final cleanup - remove any remaining undefined values recursively
@@ -197,6 +220,8 @@ const convertProjectToFirestore = (project: Omit<Project, 'id'> | Project): any 
 /**
  * Subscribe to real-time project updates
  * Returns unsubscribe function
+ * 
+ * @deprecated Use subscribeToUserProjects for RBAC-aware subscription
  */
 export const subscribeToProjects = (
   callback: (projects: Project[]) => void,
@@ -221,6 +246,70 @@ export const subscribeToProjects = (
     },
     (error) => {
       console.error('Error in projects subscription:', error);
+      if (onError) {
+        onError(error);
+      }
+    }
+  );
+
+  return unsubscribe;
+};
+
+/**
+ * RBAC-aware subscription: Only returns projects where user is in memberUids
+ * Admins see all projects.
+ * 
+ * @param userUid - The current user's UID
+ * @param isAdmin - Whether the user is an admin
+ * @param callback - Callback with filtered projects
+ * @param onError - Error callback
+ */
+export const subscribeToUserProjects = (
+  userUid: string,
+  isAdmin: boolean,
+  callback: (projects: Project[]) => void,
+  onError?: (error: Error) => void
+): (() => void) => {
+  let projectsQuery;
+
+  if (isAdmin) {
+    // Admins see all projects
+    projectsQuery = query(
+      collection(db, 'projects'),
+      orderBy('createdAt', 'desc')
+    );
+  } else {
+    // Non-admins only see projects where they are in memberUids
+    projectsQuery = query(
+      collection(db, 'projects'),
+      where('memberUids', 'array-contains', userUid)
+    );
+  }
+
+  const unsubscribe = onSnapshot(
+    projectsQuery,
+    (snapshot: QuerySnapshot) => {
+      const projects: Project[] = snapshot.docs.map((doc) => {
+        const data = doc.data();
+        return {
+          id: doc.id,
+          ...convertFirestoreDocToProject(data),
+        };
+      });
+
+      // Sort by createdAt for non-admin queries (can't combine where + orderBy on different fields easily)
+      if (!isAdmin) {
+        projects.sort((a, b) => {
+          const aTime = a.createdAt?.getTime() || 0;
+          const bTime = b.createdAt?.getTime() || 0;
+          return bTime - aTime; // descending
+        });
+      }
+
+      callback(projects);
+    },
+    (error) => {
+      console.error('Error in user projects subscription:', error);
       if (onError) {
         onError(error);
       }

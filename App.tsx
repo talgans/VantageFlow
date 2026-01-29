@@ -19,6 +19,7 @@ import RoleChangeNotification from './components/RoleChangeNotification';
 import { useAuth } from './contexts/AuthContext';
 import {
     subscribeToProjects,
+    subscribeToUserProjects,
     createProject,
     updateProject as updateFirestoreProject,
     deleteProject as deleteFirestoreProject,
@@ -110,7 +111,11 @@ const App: React.FC = () => {
             return;
         }
 
-        const unsubscribe = subscribeToProjects(
+        // RBAC: Use user-filtered subscription
+        const isAdmin = user.role === UserRole.Admin;
+        const unsubscribe = subscribeToUserProjects(
+            user.uid,
+            isAdmin,
             (projectsFromDb) => {
                 setProjects(projectsFromDb);
                 setLoading(false);
@@ -118,8 +123,11 @@ const App: React.FC = () => {
             (error) => {
                 console.error('Firestore subscription error:', error);
                 showToast('Failed to load projects from database');
-                // Fallback to mock data
-                setProjects(MOCK_PROJECTS);
+                // Fallback to mock data (filtered client-side for safety)
+                const filtered = isAdmin
+                    ? MOCK_PROJECTS
+                    : MOCK_PROJECTS.filter(p => p.ownerId === user.uid || p.team?.members?.some(m => m.uid === user.uid));
+                setProjects(filtered);
                 setLoading(false);
             }
         );
@@ -342,6 +350,7 @@ const App: React.FC = () => {
                             showToast={showToast}
                             currentUserId={user?.uid}
                             currentUserEmail={user?.email || undefined}
+                            userRole={currentUserRole.toLowerCase() as 'admin' | 'manager' | 'member'}
                             onEditProject={() => handleShowEditProjectModal(selectedProject)}
                         />
                     ) : currentPage === 'users' ? (

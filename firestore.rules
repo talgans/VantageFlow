@@ -19,17 +19,23 @@ service cloud.firestore {
       return isAuthenticated() && (projectData.ownerId == request.auth.uid || isAdmin());
     }
 
-    // Check if user is a member of the project team
-    function isTeamMember(projectData) {
+    // RBAC: Check if current user is in the project's memberUids array
+    function isProjectMember(projectData) {
       return isAuthenticated() && (
-        projectData.team.members.hasAny([{'uid': request.auth.uid}]) ||
-        // Check if UID is in the members array (simplified check if structure varies, ideally specific)
-        // For array of maps, it's harder to check membership by field in rules without complex logic.
-        // Simplified: allow read if authenticated for now for projects list, 
-        // but strict read is better.
-        // Existing rules likely allowed read if authenticated.
-        true 
+        isAdmin() ||
+        projectData.ownerId == request.auth.uid ||
+        (projectData.memberUids != null && request.auth.uid in projectData.memberUids)
       );
+    }
+
+    // Check if project is archived
+    function isArchived(projectData) {
+      return projectData.isArchived == true;
+    }
+
+    // Check if update is unarchiving (setting isArchived to false)
+    function isUnarchiving() {
+      return request.resource.data.isArchived == false && resource.data.isArchived == true;
     }
     
     // Users collection
@@ -38,15 +44,20 @@ service cloud.firestore {
       allow write: if isAdmin() || request.auth.uid == userId;
     }
     
-    // Projects collection
+    // Projects collection - RBAC enforced
     match /projects/{projectId} {
-      allow read: if isAuthenticated();
-      // Only Managers and Admins can create projects
+      // Read: Only team members (in memberUids) or admins can read
+      // For list queries, client must filter by memberUids containing user.uid
+      allow read: if isProjectMember(resource.data);
+      
+      // Create: Managers and Admins can create projects
       allow create: if isManager();
-      // Project Owner and Admins can update/delete
-      // Also allow updates if user is in the team? Maybe restricted updates?
-      // For assignments, we currently rely on 'canEdit' in UI which checks owner/admin.
-      allow update: if isProjectOwner(resource.data);
+      
+      // Update: Owner/Admin can update, but NOT if archived (unless unarchiving)
+      allow update: if isProjectOwner(resource.data) && 
+                       (!isArchived(resource.data) || isUnarchiving());
+      
+      // Delete: Only admins or owner (if manager) can delete
       allow delete: if isAdmin() || (isManager() && resource.data.ownerId == request.auth.uid);
     }
     

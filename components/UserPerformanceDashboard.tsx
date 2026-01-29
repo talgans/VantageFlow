@@ -20,7 +20,11 @@ const UserPerformanceDashboard: React.FC<UserPerformanceDashboardProps> = ({ pro
     const [leaderboard, setLeaderboard] = useState<LeaderboardEntry[]>([]);
     const [achievements, setAchievements] = useState<UserAchievement[]>([]);
     const [loading, setLoading] = useState(true);
+    const [showMyProjectsOnly, setShowMyProjectsOnly] = useState(false);
     const { getUserDisplayName, getUserPhotoURL } = useUserLookup();
+
+    // Get visible project IDs for filtering
+    const visibleProjectIds = useMemo(() => new Set(projects.map(p => p.id)), [projects]);
 
     // Build a fallback user lookup from project team members
     const projectUserLookup = useMemo(() => {
@@ -84,6 +88,31 @@ const UserPerformanceDashboard: React.FC<UserPerformanceDashboardProps> = ({ pro
         loadData();
     }, []);
 
+    // Filter achievements based on toggle
+    const filteredAchievements = useMemo(() => {
+        if (!showMyProjectsOnly) return achievements;
+        return achievements.filter(a => a.projectId && visibleProjectIds.has(a.projectId));
+    }, [achievements, showMyProjectsOnly, visibleProjectIds]);
+
+    // Calculate filtered leaderboard based on visible achievements
+    const filteredLeaderboard = useMemo(() => {
+        if (!showMyProjectsOnly) return leaderboard;
+
+        // Recalculate leaderboard from filtered achievements
+        const userStats: Record<string, { points: number; achievements: number }> = {};
+        filteredAchievements.forEach(a => {
+            if (!userStats[a.userId]) {
+                userStats[a.userId] = { points: 0, achievements: 0 };
+            }
+            userStats[a.userId].points += a.points;
+            userStats[a.userId].achievements += 1;
+        });
+
+        return Object.entries(userStats)
+            .map(([userId, stats]) => ({ userId, ...stats }))
+            .sort((a, b) => b.points - a.points);
+    }, [leaderboard, filteredAchievements, showMyProjectsOnly]);
+
     // --- Data Prep for Project Stacks ---
     // X: Project Names
     // Y: Points
@@ -91,7 +120,7 @@ const UserPerformanceDashboard: React.FC<UserPerformanceDashboardProps> = ({ pro
     const projectBarData = useMemo(() => {
         const projectPoints: Record<string, Record<string, number>> = {};
 
-        achievements.forEach(a => {
+        filteredAchievements.forEach(a => {
             if (a.projectId) {
                 const proj = projects.find(p => p.id === a.projectId);
                 const projName = proj ? proj.name : 'Unknown Project';
@@ -106,7 +135,7 @@ const UserPerformanceDashboard: React.FC<UserPerformanceDashboardProps> = ({ pro
         });
 
         return Object.values(projectPoints);
-    }, [achievements, projects, getUserDisplayName]);
+    }, [filteredAchievements, projects, getUserDisplayName]);
 
     // Get all unique user names involved in projects for legend/keys
     const userKeys = useMemo(() => {
@@ -125,28 +154,51 @@ const UserPerformanceDashboard: React.FC<UserPerformanceDashboardProps> = ({ pro
         </div>
     );
 
-    const topPerformer = leaderboard.length > 0 ? leaderboard[0] : null;
+    const topPerformer = filteredLeaderboard.length > 0 ? filteredLeaderboard[0] : null;
 
     return (
         <div className="p-6 max-w-7xl mx-auto space-y-6">
-            <div className="flex justify-between items-end">
+            <div className="flex flex-col md:flex-row justify-between items-start md:items-end gap-4">
                 <div>
                     <h1 className="text-3xl font-bold text-white mb-2">Performance Dashboard</h1>
                     <p className="text-slate-400">Team achievements, leaderboard, and activity metrics.</p>
                 </div>
-                {topPerformer && (
-                    <div className="bg-gradient-to-r from-yellow-500/20 to-amber-500/20 border border-yellow-500/30 p-4 rounded-xl flex items-center gap-4">
-                        <div className="relative">
-                            <TrophyIcon className="w-10 h-10 text-yellow-400" />
-                            <div className="absolute -top-1 -right-1 animate-ping w-3 h-3 bg-yellow-200 rounded-full opacity-75"></div>
-                        </div>
-                        <div>
-                            <p className="text-yellow-200 text-xs font-bold uppercase tracking-wider">Top Performer</p>
-                            <p className="text-white font-bold text-lg">{getDisplayName(topPerformer.userId, 'Unknown')}</p>
-                            <p className="text-yellow-400/80 text-sm">{topPerformer.points} Points</p>
-                        </div>
+                <div className="flex items-center gap-4">
+                    {/* Toggle for My Projects vs All Projects */}
+                    <div className="flex items-center bg-slate-800 rounded-lg p-1 border border-slate-700">
+                        <button
+                            onClick={() => setShowMyProjectsOnly(false)}
+                            className={`px-3 py-1.5 text-sm font-medium rounded-md transition-colors ${!showMyProjectsOnly
+                                ? 'bg-brand-secondary text-white'
+                                : 'text-slate-400 hover:text-white'
+                                }`}
+                        >
+                            All Projects
+                        </button>
+                        <button
+                            onClick={() => setShowMyProjectsOnly(true)}
+                            className={`px-3 py-1.5 text-sm font-medium rounded-md transition-colors ${showMyProjectsOnly
+                                ? 'bg-brand-secondary text-white'
+                                : 'text-slate-400 hover:text-white'
+                                }`}
+                        >
+                            My Projects
+                        </button>
                     </div>
-                )}
+                    {topPerformer && (
+                        <div className="bg-gradient-to-r from-yellow-500/20 to-amber-500/20 border border-yellow-500/30 p-4 rounded-xl flex items-center gap-4">
+                            <div className="relative">
+                                <TrophyIcon className="w-10 h-10 text-yellow-400" />
+                                <div className="absolute -top-1 -right-1 animate-ping w-3 h-3 bg-yellow-200 rounded-full opacity-75"></div>
+                            </div>
+                            <div>
+                                <p className="text-yellow-200 text-xs font-bold uppercase tracking-wider">Top Performer</p>
+                                <p className="text-white font-bold text-lg">{getDisplayName(topPerformer.userId, 'Unknown')}</p>
+                                <p className="text-yellow-400/80 text-sm">{topPerformer.points} Points</p>
+                            </div>
+                        </div>
+                    )}
+                </div>
             </div>
 
             <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
@@ -156,7 +208,7 @@ const UserPerformanceDashboard: React.FC<UserPerformanceDashboardProps> = ({ pro
                         <StarIcon className="w-6 h-6 text-yellow-400" /> Leaderboard
                     </h3>
                     <div className="space-y-3">
-                        {leaderboard.map((entry, index) => {
+                        {filteredLeaderboard.map((entry, index) => {
                             const isTop3 = index < 3;
                             return (
                                 <div key={entry.userId} className={`flex items-center justify-between p-3 rounded-lg ${isTop3 ? 'bg-slate-700/80 border border-slate-600' : 'bg-slate-800 border border-slate-700/50'}`}>
@@ -206,8 +258,8 @@ const UserPerformanceDashboard: React.FC<UserPerformanceDashboardProps> = ({ pro
                             valueScale={{ type: 'linear' }}
                             indexScale={{ type: 'band', round: true }}
                             colors={{ scheme: 'nivo' }}
-                            textColor="#94a3b8"
                             theme={{
+                                text: { fill: '#94a3b8' },
                                 axis: {
                                     ticks: { text: { fill: '#94a3b8' } },
                                     legend: { text: { fill: '#94a3b8' } }

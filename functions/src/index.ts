@@ -6,7 +6,8 @@ import {
   getReminderEmail,
   getNewMemberEmail,
   getResponsibilityAssignedEmail,
-  getAchievementEmail
+  getAchievementEmail,
+  getProjectArchivedEmail
 } from './emailTemplates';
 
 // Prevent double initialization
@@ -614,4 +615,69 @@ export const onAchievementAwarded = functions.firestore
     } catch (error) {
       console.error('[onAchievementAwarded] Error processing achievement:', error);
     }
+  });
+
+/**
+ * Listen for project archive status changes and notify team
+ */
+export const onProjectArchiveStatusChange = functions.firestore
+  .document('projects/{projectId}')
+  .onUpdate(async (change, context) => {
+    const before = change.before.data();
+    const after = change.after.data();
+    const projectId = context.params.projectId;
+
+    // Check if isArchived changed
+    const wasArchived = before.isArchived === true;
+    const isNowArchived = after.isArchived === true;
+
+    if (wasArchived === isNowArchived) {
+      // No change in archive status
+      return null;
+    }
+
+    console.log(`[onProjectArchiveStatusChange] Project ${projectId} archive status: ${wasArchived} -> ${isNowArchived}`);
+
+    const projectName = after.name || 'Unknown Project';
+    const archivedBy = after.archivedBy;
+    const teamMembers = after.team?.members || [];
+    const link = `https://vantageflow.vercel.app/project/${projectId}`;
+
+    // Get the name of who archived
+    let actionByName = 'an administrator';
+    if (archivedBy) {
+      try {
+        const userRecord = await admin.auth().getUser(archivedBy);
+        actionByName = userRecord.displayName || userRecord.email || 'an administrator';
+      } catch (e) {
+        console.warn(`Could not get user info for ${archivedBy}`);
+      }
+    }
+
+    const subject = `Project ${isNowArchived ? 'Archived' : 'Unarchived'}: ${projectName}`;
+    const html = getProjectArchivedEmail(projectName, actionByName, isNowArchived, link);
+
+    const notifyPromises = teamMembers.map(async (member: any) => {
+      // Send email
+      if (member.email) {
+        await sendEmail(member.email, subject, html);
+      }
+
+      // Create in-app notification
+      if (member.uid) {
+        const message = `Project "${projectName}" has been ${isNowArchived ? 'archived' : 'unarchived'} by ${actionByName}.`;
+        await createNotification(
+          member.uid,
+          'project_archived',
+          message,
+          projectId,
+          projectName,
+          link
+        );
+      }
+    });
+
+    await Promise.all(notifyPromises);
+    console.log(`[onProjectArchiveStatusChange] Notifications sent to ${teamMembers.length} team members.`);
+    return null;
   });

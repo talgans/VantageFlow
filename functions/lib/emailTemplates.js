@@ -1,6 +1,6 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.getAchievementEmail = exports.getResponsibilityAssignedEmail = exports.getNewMemberEmail = exports.getReminderEmail = exports.getInvitationEmail = exports.footerStyle = exports.buttonStyle = exports.commonStyles = void 0;
+exports.getProjectArchivedEmail = exports.getAchievementEmail = exports.getResponsibilityAssignedEmail = exports.getNewMemberEmail = exports.getReminderEmail = exports.getInvitationEmail = exports.footerStyle = exports.buttonStyle = exports.commonStyles = void 0;
 exports.commonStyles = `
   font-family: Arial, sans-serif;
   max-width: 600px;
@@ -111,4 +111,22 @@ const getAchievementEmail = (userName, points, description) => `
 </div>
 `;
 exports.getAchievementEmail = getAchievementEmail;
+const getProjectArchivedEmail = (projectName, actionBy, isArchived, link) => `
+<div style="${exports.commonStyles}">
+   <h2 style="color: ${isArchived ? '#f59e0b' : '#22c55e'};">Project ${isArchived ? 'Archived' : 'Unarchived'}</h2>
+   <p>The project <strong>${projectName}</strong> has been ${isArchived ? 'archived' : 'unarchived'} by ${actionBy}.</p>
+   ${isArchived
+    ? `<p style="color: #64748b;">No further edits can be made to this project until it is unarchived.</p>`
+    : `<p style="color: #64748b;">The project is now active and can be edited again.</p>`}
+   <div style="margin: 20px 0;">
+     <a href="${link}" style="${exports.buttonStyle}">
+       View Project
+     </a>
+   </div>
+   <div style="${exports.footerStyle}">
+     VantageFlow Team
+   </div>
+</div>
+`;
+exports.getProjectArchivedEmail = getProjectArchivedEmail;
 //# sourceMappingURL=emailTemplates.js.map

@@ -103,6 +103,12 @@ export interface Project {
   ownerName?: string;
   ownerPhotoURL?: string;
   createdAt?: Date;
+  // RBAC: Array of member UIDs for efficient Firestore queries
+  memberUids?: string[];
+  // Project Lifecycle: Archive state
+  isArchived?: boolean;
+  archivedAt?: Date;
+  archivedBy?: string; // UID of who archived
 }
 
 export enum UserRole {

@@ -33,17 +33,22 @@ const ResponsibilitySelector: React.FC<ResponsibilitySelectorProps> = ({
     const [showConfirmation, setShowConfirmation] = useState(false);
 
     // Use the user lookup hook for dynamic data
-    const { getUserById, loading: usersLoading } = useUserLookup();
+    const { getUserById, hasUserLoggedIn, loading: usersLoading } = useUserLookup();
 
-    // Filter members
+    // Filter members: exclude those who haven't logged in (pending invitation)
+    const activatedMembers = useMemo(() => {
+        return teamMembers.filter(member => hasUserLoggedIn(member.uid, member.email));
+    }, [teamMembers, hasUserLoggedIn]);
+
+    // Filter members by search
     const filteredMembers = useMemo(() => {
-        if (!searchQuery.trim()) return teamMembers;
+        if (!searchQuery.trim()) return activatedMembers;
         const query = searchQuery.toLowerCase();
-        return teamMembers.filter(member =>
+        return activatedMembers.filter(member =>
         (member.displayName?.toLowerCase().includes(query) ||
             member.email.toLowerCase().includes(query))
         );
-    }, [teamMembers, searchQuery]);
+    }, [activatedMembers, searchQuery]);
 
     const toggleMember = (uid: string) => {
         const newSelected = new Set(selectedIds);

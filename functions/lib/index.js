@@ -33,7 +33,7 @@ var __importStar = (this && this.__importStar) || (function () {
     };
 })();
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.onAchievementAwarded = exports.notifyResponsibilityAssigned = exports.notifyProjectMemberAdded = exports.sendReminderEmail = exports.inviteUser = exports.configureCors = exports.updateUserProfile = exports.deleteUser = exports.setUserRole = exports.getPublicDirectory = exports.listUsers = void 0;
+exports.onProjectArchiveStatusChange = exports.onAchievementAwarded = exports.notifyResponsibilityAssigned = exports.notifyProjectMemberAdded = exports.sendReminderEmail = exports.inviteUser = exports.configureCors = exports.updateUserProfile = exports.deleteUser = exports.setUserRole = exports.getPublicDirectory = exports.listUsers = void 0;
 const functions = __importStar(require("firebase-functions/v1"));
 const admin = __importStar(require("firebase-admin"));
 const resend_1 = require("resend");
@@ -551,5 +551,55 @@ exports.onAchievementAwarded = functions.firestore
     catch (error) {
         console.error('[onAchievementAwarded] Error processing achievement:', error);
     }
+});
+/**
+ * Listen for project archive status changes and notify team
+ */
+exports.onProjectArchiveStatusChange = functions.firestore
+    .document('projects/{projectId}')
+    .onUpdate(async (change, context) => {
+    var _a;
+    const before = change.before.data();
+    const after = change.after.data();
+    const projectId = context.params.projectId;
+    // Check if isArchived changed
+    const wasArchived = before.isArchived === true;
+    const isNowArchived = after.isArchived === true;
+    if (wasArchived === isNowArchived) {
+        // No change in archive status
+        return null;
+    }
+    console.log(`[onProjectArchiveStatusChange] Project ${projectId} archive status: ${wasArchived} -> ${isNowArchived}`);
+    const projectName = after.name || 'Unknown Project';
+    const archivedBy = after.archivedBy;
+    const teamMembers = ((_a = after.team) === null || _a === void 0 ? void 0 : _a.members) || [];
+    const link = `https://vantageflow.vercel.app/project/${projectId}`;
+    // Get the name of who archived
+    let actionByName = 'an administrator';
+    if (archivedBy) {
+        try {
+            const userRecord = await admin.auth().getUser(archivedBy);
+            actionByName = userRecord.displayName || userRecord.email || 'an administrator';
+        }
+        catch (e) {
+            console.warn(`Could not get user info for ${archivedBy}`);
+        }
+    }
+    const subject = `Project ${isNowArchived ? 'Archived' : 'Unarchived'}: ${projectName}`;
+    const html = (0, emailTemplates_1.getProjectArchivedEmail)(projectName, actionByName, isNowArchived, link);
+    const notifyPromises = teamMembers.map(async (member) => {
+        // Send email
+        if (member.email) {
+            await sendEmail(member.email, subject, html);
+        }
+        // Create in-app notification
+        if (member.uid) {
+            const message = `Project "${projectName}" has been ${isNowArchived ? 'archived' : 'unarchived'} by ${actionByName}.`;
+            await createNotification(member.uid, 'project_archived', message, projectId, projectName, link);
+        }
+    });
+    await Promise.all(notifyPromises);
+    console.log(`[onProjectArchiveStatusChange] Notifications sent to ${teamMembers.length} team members.`);
+    return null;
 });
 //# sourceMappingURL=index.js.map

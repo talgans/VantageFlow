@@ -157,6 +157,15 @@ const ProjectsList: React.FC<ProjectsListProps> = ({
                                     >
                                         <div className="flex items-center space-x-3 mb-1">
                                             <p className="font-semibold text-white group-hover:text-brand-light">{project.name}</p>
+                                            {/* Archived indicator */}
+                                            {project.isArchived && (
+                                                <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-amber-500/10 text-amber-400 border border-amber-500/30">
+                                                    <svg className="w-3 h-3 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M5 8h14M5 8a2 2 0 110-4h14a2 2 0 110 4M5 8v10a2 2 0 002 2h10a2 2 0 002-2V8m-9 4h4" />
+                                                    </svg>
+                                                    Archived
+                                                </span>
+                                            )}
                                             <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${(() => {
                                                 const pct = getProjectCompletionPercentage(project);
                                                 if (pct >= 75) return 'bg-green-500/10 text-green-400';
