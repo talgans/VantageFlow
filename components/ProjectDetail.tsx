@@ -6,7 +6,7 @@ import ResponsibilitySelector from './ResponsibilitySelector';
 import { notificationService } from '../services/notificationService';
 import { achievementService } from '../services/achievementService';
 import { getProjectInsights } from '../services/geminiService';
-import { ArrowLeftIcon, SparklesIcon, InfoIcon, TeamIcon, CalendarIcon, MoneyIcon, CheckCircleIcon, PlusCircleIcon, ChevronRightIcon, ChevronDownIcon, ListBulletIcon, ChartBarIcon, TrashIcon, ArrowUpIcon, ArrowDownIcon, GripVerticalIcon, StarIcon, UserIcon } from './icons';
+import { ArrowLeftIcon, SparklesIcon, InfoIcon, TeamIcon, CalendarIcon, MoneyIcon, CheckCircleIcon, PlusCircleIcon, ChevronRightIcon, ChevronDownIcon, ListBulletIcon, ChartBarIcon, TrashIcon, ArrowUpIcon, ArrowDownIcon, GripVerticalIcon, StarIcon, UserIcon, WhatsAppIcon } from './icons';
 import GanttChart from './GanttChart';
 import ConfirmationModal from './ConfirmationModal';
 import { useUserLookup } from '../hooks/useUserLookup';
@@ -1081,54 +1081,57 @@ const ProjectDetail: React.FC<ProjectDetailProps> = ({ project, onBack, canEdit,
         <span>Back to Projects</span>
       </button>
 
-      <div className={`p-6 rounded-xl border ${project.isArchived
-        ? 'bg-amber-500/10 border-amber-500/50'
-        : 'bg-slate-800/50 border-slate-700'}`}>
-        {/* Archived Notice */}
-        {project.isArchived && (
-          <div className="flex items-center gap-2 mb-4 pb-4 border-b border-amber-500/30">
-            <svg className="w-5 h-5 text-amber-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M5 8h14M5 8a2 2 0 110-4h14a2 2 0 110 4M5 8v10a2 2 0 002 2h10a2 2 0 002-2V8m-9 4h4" />
-            </svg>
-            <span className="text-amber-200 font-medium flex-1">This project is archived. No edits can be made until it is unarchived.</span>
-            {canArchive && (
-              <button
-                onClick={() => setArchiveConfirm({ show: true, action: 'unarchive' })}
-                className="px-3 py-1 bg-amber-500 hover:bg-amber-400 text-black text-sm font-medium rounded-lg transition-colors"
-              >
-                Unarchive
-              </button>
-            )}
-          </div>
-        )}
-        <div className="flex items-start justify-between">
-          <div className="flex items-center space-x-4">
-            <CircularProgress
-              percentage={(() => {
-                const allTasks = (project.phases || []).flatMap(ph =>
-                  (ph.tasks || []).flatMap(t => t.subTasks ? [t, ...t.subTasks] : [t])
-                );
-                if (allTasks.length === 0) return 0;
-                const completed = allTasks.filter(t => t.status === TaskStatus.Hundred || (t.status as string) === 'Completed').length;
-                return Math.round((completed / allTasks.length) * 100);
-              })()}
-              size={60}
-            />
-            <div>
-              <h2 className="text-3xl font-bold text-white">{project.name}</h2>
-              {project.ownerId && (
-                <div className="flex items-center gap-2 mt-1">
-                  <span className="text-sm text-slate-400">Owner:</span>
-                  {getUserPhotoURL(project.ownerId, project.ownerEmail) ? (
-                    <img src={getUserPhotoURL(project.ownerId, project.ownerEmail)} alt="Owner" className="w-6 h-6 rounded-full object-cover" />
-                  ) : (
-                    <div className="w-6 h-6 rounded-full bg-brand-secondary/30 flex items-center justify-center">
-                      <UserIcon className="w-3 h-3 text-brand-light" />
-                    </div>
-                  )}
-                  <span className="text-sm text-brand-light">{getUserDisplayName(project.ownerId, project.ownerEmail) || project.ownerEmail}</span>
-                </div>
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+        {/* Title & Description Card */}
+        <div className={`col-span-1 lg:col-span-2 p-6 rounded-xl border ${project.isArchived
+          ? 'bg-amber-500/10 border-amber-500/50'
+          : 'bg-slate-800/50 border-slate-700'}`}>
+          {/* Archived Notice */}
+          {project.isArchived && (
+            <div className="flex items-center gap-2 mb-4 pb-4 border-b border-amber-500/30">
+              <svg className="w-5 h-5 text-amber-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M5 8h14M5 8a2 2 0 110-4h14a2 2 0 110 4M5 8v10a2 2 0 002 2h10a2 2 0 002-2V8m-9 4h4" />
+              </svg>
+              <span className="text-amber-200 font-medium flex-1">This project is archived. No edits can be made until it is unarchived.</span>
+              {canArchive && (
+                <button
+                  onClick={() => setArchiveConfirm({ show: true, action: 'unarchive' })}
+                  className="px-3 py-1 bg-amber-500 hover:bg-amber-400 text-black text-sm font-medium rounded-lg transition-colors"
+                >
+                  Unarchive
+                </button>
               )}
+            </div>
+          )}
+          <div className="flex items-center justify-between">
+            <div className="flex items-center space-x-4">
+              <CircularProgress
+                percentage={(() => {
+                  const allTasks = (project.phases || []).flatMap(ph =>
+                    (ph.tasks || []).flatMap(t => t.subTasks ? [t, ...t.subTasks] : [t])
+                  );
+                  if (allTasks.length === 0) return 0;
+                  const completed = allTasks.filter(t => t.status === TaskStatus.Hundred || (t.status as string) === 'Completed').length;
+                  return Math.round((completed / allTasks.length) * 100);
+                })()}
+                size={60}
+              />
+              <div>
+                <h2 className="text-3xl font-bold text-white">{project.name}</h2>
+                {project.ownerId && (
+                  <div className="flex items-center gap-2 mt-1">
+                    <span className="text-sm text-slate-400">Owner:</span>
+                    {getUserPhotoURL(project.ownerId, project.ownerEmail) ? (
+                      <img src={getUserPhotoURL(project.ownerId, project.ownerEmail)} alt="Owner" className="w-6 h-6 rounded-full object-cover" />
+                    ) : (
+                      <div className="w-6 h-6 rounded-full bg-brand-secondary/30 flex items-center justify-center">
+                        <UserIcon className="w-3 h-3 text-brand-light" />
+                      </div>
+                    )}
+                    <span className="text-sm text-brand-light">{getUserDisplayName(project.ownerId, project.ownerEmail) || project.ownerEmail}</span>
+                  </div>
+                )}
+              </div>
             </div>
             {/* Archive Button - visible to owner/admin when not archived */}
             {canArchive && !project.isArchived && (
@@ -1144,33 +1147,42 @@ const ProjectDetail: React.FC<ProjectDetailProps> = ({ project, onBack, canEdit,
               </button>
             )}
           </div>
-          {/* Sections, Tasks Count and Section Progress Bar Charts */}
-          <div className="flex items-center gap-6">
-            {/* Sections Count */}
-            <div className="text-center">
-              <p className="text-2xl font-bold text-white">{(project.phases || []).length}</p>
-              <span className="text-xs text-slate-400">Sections</span>
+          <p className="text-slate-400 mt-4 max-w-4xl">{project.description}</p>
+        </div>
+
+        {/* Section Progress Stats Card */}
+        {/* Section Progress Stats Card */}
+        <div className="col-span-1 bg-slate-800/50 rounded-xl border border-slate-700 p-6">
+          <div className="grid grid-cols-2 h-full gap-4">
+            {/* Left Column: Stats */}
+            <div className="flex flex-col justify-center items-center space-y-6">
+              {/* Sections Count */}
+              <div className="text-center">
+                <p className="text-4xl font-bold text-white">{(project.phases || []).length}</p>
+                <span className="text-sm text-slate-400 font-medium">Sections</span>
+              </div>
+              {/* Tasks Count */}
+              <div className="text-center">
+                <p className="text-4xl font-bold text-white">
+                  {(project.phases || []).reduce((acc, phase) =>
+                    acc + (phase.tasks || []).reduce((taskAcc, task) =>
+                      taskAcc + 1 + (task.subTasks?.length || 0), 0), 0)}
+                </p>
+                <span className="text-sm text-slate-400 font-medium">Tasks</span>
+              </div>
             </div>
-            {/* Tasks Count */}
-            <div className="text-center">
-              <p className="text-2xl font-bold text-white">
-                {(project.phases || []).reduce((acc, phase) =>
-                  acc + (phase.tasks || []).reduce((taskAcc, task) =>
-                    taskAcc + 1 + (task.subTasks?.length || 0), 0), 0)}
-              </p>
-              <span className="text-xs text-slate-400">Tasks</span>
-            </div>
-            {/* Section Progress Stacked Bar Charts */}
-            <div className="flex flex-col items-center">
-              <div className="flex gap-1 items-end h-8">
+
+            {/* Right Column: Chart */}
+            <div className="flex flex-col items-center justify-center">
+              <div className="flex gap-2 items-end h-16">
                 {(project.phases || []).length === 0 ? (
-                  <div className="w-5 h-full bg-slate-600 rounded-sm" title="No sections" />
+                  <div className="w-8 h-full bg-slate-600 rounded-md" title="No sections" />
                 ) : (project.phases || []).map((phase) => {
                   const allTasks = (phase.tasks || []).flatMap(t => t.subTasks ? [t, ...t.subTasks] : [t]);
                   const totalTasks = allTasks.length;
                   if (totalTasks === 0) {
                     return (
-                      <div key={phase.id} className="w-5 h-full bg-slate-600 rounded-sm" title={`${phase.name}: No tasks`} />
+                      <div key={phase.id} className="w-8 h-full bg-slate-600 rounded-md" title={`${phase.name}: No tasks`} />
                     );
                   }
 
@@ -1197,7 +1209,7 @@ const ProjectDetail: React.FC<ProjectDetailProps> = ({ project, onBack, canEdit,
                   return (
                     <div
                       key={phase.id}
-                      className="w-5 h-full bg-slate-700 rounded-sm overflow-hidden flex flex-col-reverse"
+                      className="w-8 h-full bg-slate-700/50 rounded-md overflow-hidden flex flex-col-reverse"
                       title={`${phase.name}: ${completionPct}% complete (${statusCounts.hundred}/${totalTasks} tasks)`}
                     >
                       {pcts.hundred > 0 && <div className="bg-green-400" style={{ height: `${pcts.hundred}%` }} />}
@@ -1210,11 +1222,10 @@ const ProjectDetail: React.FC<ProjectDetailProps> = ({ project, onBack, canEdit,
                   );
                 })}
               </div>
-              <span className="text-xs text-slate-400 mt-1">Section Progress</span>
+              <span className="text-lg font-medium text-slate-300 mt-3">Section Progress</span>
             </div>
           </div>
         </div>
-        <p className="text-slate-400 mt-4 max-w-4xl">{project.description}</p>
       </div>
 
       {/* Collapsible Project Details Section */}
@@ -1305,6 +1316,18 @@ const ProjectDetail: React.FC<ProjectDetailProps> = ({ project, onBack, canEdit,
                           <span className={`text-xs px-1.5 py-0.5 rounded flex-shrink-0 ${isPrimary ? 'bg-blue-500/30 text-blue-300' : 'bg-amber-500/30 text-amber-300'}`}>
                             {isPrimary ? '1st Lead' : '2nd Lead'}
                           </span>
+                        )}
+                        {member.phoneNumber && (
+                          <a
+                            href={`https://wa.me/${member.phoneNumber}?text=Hi ${memberName.split(' ')[0]}`}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="text-green-500 hover:text-green-400 p-0.5 rounded-full hover:bg-green-500/10 transition-colors flex-shrink-0"
+                            title={`Chat with ${memberName} on WhatsApp`}
+                            onClick={(e) => e.stopPropagation()}
+                          >
+                            <WhatsAppIcon className="w-4 h-4" />
+                          </a>
                         )}
                       </div>
                     );

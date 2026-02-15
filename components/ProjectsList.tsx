@@ -97,33 +97,146 @@ const ProjectsList: React.FC<ProjectsListProps> = ({
         return { status: TaskStatus.Zero, label: '0%' };
     }
 
-    return (
-        <div className="space-y-8">
-            <div>
-                <h2 className="text-3xl font-bold text-white">Projects</h2>
-                <p className="text-slate-400 mt-1">Manage and track your projects.</p>
-            </div>
+    const [timeFilter, setTimeFilter] = React.useState<'all' | 'today' | 'week' | 'month' | 'quarter' | 'year'>('all');
+    const [typeFilter, setTypeFilter] = React.useState<string>('all');
+    const [searchQuery, setSearchQuery] = React.useState<string>('');
 
+    // Get unique project types for filter
+    const projectTypes = React.useMemo(() => {
+        const types = new Set(projects.map(p => p.coreSystem).filter(Boolean));
+        return Array.from(types).sort();
+    }, [projects]);
+
+    const filteredProjects = React.useMemo(() => {
+        return projects.filter(project => {
+            // Filter by Search Query
+            if (searchQuery && !project.name.toLowerCase().includes(searchQuery.toLowerCase()) &&
+                !project.coreSystem.toLowerCase().includes(searchQuery.toLowerCase())) {
+                return false;
+            }
+
+            // Filter by Type
+            if (typeFilter !== 'all' && project.coreSystem !== typeFilter) {
+                return false;
+            }
+
+            // Filter by Time
+            if (timeFilter !== 'all' && project.createdAt) {
+                const created = new Date(project.createdAt);
+                const now = new Date();
+                const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+                const createdDay = new Date(created.getFullYear(), created.getMonth(), created.getDate());
+
+                if (timeFilter === 'today') {
+                    if (createdDay.getTime() !== today.getTime()) return false;
+                } else if (timeFilter === 'week') {
+                    const oneWeekAgo = new Date(today);
+                    oneWeekAgo.setDate(oneWeekAgo.getDate() - 7);
+                    if (created < oneWeekAgo) return false;
+                } else if (timeFilter === 'month') {
+                    const oneMonthAgo = new Date(today);
+                    oneMonthAgo.setMonth(oneMonthAgo.getMonth() - 1);
+                    if (created < oneMonthAgo) return false;
+                } else if (timeFilter === 'quarter') {
+                    const threeMonthsAgo = new Date(today);
+                    threeMonthsAgo.setMonth(threeMonthsAgo.getMonth() - 3);
+                    if (created < threeMonthsAgo) return false;
+                } else if (timeFilter === 'year') {
+                    const oneYearAgo = new Date(today);
+                    oneYearAgo.setFullYear(oneYearAgo.getFullYear() - 1);
+                    if (created < oneYearAgo) return false;
+                }
+            }
+
+            return true;
+        });
+    }, [projects, timeFilter, typeFilter, searchQuery]);
+
+    return (
+        <div className="space-y-6">
             <div className="bg-slate-800/50 rounded-xl border border-slate-700 overflow-hidden">
-                <div className="p-6 flex justify-between items-center">
-                    <h3 className="text-lg font-semibold text-slate-300">All Projects</h3>
-                    {canModify && (
-                        <div className="flex space-x-2">
-                            <button onClick={onShowPasteModal} className="flex items-center space-x-2 bg-slate-700 hover:bg-slate-600 text-white font-semibold py-2 px-4 rounded-lg transition-colors text-sm">
-                                <PencilIcon className="w-5 h-5" />
-                                <span>Paste Project</span>
-                            </button>
-                            <button onClick={onShowCreateModal} className="flex items-center space-x-2 bg-brand-secondary hover:bg-blue-500 text-white font-semibold py-2 px-4 rounded-lg transition-colors text-sm">
-                                <PlusCircleIcon className="w-5 h-5" />
-                                <span>New Project</span>
-                            </button>
+                <div className="p-6 border-b border-slate-700/50 space-y-4">
+                    <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
+                        <div>
+                            <h2 className="text-2xl font-bold text-white">Projects</h2>
+                            <p className="text-slate-400 text-sm mt-1">Manage and track your projects.</p>
                         </div>
-                    )}
-                </div>
-                {projects.length === 0 ? (
-                    <div className="p-12 text-center">
-                        <p className="text-slate-400 text-lg mb-4">No projects yet</p>
                         {canModify && (
+                            <div className="flex space-x-2">
+                                <button onClick={onShowPasteModal} className="flex items-center space-x-2 bg-slate-700 hover:bg-slate-600 text-white font-semibold py-2 px-4 rounded-lg transition-colors text-sm">
+                                    <PencilIcon className="w-5 h-5" />
+                                    <span>Paste Project</span>
+                                </button>
+                                <button onClick={onShowCreateModal} className="flex items-center space-x-2 bg-brand-secondary hover:bg-blue-500 text-white font-semibold py-2 px-4 rounded-lg transition-colors text-sm">
+                                    <PlusCircleIcon className="w-5 h-5" />
+                                    <span>New Project</span>
+                                </button>
+                            </div>
+                        )}
+                    </div>
+
+                    {/* Filters */}
+                    <div className="flex flex-wrap gap-4 items-center pt-2">
+                        {/* Search Input */}
+                        <div className="relative">
+                            <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+                                <svg className="h-4 w-4 text-slate-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+                                </svg>
+                            </div>
+                            <input
+                                type="text"
+                                className="bg-slate-900/50 border border-slate-700 text-slate-300 text-xs rounded-lg focus:ring-brand-secondary focus:border-brand-secondary block w-full pl-10 p-2.5 min-w-[200px]"
+                                placeholder="Search projects..."
+                                value={searchQuery}
+                                onChange={(e) => setSearchQuery(e.target.value)}
+                            />
+                            {searchQuery && (
+                                <button
+                                    onClick={() => setSearchQuery('')}
+                                    className="absolute inset-y-0 right-0 pr-3 flex items-center text-slate-400 hover:text-white"
+                                >
+                                    <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                                    </svg>
+                                </button>
+                            )}
+                        </div>
+
+                        {/* Time Filter */}
+                        <div className="flex items-center space-x-2 bg-slate-900/50 p-1 rounded-lg border border-slate-700">
+                            {(['all', 'today', 'week', 'month', 'quarter', 'year'] as const).map((filter) => (
+                                <button
+                                    key={filter}
+                                    onClick={() => setTimeFilter(filter)}
+                                    className={`px-3 py-1.5 text-xs font-medium rounded-md transition-colors capitalize ${timeFilter === filter
+                                        ? 'bg-brand-secondary text-white'
+                                        : 'text-slate-400 hover:text-white hover:bg-slate-700/50'
+                                        }`}
+                                >
+                                    {filter === 'all' ? 'All Time' : filter}
+                                </button>
+                            ))}
+                        </div>
+
+                        {/* Type Filter */}
+                        <select
+                            value={typeFilter}
+                            onChange={(e) => setTypeFilter(e.target.value)}
+                            className="bg-slate-900/50 border border-slate-700 text-slate-300 text-xs rounded-lg focus:ring-brand-secondary focus:border-brand-secondary block p-2.5 min-w-[150px] max-w-[200px] truncate"
+                        >
+                            <option value="all">All Types</option>
+                            {projectTypes.map(type => (
+                                <option key={type} value={type}>{type}</option>
+                            ))}
+                        </select>
+                    </div>
+                </div>
+
+                {filteredProjects.length === 0 ? (
+                    <div className="p-12 text-center">
+                        <p className="text-slate-400 text-lg mb-4">No projects found matching filters</p>
+                        {projects.length === 0 && canModify && (
                             <div className="flex justify-center space-x-4">
                                 <button
                                     onClick={onShowPasteModal}
@@ -144,7 +257,7 @@ const ProjectsList: React.FC<ProjectsListProps> = ({
                     </div>
                 ) : (
                     <ul className="divide-y divide-slate-700">
-                        {projects.map(project => (
+                        {filteredProjects.map(project => (
                             <li
                                 key={project.id}
                                 className="p-6 hover:bg-slate-800 transition-colors flex justify-between items-center group"
@@ -177,6 +290,12 @@ const ProjectsList: React.FC<ProjectsListProps> = ({
                                                 }`}>
                                                 {getProjectCompletionPercentage(project)}%
                                             </span>
+                                            {/* Project Type Badge */}
+                                            {project.coreSystem && (
+                                                <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-slate-700 text-slate-300 border border-slate-600">
+                                                    {project.coreSystem}
+                                                </span>
+                                            )}
                                         </div>
                                         <p className="text-sm text-slate-400">{getProjectStatusSummary(project)}</p>
                                         <div className="flex items-center flex-wrap gap-x-4 gap-y-2 mt-2 text-xs text-slate-500">

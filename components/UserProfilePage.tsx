@@ -6,6 +6,7 @@ import { updateUserProfile, getInitials } from '../services/userService';
 import { uploadProfilePhoto } from '../services/storageService';
 import UserAchievementBadge from './UserAchievementBadge';
 import UserAnalytics from './UserAnalytics';
+import { PhoneIcon } from './icons';
 
 interface UserProfilePageProps {
     projects: Project[];
@@ -21,6 +22,7 @@ const UserProfilePage: React.FC<UserProfilePageProps> = ({
     const { user, refreshUserRole } = useAuth();
     const [isEditing, setIsEditing] = useState(false);
     const [editDisplayName, setEditDisplayName] = useState(user?.displayName || '');
+    const [editPhoneNumber, setEditPhoneNumber] = useState(user?.phoneNumber || '');
     const [saving, setSaving] = useState(false);
     const [uploadingPhoto, setUploadingPhoto] = useState(false);
     const fileInputRef = React.useRef<HTMLInputElement>(null);
@@ -50,7 +52,7 @@ const UserProfilePage: React.FC<UserProfilePageProps> = ({
 
         setSaving(true);
         try {
-            await updateUserProfile(editDisplayName.trim());
+            await updateUserProfile(editDisplayName.trim(), undefined, editPhoneNumber.trim());
             await refreshUserRole(); // Refresh to get updated user data
             setIsEditing(false);
             showToast('Profile updated successfully!');
@@ -63,6 +65,7 @@ const UserProfilePage: React.FC<UserProfilePageProps> = ({
 
     const handleCancelEdit = () => {
         setEditDisplayName(user?.displayName || '');
+        setEditPhoneNumber(user?.phoneNumber || '');
         setIsEditing(false);
     };
 
@@ -218,6 +221,16 @@ const UserProfilePage: React.FC<UserProfilePageProps> = ({
                                     placeholder="Enter your name"
                                     autoFocus
                                 />
+                                <div className="relative">
+                                    <PhoneIcon className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+                                    <input
+                                        type="tel"
+                                        value={editPhoneNumber}
+                                        onChange={(e) => setEditPhoneNumber(e.target.value)}
+                                        className="pl-9 pr-3 py-2 bg-slate-900 border border-slate-600 rounded-lg text-white text-base focus:outline-none focus:border-brand-secondary"
+                                        placeholder="+1234567890"
+                                    />
+                                </div>
                                 <button
                                     onClick={handleSaveProfile}
                                     disabled={saving}
@@ -246,6 +259,7 @@ const UserProfilePage: React.FC<UserProfilePageProps> = ({
                                 <button
                                     onClick={() => {
                                         setEditDisplayName(user.displayName || '');
+                                        setEditPhoneNumber(user.phoneNumber || '');
                                         setIsEditing(true);
                                     }}
                                     className="p-1.5 text-slate-400 hover:text-white hover:bg-slate-700 rounded-lg transition-colors"
@@ -256,7 +270,13 @@ const UserProfilePage: React.FC<UserProfilePageProps> = ({
                             </div>
                         )}
 
-                        <p className="text-slate-400 mb-3">{user.email}</p>
+                        <p className="text-slate-400 mb-1">{user.email}</p>
+                        {user.phoneNumber && (
+                            <p className="text-slate-400 mb-3 flex items-center gap-1.5">
+                                <PhoneIcon className="w-3.5 h-3.5" />
+                                <span className="text-sm">{user.phoneNumber}</span>
+                            </p>
+                        )}
 
                         <span className={`inline-block px-3 py-1 rounded-lg text-sm font-semibold border ${getRoleBadgeColor(user.role)}`}>
                             {user.role}

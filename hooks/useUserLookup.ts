@@ -8,6 +8,7 @@ export interface UserInfo {
     photoURL?: string;
     role: string;
     lastSignIn?: string; // ISO date string - undefined if user never logged in
+    phoneNumber?: string;
 }
 
 interface UsersCache {
@@ -49,6 +50,7 @@ export const useUserLookup = () => {
                         photoURL: user.photoURL,
                         role: user.role,
                         lastSignIn: (user as any).lastSignIn, // Include lastSignIn from Cloud Function response
+                        phoneNumber: (user as any).phoneNumber,
                     };
                     usersByUid.set(user.uid, userInfo);
                     if (user.email) {

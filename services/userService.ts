@@ -1,4 +1,5 @@
 import { updateProfile } from 'firebase/auth';
+import { getFunctions, httpsCallable } from 'firebase/functions';
 import { auth } from './firebaseConfig';
 
 /**
@@ -6,7 +7,8 @@ import { auth } from './firebaseConfig';
  */
 export const updateUserProfile = async (
     displayName?: string,
-    photoURL?: string
+    photoURL?: string,
+    phoneNumber?: string
 ): Promise<void> => {
     const user = auth.currentUser;
 
@@ -26,6 +28,16 @@ export const updateUserProfile = async (
 
     try {
         await updateProfile(user, updates);
+
+        // Update custom fields (like phoneNumber) via Cloud Function if provided
+        if (phoneNumber !== undefined) {
+            const functions = getFunctions();
+            const updateUserProfileFunction = httpsCallable(functions, 'updateUserProfile');
+            await updateUserProfileFunction({
+                uid: user.uid,
+                phoneNumber
+            });
+        }
     } catch (error) {
         console.error('Error updating profile:', error);
         throw new Error('Failed to update profile. Please try again.');

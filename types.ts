@@ -25,6 +25,7 @@ export interface TeamMember {
   email: string;
   displayName?: string;
   photoURL?: string;
+  phoneNumber?: string;
   leadRole?: 'primary' | 'secondary'; // undefined = regular member, primary = project owner, secondary = other leads
 }
 

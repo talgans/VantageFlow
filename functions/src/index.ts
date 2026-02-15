@@ -23,6 +23,7 @@ interface UserData {
   role: string;
   createdAt: string;
   lastSignIn?: string;
+  phoneNumber?: string;
 }
 
 // --- Helper for sending emails via Resend ---
@@ -107,6 +108,7 @@ export const listUsers = functions.https.onCall(async (data, context) => {
       role: user.customClaims?.role || 'member',
       createdAt: user.metadata.creationTime,
       lastSignIn: user.metadata.lastSignInTime,
+      phoneNumber: user.phoneNumber,
     }));
 
     return { users };
@@ -141,6 +143,7 @@ export const getPublicDirectory = functions.https.onCall(async (data, context) =
           role: user.customClaims?.role || 'member',
           createdAt: user.metadata.creationTime,
           lastSignIn: user.metadata.lastSignInTime,
+          phoneNumber: user.phoneNumber,
         });
       });
       nextPageToken = result.pageToken;
@@ -249,7 +252,7 @@ export const updateUserProfile = functions.https.onCall(async (data, context) =>
     throw new functions.https.HttpsError('permission-denied', 'Only admins can update other user profiles');
   }
 
-  const { uid, displayName, photoURL } = data as any;
+  const { uid, displayName, photoURL, phoneNumber } = data as any;
 
   if (!uid) {
     throw new functions.https.HttpsError('invalid-argument', 'User ID is required');
@@ -264,6 +267,10 @@ export const updateUserProfile = functions.https.onCall(async (data, context) =>
 
     if (photoURL !== undefined) {
       updateData.photoURL = photoURL;
+    }
+
+    if (phoneNumber !== undefined) {
+      updateData.phoneNumber = phoneNumber;
     }
 
     await admin.auth().updateUser(uid, updateData);
