@@ -39,6 +39,7 @@ export interface Task {
   ownerId?: string;      // Legacy: kept for backward compatibility during migration
   ownerEmail?: string;   // Legacy
   deliverables?: string[];
+  imageUrls?: string[]; // Up to 5 images per task
   subTasks?: Task[];
 }
 

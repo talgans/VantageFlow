@@ -6,7 +6,8 @@ import ResponsibilitySelector from './ResponsibilitySelector';
 import { notificationService } from '../services/notificationService';
 import { achievementService } from '../services/achievementService';
 import { getProjectInsights } from '../services/geminiService';
-import { ArrowLeftIcon, SparklesIcon, InfoIcon, TeamIcon, CalendarIcon, MoneyIcon, CheckCircleIcon, PlusCircleIcon, ChevronRightIcon, ChevronDownIcon, ListBulletIcon, ChartBarIcon, TrashIcon, ArrowUpIcon, ArrowDownIcon, GripVerticalIcon, StarIcon, UserIcon, WhatsAppIcon } from './icons';
+import { uploadTaskImage } from '../services/storageService';
+import { ArrowLeftIcon, SparklesIcon, InfoIcon, TeamIcon, CalendarIcon, MoneyIcon, CheckCircleIcon, PlusCircleIcon, ChevronRightIcon, ChevronDownIcon, ListBulletIcon, ChartBarIcon, TrashIcon, ArrowUpIcon, ArrowDownIcon, GripVerticalIcon, StarIcon, UserIcon, WhatsAppIcon, PhotoIcon, XMarkIcon } from './icons';
 import GanttChart from './GanttChart';
 import ConfirmationModal from './ConfirmationModal';
 import { useUserLookup } from '../hooks/useUserLookup';
@@ -243,13 +244,19 @@ interface TaskRowProps {
   projectTeam?: TeamMember[];
   getUserDisplayName?: (uid: string, email?: string) => string | undefined;
   getUserPhotoURL?: (uid: string, email?: string) => string | undefined;
+  onImageUpload?: (taskId: string, file: File) => void;
+  onRemoveImage?: (taskId: string, imageUrl: string) => void;
+  onViewImage?: (imageUrl: string) => void;
 }
 
-const TaskRow: React.FC<TaskRowProps> = ({ task, level, isExpanded, onToggleExpand, addingSubtaskTo, setAddingSubtaskTo, canEdit, handleSaveSubtask, editingField, setEditingField, handleUpdateTaskField, onRequestDelete, phaseId, parentId, onDragStart, onDragOver, onDrop, onDragEnd, onDragLeave, draggedItemId, dropTarget, checkPermission, onAssign, projectTeam, getUserDisplayName, getUserPhotoURL }) => {
+const TaskRow: React.FC<TaskRowProps> = ({ task, level, isExpanded, onToggleExpand, addingSubtaskTo, setAddingSubtaskTo, canEdit, handleSaveSubtask, editingField, setEditingField, handleUpdateTaskField, onRequestDelete, phaseId, parentId, onDragStart, onDragOver, onDrop, onDragEnd, onDragLeave, draggedItemId, dropTarget, checkPermission, onAssign, projectTeam, getUserDisplayName, getUserPhotoURL, onImageUpload, onRemoveImage, onViewImage }) => {
   const hasSubtasks = task.subTasks && task.subTasks.length > 0;
   const formatDate = (date: Date) => new Date(date).toLocaleString('en-US', { month: 'short', day: 'numeric' });
   const isEditing = (field: string) => editingField?.taskId === task.id && editingField?.field === field;
   const progress = calculateTaskProgress(task);
+  const imageInputRef = useRef<HTMLInputElement>(null);
+  const hasImages = task.imageUrls && task.imageUrls.length > 0;
+  const canAddMoreImages = !task.imageUrls || task.imageUrls.length < 5;
 
   // Calculate permission for this specific task
   const canEditTask = canEdit && checkPermission(task.ownerId);
@@ -311,6 +318,30 @@ const TaskRow: React.FC<TaskRowProps> = ({ task, level, isExpanded, onToggleExpa
               <span className="w-full cursor-pointer" onClick={() => canEditTask && setEditingField({ taskId: task.id, field: 'name' })}>{task.name}</span>
             )}
             <TaskProgressBar progress={progress} status={task.status} useProgressColor={hasSubtasks} />
+            {/* Task Image Thumbnails */}
+            {hasImages && (
+              <div className="flex items-center gap-1.5 mt-1.5 flex-wrap">
+                {task.imageUrls!.map((url, idx) => (
+                  <div key={idx} className="relative group/img w-8 h-8 rounded-md overflow-hidden border border-slate-600 hover:border-brand-secondary transition-colors flex-shrink-0 cursor-pointer">
+                    <img
+                      src={url}
+                      alt={`Task image ${idx + 1}`}
+                      className="w-full h-full object-cover"
+                      onClick={(e) => { e.stopPropagation(); onViewImage?.(url); }}
+                    />
+                    {canEditTask && (
+                      <button
+                        onClick={(e) => { e.stopPropagation(); onRemoveImage?.(task.id, url); }}
+                        className="absolute -top-0.5 -right-0.5 w-4 h-4 bg-red-500 rounded-full flex items-center justify-center opacity-0 group-hover/img:opacity-100 transition-opacity shadow-lg"
+                        title="Remove image"
+                      >
+                        <XMarkIcon className="w-2.5 h-2.5 text-white" />
+                      </button>
+                    )}
+                  </div>
+                ))}
+              </div>
+            )}
           </div>
         </div>
 
@@ -434,6 +465,7 @@ const TaskRow: React.FC<TaskRowProps> = ({ task, level, isExpanded, onToggleExpa
               >
                 <UserIcon className="w-5 h-5" />
               </button>
+
               <button onClick={() => setAddingSubtaskTo(task.id)} className="text-slate-500 hover:text-brand-light transition-colors p-1 rounded-full" title="Add Subtask">
                 <PlusCircleIcon className="w-5 h-5" />
               </button>
@@ -445,6 +477,34 @@ const TaskRow: React.FC<TaskRowProps> = ({ task, level, isExpanded, onToggleExpa
         </div>
       </li>
       {isDropTargetBelow && <li className="h-0.5 bg-brand-secondary list-none" style={{ marginLeft: `${level * 2}rem` }} />}
+      {canEditTask && canAddMoreImages && (
+        <div
+          className="flex items-center gap-2 mt-1 pl-2 list-none"
+          style={{ marginLeft: `${level * 2 + 2.5}rem` }}
+        >
+          <input
+            ref={imageInputRef}
+            type="file"
+            accept="image/*"
+            className="hidden"
+            onChange={(e) => {
+              const file = e.target.files?.[0];
+              if (file) {
+                onImageUpload?.(task.id, file);
+                e.target.value = '';
+              }
+            }}
+          />
+          <button
+            onClick={() => imageInputRef.current?.click()}
+            className="flex items-center gap-1.5 text-slate-500 hover:text-brand-light transition-colors text-xs py-0.5 px-2 rounded-md hover:bg-slate-700/50"
+            title={`Add Image (${task.imageUrls?.length || 0}/5)`}
+          >
+            <PhotoIcon className="w-3.5 h-3.5" />
+            <span>Add Image ({task.imageUrls?.length || 0}/5)</span>
+          </button>
+        </div>
+      )}
       {addingSubtaskTo === task.id && (
         <InlineTaskForm
           onSave={(name) => handleSaveSubtask(task.id, name)}
@@ -481,6 +541,9 @@ const TaskRow: React.FC<TaskRowProps> = ({ task, level, isExpanded, onToggleExpa
             checkPermission={checkPermission}
             getUserDisplayName={getUserDisplayName}
             getUserPhotoURL={getUserPhotoURL}
+            onImageUpload={onImageUpload}
+            onRemoveImage={onRemoveImage}
+            onViewImage={onViewImage}
           />
         ))
       )}
@@ -532,6 +595,8 @@ const ProjectDetail: React.FC<ProjectDetailProps> = ({ project, onBack, canEdit,
   const [editingInfoCard, setEditingInfoCard] = useState<'duration' | 'cost' | 'team' | null>(null);
   const [phaseToDelete, setPhaseToDelete] = useState<Phase | null>(null);
   const [archiveConfirm, setArchiveConfirm] = useState<{ show: boolean; action: 'archive' | 'unarchive' }>({ show: false, action: 'archive' });
+  const [viewingImage, setViewingImage] = useState<string | null>(null);
+  const [uploadingTaskImage, setUploadingTaskImage] = useState<string | null>(null); // taskId currently uploading
 
   const [assigningTo, setAssigningTo] = useState<{
     type: 'phase' | 'task';
@@ -1057,6 +1122,76 @@ const ProjectDetail: React.FC<ProjectDetailProps> = ({ project, onBack, canEdit,
     }
 
     setAssigningTo(null);
+  };
+
+  // --- Task Image Handlers ---
+  const handleTaskImageUpload = async (taskId: string, file: File) => {
+    if (!file.type.startsWith('image/')) {
+      showToast('Please select an image file');
+      return;
+    }
+    // 5MB limit
+    if (file.size > 5 * 1024 * 1024) {
+      showToast('Image must be under 5MB');
+      return;
+    }
+
+    setUploadingTaskImage(taskId);
+    try {
+      const imageUrl = await uploadTaskImage(project.id, taskId, file);
+
+      // Find the task and append the new image URL
+      const updatedProject = JSON.parse(JSON.stringify(project), reviveDates);
+      const findAndAddImage = (tasks: Task[]): boolean => {
+        for (const task of tasks) {
+          if (task.id === taskId) {
+            const currentImages = task.imageUrls || [];
+            if (currentImages.length >= 5) {
+              showToast('Maximum 5 images per task');
+              return true;
+            }
+            task.imageUrls = [...currentImages, imageUrl];
+            return true;
+          }
+          if (task.subTasks && findAndAddImage(task.subTasks)) return true;
+        }
+        return false;
+      };
+
+      for (const phase of updatedProject.phases) {
+        if (findAndAddImage(phase.tasks)) break;
+      }
+
+      onUpdateProject(updatedProject);
+      showToast('Image uploaded successfully');
+    } catch (error) {
+      console.error('Error uploading task image:', error);
+      showToast('Failed to upload image. Please try again.');
+    } finally {
+      setUploadingTaskImage(null);
+    }
+  };
+
+  const handleRemoveTaskImage = (taskId: string, imageUrl: string) => {
+    const updatedProject = JSON.parse(JSON.stringify(project), reviveDates);
+    const findAndRemoveImage = (tasks: Task[]): boolean => {
+      for (const task of tasks) {
+        if (task.id === taskId) {
+          task.imageUrls = (task.imageUrls || []).filter((url: string) => url !== imageUrl);
+          if (task.imageUrls.length === 0) delete task.imageUrls;
+          return true;
+        }
+        if (task.subTasks && findAndRemoveImage(task.subTasks)) return true;
+      }
+      return false;
+    };
+
+    for (const phase of updatedProject.phases) {
+      if (findAndRemoveImage(phase.tasks)) break;
+    }
+
+    onUpdateProject(updatedProject);
+    showToast('Image removed');
   };
 
   // --- Archive Functionality ---
@@ -1621,6 +1756,9 @@ const ProjectDetail: React.FC<ProjectDetailProps> = ({ project, onBack, canEdit,
                           projectTeam={project.team?.members || []}
                           getUserDisplayName={getUserDisplayName}
                           getUserPhotoURL={getUserPhotoURL}
+                          onImageUpload={handleTaskImageUpload}
+                          onRemoveImage={handleRemoveTaskImage}
+                          onViewImage={(url) => setViewingImage(url)}
                         />
                       ))}
                     </ul>
@@ -1697,6 +1835,27 @@ const ProjectDetail: React.FC<ProjectDetailProps> = ({ project, onBack, canEdit,
               hasExistingChildren={assigningTo.hasChildren}
             />
           </div>
+        </div>
+      )}
+
+      {/* Image Lightbox */}
+      {viewingImage && (
+        <div
+          className="fixed inset-0 bg-black/90 z-50 flex items-center justify-center p-4 cursor-pointer"
+          onClick={() => setViewingImage(null)}
+        >
+          <button
+            onClick={() => setViewingImage(null)}
+            className="absolute top-6 right-6 w-10 h-10 bg-white/10 hover:bg-white/20 rounded-full flex items-center justify-center transition-colors"
+          >
+            <XMarkIcon className="w-6 h-6 text-white" />
+          </button>
+          <img
+            src={viewingImage}
+            alt="Task image preview"
+            className="max-w-full max-h-[85vh] object-contain rounded-lg shadow-2xl"
+            onClick={(e) => e.stopPropagation()}
+          />
         </div>
       )}
 

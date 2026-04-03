@@ -26,3 +26,26 @@ export const uploadProfilePhoto = async (userId: string, file: File): Promise<st
         throw new Error('Failed to upload profile photo');
     }
 };
+
+/**
+ * Upload an image for a task
+ * @param projectId - The project's ID
+ * @param taskId - The task's ID
+ * @param file - The image file to upload
+ * @returns Promise<string> - The download URL of the uploaded image
+ */
+export const uploadTaskImage = async (projectId: string, taskId: string, file: File): Promise<string> => {
+    try {
+        const timestamp = Date.now();
+        const filename = `${timestamp}_${file.name}`;
+        const storageRef = ref(storage, `task_images/${projectId}/${taskId}/${filename}`);
+
+        await uploadBytes(storageRef, file);
+
+        const downloadURL = await getDownloadURL(storageRef);
+        return downloadURL;
+    } catch (error) {
+        console.error('Error uploading task image:', error);
+        throw new Error('Failed to upload task image');
+    }
+};
