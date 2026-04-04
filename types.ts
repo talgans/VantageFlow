@@ -8,6 +8,12 @@ export enum TaskStatus {
   AtRisk = 'At Risk',
 }
 
+export enum TaskPriority {
+  Critical = 1,   // 🔴 Red — Immediate impact, non-negotiable
+  Important = 2,  // 🟠 Amber — Strategic value, must be done
+  Enhancement = 3, // 🔵 Blue — Productivity/ease gains
+}
+
 export enum DurationUnit {
   Hours = 'hours',
   Days = 'days',
@@ -33,6 +39,7 @@ export interface Task {
   id: string;
   name: string;
   status: TaskStatus;
+  priority?: TaskPriority; // VantageFlow Priority Rubric — undefined means "not yet set"
   startDate: Date;
   endDate: Date;
   assignees?: TeamMember[]; // Changed from single ownerId to multiple assignees
@@ -42,6 +49,7 @@ export interface Task {
   imageUrls?: string[]; // Up to 5 images per task
   subTasks?: Task[];
 }
+
 
 export interface Phase {
   id: string;

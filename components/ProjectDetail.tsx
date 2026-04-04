@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect, useMemo } from 'react';
-import { Project, Task, TaskStatus, Phase, DurationUnit, Currency, TeamMember } from '../types';
+import { Project, Task, TaskStatus, TaskPriority, Phase, DurationUnit, Currency, TeamMember } from '../types';
 import StatusBadge from './StatusBadge';
 import CircularProgress from './CircularProgress';
 import ResponsibilitySelector from './ResponsibilitySelector';
@@ -7,7 +7,7 @@ import { notificationService } from '../services/notificationService';
 import { achievementService } from '../services/achievementService';
 import { getProjectInsights } from '../services/geminiService';
 import { uploadTaskImage } from '../services/storageService';
-import { ArrowLeftIcon, SparklesIcon, InfoIcon, TeamIcon, CalendarIcon, MoneyIcon, CheckCircleIcon, PlusCircleIcon, ChevronRightIcon, ChevronDownIcon, ListBulletIcon, ChartBarIcon, TrashIcon, ArrowUpIcon, ArrowDownIcon, GripVerticalIcon, StarIcon, UserIcon, WhatsAppIcon, PhotoIcon, XMarkIcon } from './icons';
+import { ArrowLeftIcon, SparklesIcon, InfoIcon, TeamIcon, CalendarIcon, MoneyIcon, CheckCircleIcon, PlusCircleIcon, ChevronRightIcon, ChevronDownIcon, ListBulletIcon, ChartBarIcon, TrashIcon, ArrowUpIcon, ArrowDownIcon, GripVerticalIcon, StarIcon, UserIcon, WhatsAppIcon, PhotoIcon, XMarkIcon, FlagIcon } from './icons';
 import GanttChart from './GanttChart';
 import ConfirmationModal from './ConfirmationModal';
 import { useUserLookup } from '../hooks/useUserLookup';
@@ -88,13 +88,71 @@ interface ProjectDetailProps {
   onEditProject?: () => void;
 }
 
-type SortKey = 'name' | 'startDate' | 'status' | 'deliverables';
+type SortKey = 'name' | 'startDate' | 'status' | 'priority' | 'deliverables';
 type SortDirection = 'ascending' | 'descending';
 
 interface SortConfig {
   key: SortKey;
   direction: SortDirection;
 }
+
+// --- Priority System Colors & Helpers ---
+const PRIORITY_COLORS: Record<number, { border: string; bg: string; text: string; label: string; dot: string }> = {
+  [TaskPriority.Critical]: { border: 'border-l-red-500', bg: 'bg-red-500/10', text: 'text-red-400', label: 'Critical', dot: 'bg-red-500' },
+  [TaskPriority.Important]: { border: 'border-l-amber-500', bg: 'bg-amber-500/10', text: 'text-amber-400', label: 'Important', dot: 'bg-amber-500' },
+  [TaskPriority.Enhancement]: { border: 'border-l-blue-500', bg: 'bg-blue-500/10', text: 'text-blue-400', label: 'Enhancement', dot: 'bg-blue-500' },
+};
+
+const getEffectivePriority = (task: Task): number => {
+  // Unset priority defaults to Important (2) for display/sort purposes
+  return task.priority ?? TaskPriority.Important;
+};
+
+const PriorityEditButtons: React.FC<{
+  onSelect: (priority: TaskPriority) => void;
+  onClose: () => void;
+}> = ({ onSelect, onClose }) => {
+  const ref = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (ref.current && !ref.current.contains(event.target as Node)) {
+        onClose();
+      }
+    };
+    const timer = setTimeout(() => {
+      document.addEventListener('click', handleClickOutside);
+    }, 10);
+    return () => {
+      clearTimeout(timer);
+      document.removeEventListener('click', handleClickOutside);
+    };
+  }, [onClose]);
+
+  const priorities = [
+    { value: TaskPriority.Critical, label: 'Critical', colors: PRIORITY_COLORS[TaskPriority.Critical] },
+    { value: TaskPriority.Important, label: 'Important', colors: PRIORITY_COLORS[TaskPriority.Important] },
+    { value: TaskPriority.Enhancement, label: 'Enhancement', colors: PRIORITY_COLORS[TaskPriority.Enhancement] },
+  ];
+
+  return (
+    <div
+      ref={ref}
+      className="absolute top-1/2 -translate-y-1/2 left-0 z-20 flex items-center space-x-1 outline-none p-1 bg-slate-900 rounded-lg shadow-xl border border-slate-700"
+    >
+      {priorities.map((p) => (
+        <button
+          key={p.value}
+          onClick={() => onSelect(p.value)}
+          className={`px-2.5 py-1 rounded-md text-xs font-medium transition-colors border flex items-center gap-1.5 ${p.colors.bg} ${p.colors.text} hover:brightness-125 border-transparent`}
+        >
+          <span className={`w-2 h-2 rounded-full ${p.colors.dot}`}></span>
+          {p.label}
+        </button>
+      ))}
+    </div>
+  );
+};
 
 const sortTasks = (tasks: Task[], config: SortConfig): Task[] => {
   if (!tasks) return [];
@@ -113,6 +171,10 @@ const sortTasks = (tasks: Task[], config: SortConfig): Task[] => {
         break;
       case 'status':
         compareValue = calculateTaskProgress(a) - calculateTaskProgress(b);
+        break;
+      case 'priority':
+        // Lower number = higher priority (Critical=1 first)
+        compareValue = getEffectivePriority(a) - getEffectivePriority(b);
         break;
       case 'deliverables':
         const aLen = a.deliverables?.length || 0;
@@ -250,6 +312,9 @@ interface TaskRowProps {
 }
 
 const TaskRow: React.FC<TaskRowProps> = ({ task, level, isExpanded, onToggleExpand, addingSubtaskTo, setAddingSubtaskTo, canEdit, handleSaveSubtask, editingField, setEditingField, handleUpdateTaskField, onRequestDelete, phaseId, parentId, onDragStart, onDragOver, onDrop, onDragEnd, onDragLeave, draggedItemId, dropTarget, checkPermission, onAssign, projectTeam, getUserDisplayName, getUserPhotoURL, onImageUpload, onRemoveImage, onViewImage }) => {
+  const effectivePriority = getEffectivePriority(task);
+  const priorityColor = PRIORITY_COLORS[effectivePriority];
+  const isPriorityUnset = task.priority === undefined || task.priority === null;
   const hasSubtasks = task.subTasks && task.subTasks.length > 0;
   const formatDate = (date: Date) => new Date(date).toLocaleString('en-US', { month: 'short', day: 'numeric' });
   const isEditing = (field: string) => editingField?.taskId === task.id && editingField?.field === field;
@@ -293,7 +358,7 @@ const TaskRow: React.FC<TaskRowProps> = ({ task, level, isExpanded, onToggleExpa
     <>
       {isDropTargetAbove && <li className="h-0.5 bg-brand-secondary list-none" style={{ marginLeft: `${level * 2}rem` }} />}
       <li
-        className={`bg-slate-800 rounded-lg p-2 grid grid-cols-10 gap-4 items-center transition-opacity outline-none focus:ring-1 focus:ring-brand-secondary/50 ${isBeingDragged ? 'opacity-30' : 'opacity-100'}`}
+        className={`bg-slate-800 rounded-lg p-2 grid grid-cols-10 gap-4 items-center transition-opacity outline-none focus:ring-1 focus:ring-brand-secondary/50 border-l-4 ${priorityColor.border} ${isPriorityUnset ? 'border-l-dashed' : ''} ${isBeingDragged ? 'opacity-30' : 'opacity-100'}`}
         style={{ marginLeft: `${level * 2}rem` }}
         tabIndex={0}
         draggable={canEditTask}
@@ -391,7 +456,7 @@ const TaskRow: React.FC<TaskRowProps> = ({ task, level, isExpanded, onToggleExpa
           )}
         </div>
 
-        <div className="col-span-2 relative">
+        <div className="col-span-1 relative">
           {hasSubtasks ? (
             // Parent task: show calculated progress from subtasks (non-editable) with color coding
             (() => {
@@ -433,6 +498,33 @@ const TaskRow: React.FC<TaskRowProps> = ({ task, level, isExpanded, onToggleExpa
               }}
             >
               <StatusBadge status={task.status} />
+            </div>
+          )}
+        </div>
+
+        {/* Priority Column */}
+        <div className="col-span-1 relative">
+          {isEditing('priority') ? (
+            <PriorityEditButtons
+              onSelect={(priority) => {
+                handleUpdateTaskField(task.id, 'priority', priority);
+                setEditingField(null);
+              }}
+              onClose={() => setEditingField(null)}
+            />
+          ) : (
+            <div
+              className={`inline-flex items-center gap-1.5 px-2 py-1 rounded-full text-xs font-medium cursor-pointer transition-colors ${isPriorityUnset ? 'bg-slate-700/50 text-slate-400 animate-pulse' : `${priorityColor.bg} ${priorityColor.text}`}`}
+              onClick={(e) => {
+                e.stopPropagation();
+                if (canEditTask) {
+                  setEditingField({ taskId: task.id, field: 'priority' });
+                }
+              }}
+              title={isPriorityUnset ? 'Set priority (required)' : priorityColor.label}
+            >
+              <FlagIcon className="w-3 h-3" />
+              <span>{isPriorityUnset ? 'Set' : priorityColor.label}</span>
             </div>
           )}
         </div>
@@ -583,8 +675,15 @@ const SortableHeaderCell: React.FC<SortableHeaderCellProps> = ({ label, sortKey,
 
   return (
     <div className={className}>
-      <button onClick={() => onSort(sortKey)} className="flex items-center space-x-1 font-medium text-slate-400 hover:text-slate-200 transition-colors group">
-        <span className="group-hover:text-white">{label}</span>
+      <button
+        onClick={() => onSort(sortKey)}
+        className={`flex items-center space-x-1 font-medium transition-colors group ${
+          isSorted
+            ? 'text-brand-light bg-brand-secondary/10 px-2 py-0.5 rounded-md'
+            : 'text-slate-400 hover:text-slate-200'
+        }`}
+      >
+        <span className={isSorted ? 'text-brand-light' : 'group-hover:text-white'}>{label}</span>
         {isSorted && (
           sortConfig.direction === 'ascending'
             ? <ArrowUpIcon className="w-3 h-3 text-brand-light" />
@@ -1733,7 +1832,8 @@ const ProjectDetail: React.FC<ProjectDetailProps> = ({ project, onBack, canEdit,
                     <div className="grid grid-cols-10 gap-4 text-sm mb-2 px-2" style={{ paddingLeft: '2.5rem' }}>
                       <SortableHeaderCell label="Task" sortKey="name" sortConfig={sortConfig} onSort={handleSort} className="col-span-4" />
                       <SortableHeaderCell label="Timeline" sortKey="startDate" sortConfig={sortConfig} onSort={handleSort} className="col-span-2" />
-                      <SortableHeaderCell label="Status" sortKey="status" sortConfig={sortConfig} onSort={handleSort} className="col-span-2" />
+                      <SortableHeaderCell label="Status" sortKey="status" sortConfig={sortConfig} onSort={handleSort} className="col-span-1" />
+                      <SortableHeaderCell label="Priority" sortKey="priority" sortConfig={sortConfig} onSort={handleSort} className="col-span-1" />
                       <SortableHeaderCell label="Details" sortKey="deliverables" sortConfig={sortConfig} onSort={handleSort} className="col-span-2" />
                     </div>
                     <ul className="space-y-2">

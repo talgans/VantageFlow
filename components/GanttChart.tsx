@@ -1,5 +1,5 @@
 import React, { useState, useMemo } from 'react';
-import { Project, Task, TaskStatus, DurationUnit } from '../types';
+import { Project, Task, TaskStatus, TaskPriority, DurationUnit } from '../types';
 import { ChevronRightIcon, ChevronDownIcon } from './icons';
 
 const COLUMN_WIDTH = 40;
@@ -15,6 +15,12 @@ const STATUS_COLORS: Record<string, { bg: string; border: string }> = {
     'Completed': { bg: 'bg-green-500/70', border: 'border-green-500' },
     'In Progress': { bg: 'bg-blue-500/70', border: 'border-blue-500' },
     'Not Started': { bg: 'bg-gray-500/70', border: 'border-gray-500' },
+};
+
+const PRIORITY_DOT_COLORS: Record<number, string> = {
+    [TaskPriority.Critical]: 'bg-red-500',
+    [TaskPriority.Important]: 'bg-amber-500',
+    [TaskPriority.Enhancement]: 'bg-blue-400',
 };
 
 type TimelineUnit = 'day' | 'week' | 'month';
@@ -232,6 +238,8 @@ const GanttChart: React.FC<{ project: Project }> = ({ project }) => {
         const isExpanded = expandedTasks.has(task.id);
         const { left, width } = getBarPosition(task.startDate, task.endDate, startDate, unit, totalUnits);
         const statusColor = STATUS_COLORS[task.status as string] || STATUS_COLORS[TaskStatus.Zero];
+        const effectivePriority = task.priority ?? TaskPriority.Important;
+        const priorityDotColor = PRIORITY_DOT_COLORS[effectivePriority] || 'bg-amber-500';
 
         return (
             <React.Fragment key={task.id}>
@@ -246,6 +254,8 @@ const GanttChart: React.FC<{ project: Project }> = ({ project }) => {
                                 {isExpanded ? <ChevronDownIcon className="w-4 h-4" /> : <ChevronRightIcon className="w-4 h-4" />}
                             </button>
                         ) : <div className="w-3 h-3 mr-1" />}
+                        {/* Priority dot indicator */}
+                        <span className={`w-2 h-2 rounded-full ${priorityDotColor} mr-1.5 flex-shrink-0`} title={`Priority: ${TaskPriority[effectivePriority]}`}></span>
                         <span className="truncate text-xs">{task.name}</span>
                     </div>
 
