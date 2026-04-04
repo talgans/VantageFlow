@@ -273,18 +273,36 @@ const TaskRow: React.FC<TaskRowProps> = ({ task, level, isExpanded, onToggleExpa
     }
   }
 
+  const handlePaste = (e: React.ClipboardEvent) => {
+    if (!canEditTask || !canAddMoreImages) return;
+    const items = e.clipboardData?.items;
+    if (!items) return;
+    for (let i = 0; i < items.length; i++) {
+      if (items[i].type.startsWith('image/')) {
+        e.preventDefault();
+        const file = items[i].getAsFile();
+        if (file) {
+          onImageUpload?.(task.id, file);
+        }
+        return;
+      }
+    }
+  };
+
   return (
     <>
       {isDropTargetAbove && <li className="h-0.5 bg-brand-secondary list-none" style={{ marginLeft: `${level * 2}rem` }} />}
       <li
-        className={`bg-slate-800 rounded-lg p-2 grid grid-cols-10 gap-4 items-center transition-opacity ${isBeingDragged ? 'opacity-30' : 'opacity-100'}`}
+        className={`bg-slate-800 rounded-lg p-2 grid grid-cols-10 gap-4 items-center transition-opacity outline-none focus:ring-1 focus:ring-brand-secondary/50 ${isBeingDragged ? 'opacity-30' : 'opacity-100'}`}
         style={{ marginLeft: `${level * 2}rem` }}
+        tabIndex={0}
         draggable={canEditTask}
         onDragStart={(e) => onDragStart(e, task, phaseId, parentId)}
         onDragOver={(e) => onDragOver(e, task, phaseId, parentId)}
         onDrop={(e) => onDrop(e, task, phaseId, parentId)}
         onDragEnd={onDragEnd}
         onDragLeave={onDragLeave}
+        onPaste={handlePaste}
       >
         <div className="col-span-4 text-white font-medium flex items-center">
           {canEditTask && <GripVerticalIcon className="w-5 h-5 mr-2 text-slate-500 cursor-grab flex-shrink-0" />}
@@ -1130,9 +1148,9 @@ const ProjectDetail: React.FC<ProjectDetailProps> = ({ project, onBack, canEdit,
       showToast('Please select an image file');
       return;
     }
-    // 5MB limit
-    if (file.size > 5 * 1024 * 1024) {
-      showToast('Image must be under 5MB');
+    // 1MB limit
+    if (file.size > 1 * 1024 * 1024) {
+      showToast('Image must be under 1MB');
       return;
     }
 
