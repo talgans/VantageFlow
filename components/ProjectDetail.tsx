@@ -1,4 +1,4 @@
-import React, { useState, useRef, useEffect, useMemo } from 'react';
+import React, { useState, useRef, useEffect, useMemo, useCallback } from 'react';
 import { Project, Task, TaskStatus, TaskPriority, Phase, DurationUnit, Currency, TeamMember } from '../types';
 import StatusBadge from './StatusBadge';
 import CircularProgress from './CircularProgress';
@@ -7,7 +7,104 @@ import { notificationService } from '../services/notificationService';
 import { achievementService } from '../services/achievementService';
 import { getProjectInsights } from '../services/geminiService';
 import { uploadTaskImage } from '../services/storageService';
-import { ArrowLeftIcon, SparklesIcon, InfoIcon, TeamIcon, CalendarIcon, MoneyIcon, CheckCircleIcon, PlusCircleIcon, ChevronRightIcon, ChevronDownIcon, ListBulletIcon, ChartBarIcon, TrashIcon, ArrowUpIcon, ArrowDownIcon, GripVerticalIcon, StarIcon, UserIcon, WhatsAppIcon, PhotoIcon, XMarkIcon, FlagIcon } from './icons';
+import { ArrowLeftIcon, SparklesIcon, InfoIcon, TeamIcon, CalendarIcon, MoneyIcon, CheckCircleIcon, PlusCircleIcon, ChevronRightIcon, ChevronDownIcon, ListBulletIcon, ChartBarIcon, TrashIcon, ArrowUpIcon, ArrowDownIcon, GripVerticalIcon, StarIcon, UserIcon, WhatsAppIcon, PhotoIcon, XMarkIcon, FlagIcon, MagnifyingGlassIcon } from './icons';
+
+// --- Filter Icon (inline SVG, funnel) ---
+const FilterIcon = (props: React.SVGProps<SVGSVGElement>) => (
+  <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" {...props}>
+    <path strokeLinecap="round" strokeLinejoin="round" d="M12 3c2.755 0 5.455.232 8.083.678.533.09.917.556.917 1.096v1.044a2.25 2.25 0 0 1-.659 1.591l-5.432 5.432a2.25 2.25 0 0 0-.659 1.591v2.927a2.25 2.25 0 0 1-1.244 2.013L9.75 21v-6.568a2.25 2.25 0 0 0-.659-1.591L3.659 7.409A2.25 2.25 0 0 1 3 5.818V4.774c0-.54.384-1.006.917-1.096A48.32 48.32 0 0 1 12 3Z" />
+  </svg>
+);
+
+// --- Filter Types ---
+interface TaskFilters {
+  search: string;
+  statuses: TaskStatus[];
+  priorities: TaskPriority[];
+  assigneeUids: string[];
+  dateFrom: string; // ISO date string (yyyy-mm-dd) or ''
+  dateTo: string;
+}
+
+const EMPTY_FILTERS: TaskFilters = {
+  search: '',
+  statuses: [],
+  priorities: [],
+  assigneeUids: [],
+  dateFrom: '',
+  dateTo: '',
+};
+
+const isFiltersEmpty = (f: TaskFilters): boolean =>
+  f.search === '' &&
+  f.statuses.length === 0 &&
+  f.priorities.length === 0 &&
+  f.assigneeUids.length === 0 &&
+  f.dateFrom === '' &&
+  f.dateTo === '';
+
+const countActiveFilters = (f: TaskFilters): number => {
+  let c = 0;
+  if (f.search) c++;
+  if (f.statuses.length) c++;
+  if (f.priorities.length) c++;
+  if (f.assigneeUids.length) c++;
+  if (f.dateFrom || f.dateTo) c++;
+  return c;
+};
+
+/** Returns true if a task (leaf-level check) passes ALL active filters */
+const taskMatchesFilters = (task: Task, filters: TaskFilters): boolean => {
+  // Search
+  if (filters.search) {
+    const q = filters.search.toLowerCase();
+    const nameMatch = task.name.toLowerCase().includes(q);
+    const deliverablesMatch = task.deliverables?.some(d => d.toLowerCase().includes(q)) || false;
+    if (!nameMatch && !deliverablesMatch) return false;
+  }
+  // Status
+  if (filters.statuses.length > 0) {
+    if (!filters.statuses.includes(task.status)) return false;
+  }
+  // Priority
+  if (filters.priorities.length > 0) {
+    const effectivePri = task.priority ?? TaskPriority.Important;
+    if (!filters.priorities.includes(effectivePri)) return false;
+  }
+  // Assignee
+  if (filters.assigneeUids.length > 0) {
+    const taskUids = (task.assignees || []).map(a => a.uid);
+    // Passes if the task has at least one of the selected assignees
+    if (!filters.assigneeUids.some(uid => taskUids.includes(uid))) return false;
+  }
+  // Date range
+  if (filters.dateFrom) {
+    const from = new Date(filters.dateFrom);
+    const taskEnd = new Date(task.endDate);
+    if (taskEnd < from) return false;
+  }
+  if (filters.dateTo) {
+    const to = new Date(filters.dateTo);
+    to.setHours(23, 59, 59, 999);
+    const taskStart = new Date(task.startDate);
+    if (taskStart > to) return false;
+  }
+  return true;
+};
+
+/** Recursively filter tasks: keep a parent if it matches OR any of its children match */
+const filterTasksRecursive = (tasks: Task[], filters: TaskFilters): Task[] => {
+  if (isFiltersEmpty(filters)) return tasks;
+  return tasks.reduce<Task[]>((acc, task) => {
+    const filteredSubTasks = task.subTasks ? filterTasksRecursive(task.subTasks, filters) : undefined;
+    const selfMatches = taskMatchesFilters(task, filters);
+    const hasMatchingChildren = filteredSubTasks && filteredSubTasks.length > 0;
+    if (selfMatches || hasMatchingChildren) {
+      acc.push({ ...task, subTasks: hasMatchingChildren ? filteredSubTasks : (selfMatches ? task.subTasks : undefined) });
+    }
+    return acc;
+  }, []);
+};
 import GanttChart from './GanttChart';
 import ConfirmationModal from './ConfirmationModal';
 import { useUserLookup } from '../hooks/useUserLookup';
@@ -708,6 +805,55 @@ const ProjectDetail: React.FC<ProjectDetailProps> = ({ project, onBack, canEdit,
   const [viewMode, setViewMode] = useState<'list' | 'gantt'>('list');
   const [taskToDeleteId, setTaskToDeleteId] = useState<string | null>(null);
   const [sortConfig, setSortConfig] = useState<SortConfig>({ key: 'status', direction: 'ascending' });
+
+  // --- Task Filter State ---
+  const [filters, setFilters] = useState<TaskFilters>(EMPTY_FILTERS);
+  const [showFilters, setShowFilters] = useState(false);
+  const activeFilterCount = countActiveFilters(filters);
+
+  const updateFilter = useCallback(<K extends keyof TaskFilters>(key: K, value: TaskFilters[K]) => {
+    setFilters(prev => ({ ...prev, [key]: value }));
+  }, []);
+
+  const toggleStatusFilter = useCallback((status: TaskStatus) => {
+    setFilters(prev => {
+      const has = prev.statuses.includes(status);
+      return { ...prev, statuses: has ? prev.statuses.filter(s => s !== status) : [...prev.statuses, status] };
+    });
+  }, []);
+
+  const togglePriorityFilter = useCallback((priority: TaskPriority) => {
+    setFilters(prev => {
+      const has = prev.priorities.includes(priority);
+      return { ...prev, priorities: has ? prev.priorities.filter(p => p !== priority) : [...prev.priorities, priority] };
+    });
+  }, []);
+
+  const toggleAssigneeFilter = useCallback((uid: string) => {
+    setFilters(prev => {
+      const has = prev.assigneeUids.includes(uid);
+      return { ...prev, assigneeUids: has ? prev.assigneeUids.filter(u => u !== uid) : [...prev.assigneeUids, uid] };
+    });
+  }, []);
+
+  const clearFilters = useCallback(() => setFilters(EMPTY_FILTERS), []);
+
+  // Collect unique assignees across the entire project for the assignee filter dropdown
+  const allProjectAssignees = useMemo(() => {
+    const map = new Map<string, TeamMember>();
+    (project.phases || []).forEach(phase => {
+      const walk = (tasks: Task[]) => {
+        tasks.forEach(t => {
+          (t.assignees || []).forEach(a => { if (a.uid && !map.has(a.uid)) map.set(a.uid, a); });
+          if (t.subTasks) walk(t.subTasks);
+        });
+      };
+      walk(phase.tasks || []);
+    });
+    // Also add team members from project.team
+    (project.team?.members || []).forEach(m => { if (m.uid && !map.has(m.uid)) map.set(m.uid, m); });
+    return Array.from(map.values());
+  }, [project]);
   const [editingPhase, setEditingPhase] = useState<{ id: string; field: 'name' | 'weekRange' } | null>(null);
   const [editingInfoCard, setEditingInfoCard] = useState<'duration' | 'cost' | 'team' | null>(null);
   const [phaseToDelete, setPhaseToDelete] = useState<Phase | null>(null);
@@ -769,10 +915,13 @@ const ProjectDetail: React.FC<ProjectDetailProps> = ({ project, onBack, canEdit,
     }
 
     projectCopy.phases.forEach((phase: Phase) => {
-      phase.tasks = sortTasks(phase.tasks || [], sortConfig);
+      // Apply filters first, then sort
+      let tasks = phase.tasks || [];
+      tasks = filterTasksRecursive(tasks, filters);
+      phase.tasks = sortTasks(tasks, sortConfig);
     });
     return projectCopy;
-  }, [project, sortConfig]);
+  }, [project, sortConfig, filters]);
 
   const reviveDates = (key: string, value: any) => {
     if (key === 'startDate' || key === 'endDate') {
@@ -1690,12 +1839,197 @@ const ProjectDetail: React.FC<ProjectDetailProps> = ({ project, onBack, canEdit,
                 <span>Add Section</span>
               </button>
             )}
+            {/* Filter Toggle Button */}
+            {viewMode === 'list' && (
+              <button
+                onClick={() => setShowFilters(prev => !prev)}
+                className={`relative flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm font-medium transition-all ${
+                  showFilters || activeFilterCount > 0
+                    ? 'bg-brand-secondary/20 text-brand-light border border-brand-secondary/40 shadow-sm shadow-brand-secondary/10'
+                    : 'bg-slate-700 text-slate-300 hover:bg-slate-600 border border-transparent'
+                }`}
+                title={activeFilterCount > 0 ? `${activeFilterCount} filter${activeFilterCount > 1 ? 's' : ''} active` : 'Filter tasks'}
+              >
+                <FilterIcon className="w-4 h-4" />
+                <span>{showFilters ? 'Hide Filters' : 'Filter'}</span>
+                {activeFilterCount > 0 && (
+                  <span className="absolute -top-1.5 -right-1.5 min-w-[18px] h-[18px] flex items-center justify-center bg-brand-secondary text-white text-[10px] font-bold rounded-full px-1 shadow-lg animate-[scale-in_0.2s_ease-out]">
+                    {activeFilterCount}
+                  </span>
+                )}
+              </button>
+            )}
             <div className="flex items-center rounded-lg bg-slate-900 p-1">
               <ViewModeButton icon={<ListBulletIcon />} label="List" isActive={viewMode === 'list'} onClick={() => setViewMode('list')} />
               <ViewModeButton icon={<ChartBarIcon />} label="Gantt" isActive={viewMode === 'gantt'} onClick={() => setViewMode('gantt')} />
             </div>
           </div>
         </div>
+
+        {/* ======== FILTER BAR ======== */}
+        {showFilters && viewMode === 'list' && (
+          <div className="border-b border-slate-700 bg-slate-900/60">
+            <div className="p-4 space-y-3">
+              {/* Row 1: Search + Date range + Clear */}
+              <div className="flex items-center gap-3 flex-wrap">
+                {/* Search Input */}
+                <div className="relative flex-grow min-w-[200px] max-w-sm">
+                  <MagnifyingGlassIcon className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-slate-500" />
+                  <input
+                    type="text"
+                    value={filters.search}
+                    onChange={e => updateFilter('search', e.target.value)}
+                    placeholder="Search tasks…"
+                    className="w-full bg-slate-800 border border-slate-700 text-white text-sm rounded-lg pl-9 pr-8 py-2 focus:ring-1 focus:ring-brand-secondary focus:border-brand-secondary placeholder-slate-500 transition-colors"
+                  />
+                  {filters.search && (
+                    <button onClick={() => updateFilter('search', '')} className="absolute right-2 top-1/2 -translate-y-1/2 text-slate-500 hover:text-slate-300 transition-colors">
+                      <XMarkIcon className="w-4 h-4" />
+                    </button>
+                  )}
+                </div>
+
+                {/* Date Range */}
+                <div className="flex items-center gap-2">
+                  <CalendarIcon className="w-4 h-4 text-slate-500 flex-shrink-0" />
+                  <input
+                    type="date"
+                    value={filters.dateFrom}
+                    onChange={e => updateFilter('dateFrom', e.target.value)}
+                    className="bg-slate-800 border border-slate-700 text-white text-xs rounded-lg px-2.5 py-2 focus:ring-1 focus:ring-brand-secondary focus:border-brand-secondary transition-colors"
+                    title="From date"
+                  />
+                  <span className="text-slate-600 text-xs">→</span>
+                  <input
+                    type="date"
+                    value={filters.dateTo}
+                    onChange={e => updateFilter('dateTo', e.target.value)}
+                    className="bg-slate-800 border border-slate-700 text-white text-xs rounded-lg px-2.5 py-2 focus:ring-1 focus:ring-brand-secondary focus:border-brand-secondary transition-colors"
+                    title="To date"
+                  />
+                </div>
+
+                {/* Clear All Filters */}
+                {activeFilterCount > 0 && (
+                  <button
+                    onClick={clearFilters}
+                    className="flex items-center gap-1.5 px-3 py-2 text-xs font-medium text-red-400 bg-red-500/10 hover:bg-red-500/20 border border-red-500/20 rounded-lg transition-colors ml-auto"
+                  >
+                    <XMarkIcon className="w-3.5 h-3.5" />
+                    Clear All
+                  </button>
+                )}
+              </div>
+
+              {/* Row 2: Status + Priority pills */}
+              <div className="flex items-start gap-6 flex-wrap">
+                {/* Status Filter */}
+                <div className="flex items-center gap-1.5 flex-wrap">
+                  <span className="text-[11px] font-semibold text-slate-500 uppercase tracking-wider mr-1">Status</span>
+                  {Object.values(TaskStatus).map(status => {
+                    const isActive = filters.statuses.includes(status);
+                    return (
+                      <button
+                        key={status}
+                        onClick={() => toggleStatusFilter(status)}
+                        className={`px-2.5 py-1 rounded-full text-[11px] font-medium transition-all border ${
+                          isActive
+                            ? STATUS_BUTTON_STYLES[status]
+                            : 'bg-slate-800 text-slate-500 border-slate-700 hover:border-slate-600 hover:text-slate-300'
+                        }`}
+                      >
+                        {status}
+                      </button>
+                    );
+                  })}
+                </div>
+
+                {/* Priority Filter */}
+                <div className="flex items-center gap-1.5 flex-wrap">
+                  <span className="text-[11px] font-semibold text-slate-500 uppercase tracking-wider mr-1">Priority</span>
+                  {[
+                    { value: TaskPriority.Critical, label: 'Critical', colors: PRIORITY_COLORS[TaskPriority.Critical] },
+                    { value: TaskPriority.Important, label: 'Important', colors: PRIORITY_COLORS[TaskPriority.Important] },
+                    { value: TaskPriority.Enhancement, label: 'Enhancement', colors: PRIORITY_COLORS[TaskPriority.Enhancement] },
+                  ].map(p => {
+                    const isActive = filters.priorities.includes(p.value);
+                    return (
+                      <button
+                        key={p.value}
+                        onClick={() => togglePriorityFilter(p.value)}
+                        className={`px-2.5 py-1 rounded-full text-[11px] font-medium transition-all border flex items-center gap-1.5 ${
+                          isActive
+                            ? `${p.colors.bg} ${p.colors.text} border-transparent`
+                            : 'bg-slate-800 text-slate-500 border-slate-700 hover:border-slate-600 hover:text-slate-300'
+                        }`}
+                      >
+                        <span className={`w-2 h-2 rounded-full ${isActive ? p.colors.dot : 'bg-slate-600'}`} />
+                        {p.label}
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+
+              {/* Row 3: Assignee avatars (only if there are assignees) */}
+              {allProjectAssignees.length > 0 && (
+                <div className="flex items-center gap-2 flex-wrap">
+                  <span className="text-[11px] font-semibold text-slate-500 uppercase tracking-wider mr-1">Assignee</span>
+                  {allProjectAssignees.map(member => {
+                    const isActive = filters.assigneeUids.includes(member.uid);
+                    const lookupName = getUserDisplayName(member.uid, member.email);
+                    const lookupPhoto = getUserPhotoURL(member.uid, member.email);
+                    const displayName = lookupName || member.displayName;
+                    const photoURL = lookupPhoto || member.photoURL;
+                    let name = displayName;
+                    if (!name || name.includes('@')) {
+                      name = member.email.split('@')[0];
+                      name = name.charAt(0).toUpperCase() + name.slice(1);
+                    }
+                    return (
+                      <button
+                        key={member.uid}
+                        onClick={() => toggleAssigneeFilter(member.uid)}
+                        className={`flex items-center gap-1.5 px-2 py-1 rounded-full text-[11px] font-medium transition-all border ${
+                          isActive
+                            ? 'bg-brand-secondary/20 text-brand-light border-brand-secondary/40'
+                            : 'bg-slate-800 text-slate-500 border-slate-700 hover:border-slate-600 hover:text-slate-300'
+                        }`}
+                        title={`${name} (${member.email})`}
+                      >
+                        <div className={`w-5 h-5 rounded-full flex-shrink-0 flex items-center justify-center text-[9px] overflow-hidden ring-1 ${
+                          isActive ? 'ring-brand-secondary' : 'ring-slate-700'
+                        }`}>
+                          {photoURL
+                            ? <img src={photoURL} alt="" className="w-5 h-5 rounded-full" />
+                            : <span className="bg-slate-700 w-full h-full flex items-center justify-center">{(displayName?.[0] || member.email[0]).toUpperCase()}</span>
+                          }
+                        </div>
+                        {name}
+                      </button>
+                    );
+                  })}
+                </div>
+              )}
+
+              {/* Active filters summary */}
+              {activeFilterCount > 0 && (() => {
+                const totalVisibleTasks = sortedProject.phases.reduce((sum: number, ph: Phase) => {
+                  const countTasks = (tasks: Task[]): number => 
+                    tasks.reduce((s, t) => s + 1 + (t.subTasks ? countTasks(t.subTasks) : 0), 0);
+                  return sum + countTasks(ph.tasks || []);
+                }, 0);
+                return (
+                  <div className="flex items-center gap-2 pt-1">
+                    <span className="text-[11px] text-slate-500">
+                      Showing <span className="text-brand-light font-semibold">{totalVisibleTasks}</span> matching task{totalVisibleTasks !== 1 ? 's' : ''}
+                    </span>
+                  </div>
+                );
+              })()}
+            </div>
+          </div>
+        )}
 
         {viewMode === 'list' ? (
           <>
