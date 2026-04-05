@@ -358,7 +358,7 @@ const TaskRow: React.FC<TaskRowProps> = ({ task, level, isExpanded, onToggleExpa
     <>
       {isDropTargetAbove && <li className="h-0.5 bg-brand-secondary list-none" style={{ marginLeft: `${level * 2}rem` }} />}
       <li
-        className={`bg-slate-800 rounded-lg p-2 grid grid-cols-10 gap-4 items-center transition-opacity outline-none focus:ring-1 focus:ring-brand-secondary/50 border-l-4 ${priorityColor.border} ${isPriorityUnset ? 'border-l-dashed' : ''} ${isBeingDragged ? 'opacity-30' : 'opacity-100'}`}
+        className={`group/task bg-slate-800 rounded-lg p-2 grid grid-cols-10 gap-4 items-center transition-opacity outline-none focus:ring-1 focus:ring-brand-secondary/50 border-l-4 ${priorityColor.border} ${isPriorityUnset ? 'border-l-dashed' : ''} ${isBeingDragged ? 'opacity-30' : 'opacity-100'}`}
         style={{ marginLeft: `${level * 2}rem` }}
         tabIndex={0}
         draggable={canEditTask}
@@ -423,6 +423,33 @@ const TaskRow: React.FC<TaskRowProps> = ({ task, level, isExpanded, onToggleExpa
                     )}
                   </div>
                 ))}
+              </div>
+            )}
+            {/* Add Image — visible on hover */}
+            {canEditTask && canAddMoreImages && (
+              <div className="flex items-center mt-1 opacity-0 group-hover/task:opacity-100 transition-opacity">
+                <input
+                  ref={imageInputRef}
+                  type="file"
+                  accept="image/*"
+                  className="hidden"
+                  onChange={(e) => {
+                    const file = e.target.files?.[0];
+                    if (file) {
+                      onImageUpload?.(task.id, file);
+                      e.target.value = '';
+                    }
+                  }}
+                />
+                <button
+                  onMouseDown={(e) => e.preventDefault()}
+                  onClick={(e) => { e.stopPropagation(); imageInputRef.current?.click(); }}
+                  className="flex items-center gap-1 text-slate-500 hover:text-brand-light transition-colors text-xs py-0.5 px-1.5 rounded hover:bg-slate-700/50"
+                  title={`Add Image (${task.imageUrls?.length || 0}/5)`}
+                >
+                  <PhotoIcon className="w-3.5 h-3.5" />
+                  <span>Add Image ({task.imageUrls?.length || 0}/5)</span>
+                </button>
               </div>
             )}
           </div>
@@ -587,34 +614,7 @@ const TaskRow: React.FC<TaskRowProps> = ({ task, level, isExpanded, onToggleExpa
         </div>
       </li>
       {isDropTargetBelow && <li className="h-0.5 bg-brand-secondary list-none" style={{ marginLeft: `${level * 2}rem` }} />}
-      {canEditTask && canAddMoreImages && (
-        <div
-          className="flex items-center gap-2 mt-1 pl-2 list-none"
-          style={{ marginLeft: `${level * 2 + 2.5}rem` }}
-        >
-          <input
-            ref={imageInputRef}
-            type="file"
-            accept="image/*"
-            className="hidden"
-            onChange={(e) => {
-              const file = e.target.files?.[0];
-              if (file) {
-                onImageUpload?.(task.id, file);
-                e.target.value = '';
-              }
-            }}
-          />
-          <button
-            onClick={() => imageInputRef.current?.click()}
-            className="flex items-center gap-1.5 text-slate-500 hover:text-brand-light transition-colors text-xs py-0.5 px-2 rounded-md hover:bg-slate-700/50"
-            title={`Add Image (${task.imageUrls?.length || 0}/5)`}
-          >
-            <PhotoIcon className="w-3.5 h-3.5" />
-            <span>Add Image ({task.imageUrls?.length || 0}/5)</span>
-          </button>
-        </div>
-      )}
+
       {addingSubtaskTo === task.id && (
         <InlineTaskForm
           onSave={(name) => handleSaveSubtask(task.id, name)}
