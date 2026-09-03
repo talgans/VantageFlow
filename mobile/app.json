@@ -1,22 +1,35 @@
 {
   "expo": {
-    "name": "mobile",
-    "slug": "mobile",
+    "name": "VantageFlow",
+    "slug": "vantageflow",
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/images/icon.png",
-    "scheme": "mobile",
-    "userInterfaceStyle": "automatic",
+    "scheme": "vantageflow",
+    "userInterfaceStyle": "dark",
+    "backgroundColor": "#0f172a",
     "ios": {
-      "supportsTablet": true
+      "supportsTablet": true,
+      "bundleIdentifier": "com.vantageflow.app",
+      "infoPlist": {
+        "NSCameraUsageDescription": "VantageFlow uses the camera to attach deliverable photos to tasks and update profile avatars.",
+        "NSPhotoLibraryUsageDescription": "VantageFlow needs access to your photos to attach deliverables and task progress images."
+      }
     },
     "android": {
       "adaptiveIcon": {
-        "backgroundColor": "#E6F4FE",
+        "backgroundColor": "#0f172a",
         "foregroundImage": "./assets/images/android-icon-foreground.png",
         "backgroundImage": "./assets/images/android-icon-background.png",
         "monochromeImage": "./assets/images/android-icon-monochrome.png"
       },
+      "package": "com.vantageflow.app",
+      "permissions": [
+        "CAMERA",
+        "READ_EXTERNAL_STORAGE",
+        "WRITE_EXTERNAL_STORAGE",
+        "NOTIFICATIONS"
+      ],
       "predictiveBackGestureEnabled": false
     },
     "web": {
@@ -31,7 +44,14 @@
         {
           "image": "./assets/images/splash-icon.png",
           "resizeMode": "contain",
-          "backgroundColor": "#ffffff"
+          "backgroundColor": "#0f172a"
+        }
+      ],
+      [
+        "expo-image-picker",
+        {
+          "photosPermission": "VantageFlow requires access to your photo library to attach task deliverables.",
+          "cameraPermission": "VantageFlow requires camera access to take photos of task deliverables."
         }
       ]
     ],
@@ -40,3 +60,4 @@
     }
   }
 }
+

@@ -1,68 +1,77 @@
-import { SymbolView } from 'expo-symbols';
-import { Link, Tabs } from 'expo-router';
-import { Platform, Pressable } from 'react-native';
-
-import Colors from '@/constants/Colors';
-import { useColorScheme } from '@/components/useColorScheme';
-import { useClientOnlyValue } from '@/components/useClientOnlyValue';
+import React from 'react';
+import { Tabs, router } from 'expo-router';
+import { TouchableOpacity } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { LayoutDashboard, FolderKanban, BarChart3, User, Bell } from 'lucide-react-native';
+import { colors } from '../../constants/theme';
+import { useAuth } from '../../contexts/AuthContext';
 
 export default function TabLayout() {
-  const colorScheme = useColorScheme();
+  const { user } = useAuth();
+  const insets = useSafeAreaInsets();
+
+  // Ensure at least 8px padding on Android even if insets report 0
+  const bottomPadding = Math.max(insets.bottom, 8);
 
   return (
     <Tabs
       screenOptions={{
-        tabBarActiveTintColor: Colors[colorScheme].tint,
-        // Disable the static render of the header on web
-        // to prevent a hydration error in React Navigation v6.
-        headerShown: useClientOnlyValue(false, true),
-      }}>
+        tabBarActiveTintColor: colors.primary,
+        tabBarInactiveTintColor: colors.textMuted,
+        tabBarStyle: {
+          backgroundColor: colors.card,
+          borderTopColor: colors.border,
+          height: 56 + bottomPadding,
+          paddingBottom: bottomPadding,
+          paddingTop: 6,
+        },
+        headerStyle: {
+          backgroundColor: colors.background,
+        },
+        headerTintColor: colors.text,
+        headerTitleStyle: {
+          fontWeight: '700',
+        },
+        headerRight: () => (
+          <TouchableOpacity
+            style={{ marginRight: 16, padding: 4 }}
+            onPress={() => router.push('/modal')}
+          >
+            <Bell size={20} color={colors.textSecondary} />
+          </TouchableOpacity>
+        ),
+      }}
+    >
       <Tabs.Screen
         name="index"
         options={{
-          title: 'Tab One',
-          tabBarIcon: ({ color }) => (
-            <SymbolView
-              name={{
-                ios: 'chevron.left.forwardslash.chevron.right',
-                android: 'code',
-                web: 'code',
-              }}
-              tintColor={color}
-              size={28}
-            />
-          ),
-          headerRight: () => (
-            <Link href="/modal" asChild>
-              <Pressable style={{ marginRight: 15 }}>
-                {({ pressed }) => (
-                  <SymbolView
-                    name={{ ios: 'info.circle', android: 'info', web: 'info' }}
-                    size={25}
-                    tintColor={Colors[colorScheme].text}
-                    style={{ opacity: pressed ? 0.5 : 1 }}
-                  />
-                )}
-              </Pressable>
-            </Link>
-          ),
+          title: 'Dashboard',
+          headerTitle: 'VantageFlow',
+          tabBarIcon: ({ color, size }) => <LayoutDashboard size={size - 2} color={color} />,
         }}
       />
       <Tabs.Screen
-        name="two"
+        name="projects"
         options={{
-          title: 'Tab Two',
-          tabBarIcon: ({ color }) => (
-            <SymbolView
-              name={{
-                ios: 'chevron.left.forwardslash.chevron.right',
-                android: 'code',
-                web: 'code',
-              }}
-              tintColor={color}
-              size={28}
-            />
-          ),
+          title: 'Projects',
+          headerTitle: 'All Projects',
+          tabBarIcon: ({ color, size }) => <FolderKanban size={size - 2} color={color} />,
+        }}
+      />
+      <Tabs.Screen
+        name="activity"
+        options={{
+          title: 'Activity',
+          headerTitle: 'Team Activity & Workload',
+          tabBarIcon: ({ color, size }) => <BarChart3 size={size - 2} color={color} />,
+        }}
+      />
+      <Tabs.Screen
+        name="profile"
+        options={{
+          title: 'Profile',
+          headerTitle: 'My Profile & Points',
+          tabBarIcon: ({ color, size }) => <User size={size - 2} color={color} />,
         }}
       />
     </Tabs>
