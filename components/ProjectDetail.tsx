@@ -109,6 +109,7 @@ import GanttChart from './GanttChart';
 import ConfirmationModal from './ConfirmationModal';
 import { useUserLookup } from '../hooks/useUserLookup';
 import SectionStatusDonut from './charts/SectionStatusDonut';
+import PriorityDonut from './charts/PriorityDonut';
 import UserAchievementBadge from './UserAchievementBadge';
 
 // Helper function to calculate task progress recursively
@@ -171,6 +172,185 @@ const TaskProgressBar: React.FC<{ progress: number; status: TaskStatus | string;
       ></div>
     </div>
   );
+};
+
+// --- Section Status & Color Helper for Section Card & Section Headers ---
+interface SectionStatusConfig {
+  status: TaskStatus | 'Completed' | 'Not Started' | 'In Progress';
+  fillGradient: string;
+  fillColor: string;
+  glowColor: string;
+  badgeBg: string;
+  badgeText: string;
+  badgeBorder: string;
+  label: string;
+  completionPct: number;
+  completedTasks: number;
+  totalTasks: number;
+}
+
+const getSectionStatusConfig = (phase: Phase): SectionStatusConfig => {
+  const allTasks = (phase.tasks || []).flatMap(t => t.subTasks ? [t, ...t.subTasks] : [t]);
+  const totalTasks = allTasks.length;
+  if (totalTasks === 0) {
+    return {
+      status: 'Not Started',
+      fillGradient: 'from-slate-600 to-slate-500',
+      fillColor: 'bg-slate-600',
+      glowColor: 'shadow-slate-500/20',
+      badgeBg: 'bg-slate-700/60',
+      badgeText: 'text-slate-400',
+      badgeBorder: 'border-slate-600/40',
+      label: 'No tasks',
+      completionPct: 0,
+      completedTasks: 0,
+      totalTasks: 0,
+    };
+  }
+
+  const hasAtRisk = allTasks.some(t => t.status === TaskStatus.AtRisk);
+  const completedTasks = allTasks.filter(t => t.status === TaskStatus.Hundred || (t.status as string) === 'Completed').length;
+  const completionPct = Math.round((completedTasks / totalTasks) * 100);
+
+  if (hasAtRisk) {
+    return {
+      status: TaskStatus.AtRisk,
+      fillGradient: 'from-red-600 to-rose-500',
+      fillColor: 'bg-red-500',
+      glowColor: 'shadow-red-500/30',
+      badgeBg: 'bg-red-500/15',
+      badgeText: 'text-red-400',
+      badgeBorder: 'border-red-500/40',
+      label: 'At Risk',
+      completionPct,
+      completedTasks,
+      totalTasks,
+    };
+  }
+
+  if (completionPct === 100) {
+    return {
+      status: TaskStatus.Hundred,
+      fillGradient: 'from-green-600 to-emerald-400',
+      fillColor: 'bg-green-500',
+      glowColor: 'shadow-green-500/30',
+      badgeBg: 'bg-green-500/15',
+      badgeText: 'text-green-400',
+      badgeBorder: 'border-green-500/40',
+      label: 'Completed',
+      completionPct,
+      completedTasks,
+      totalTasks,
+    };
+  }
+
+  if (completionPct >= 75) {
+    return {
+      status: TaskStatus.SeventyFive,
+      fillGradient: 'from-indigo-600 to-indigo-400',
+      fillColor: 'bg-indigo-500',
+      glowColor: 'shadow-indigo-500/30',
+      badgeBg: 'bg-indigo-500/15',
+      badgeText: 'text-indigo-400',
+      badgeBorder: 'border-indigo-500/40',
+      label: '75%',
+      completionPct,
+      completedTasks,
+      totalTasks,
+    };
+  }
+
+  if (completionPct >= 50) {
+    return {
+      status: TaskStatus.Fifty,
+      fillGradient: 'from-blue-600 to-blue-400',
+      fillColor: 'bg-blue-500',
+      glowColor: 'shadow-blue-500/30',
+      badgeBg: 'bg-blue-500/15',
+      badgeText: 'text-blue-400',
+      badgeBorder: 'border-blue-500/40',
+      label: '50%',
+      completionPct,
+      completedTasks,
+      totalTasks,
+    };
+  }
+
+  if (completionPct >= 25) {
+    return {
+      status: TaskStatus.TwentyFive,
+      fillGradient: 'from-amber-600 to-amber-400',
+      fillColor: 'bg-amber-500',
+      glowColor: 'shadow-amber-500/30',
+      badgeBg: 'bg-amber-500/15',
+      badgeText: 'text-amber-400',
+      badgeBorder: 'border-amber-500/40',
+      label: '25%',
+      completionPct,
+      completedTasks,
+      totalTasks,
+    };
+  }
+
+  if (completionPct > 0) {
+    return {
+      status: 'In Progress',
+      fillGradient: 'from-sky-600 to-sky-400',
+      fillColor: 'bg-sky-500',
+      glowColor: 'shadow-sky-500/30',
+      badgeBg: 'bg-sky-500/15',
+      badgeText: 'text-sky-400',
+      badgeBorder: 'border-sky-500/40',
+      label: `${completionPct}%`,
+      completionPct,
+      completedTasks,
+      totalTasks,
+    };
+  }
+
+  return {
+    status: TaskStatus.Zero,
+    fillGradient: 'from-slate-600 to-slate-500',
+    fillColor: 'bg-slate-600',
+    glowColor: 'shadow-slate-600/20',
+    badgeBg: 'bg-slate-700/60',
+    badgeText: 'text-slate-400',
+    badgeBorder: 'border-slate-600/30',
+    label: 'Not Started',
+    completionPct: 0,
+    completedTasks: 0,
+    totalTasks,
+  };
+};
+
+// --- Stacked Status Breakdown for Section Progress Chart ---
+// Order is bottom -> top when rendered with flex-col-reverse
+type StatusStackKey = 'done' | 'p75' | 'p50' | 'p25' | 'risk' | 'zero';
+
+const STATUS_STACK_ORDER: { key: StatusStackKey; label: string; color: string }[] = [
+  { key: 'done', label: '100%', color: 'bg-gradient-to-t from-green-600 to-emerald-400' },
+  { key: 'p75', label: '75%', color: 'bg-gradient-to-t from-indigo-600 to-indigo-400' },
+  { key: 'p50', label: '50%', color: 'bg-gradient-to-t from-blue-600 to-blue-400' },
+  { key: 'p25', label: '25%', color: 'bg-gradient-to-t from-amber-600 to-amber-400' },
+  { key: 'risk', label: 'At Risk', color: 'bg-gradient-to-t from-red-600 to-rose-500' },
+  { key: 'zero', label: '0%', color: 'bg-slate-600/70' },
+];
+
+const getStatusStackKey = (status: string): StatusStackKey => {
+  if (status === TaskStatus.AtRisk) return 'risk';
+  if (status === TaskStatus.Hundred || status === 'Completed') return 'done';
+  if (status === TaskStatus.SeventyFive) return 'p75';
+  if (status === TaskStatus.Fifty || status === 'In Progress') return 'p50';
+  if (status === TaskStatus.TwentyFive) return 'p25';
+  return 'zero';
+};
+
+/** Counts tasks (incl. subtasks, consistent with the Tasks stat) per status bucket */
+const getSectionStatusBreakdown = (phase: Phase): { counts: Record<StatusStackKey, number>; total: number } => {
+  const counts: Record<StatusStackKey, number> = { done: 0, p75: 0, p50: 0, p25: 0, risk: 0, zero: 0 };
+  const allTasks = (phase.tasks || []).flatMap(t => t.subTasks ? [t, ...t.subTasks] : [t]);
+  allTasks.forEach(t => { counts[getStatusStackKey(t.status as string)]++; });
+  return { counts, total: allTasks.length };
 };
 
 interface ProjectDetailProps {
@@ -870,6 +1050,69 @@ const ProjectDetail: React.FC<ProjectDetailProps> = ({ project, onBack, canEdit,
   } | null>(null);
 
   // --- Accordion State ---
+  const [isTopBandCollapsed, setIsTopBandCollapsed] = useState(false);
+  // Once the user clicks anywhere in the summary row, it stops auto-collapsing
+  const [isTopBandPinned, setIsTopBandPinned] = useState(false);
+  // Track hover to pause the auto-collapse timer while user is reading/interacting
+  const [isTopBandHovered, setIsTopBandHovered] = useState(false);
+
+  // Reset summary row state whenever a different project is opened
+  useEffect(() => {
+    setIsTopBandCollapsed(false);
+    setIsTopBandPinned(false);
+    setIsTopBandHovered(false);
+  }, [project.id]);
+
+  // Auto-collapse the summary row after 3s unless it has been clicked/pinned or is currently hovered
+  useEffect(() => {
+    if (isTopBandPinned || isTopBandCollapsed || isTopBandHovered) return;
+    const timer = setTimeout(() => setIsTopBandCollapsed(true), 3000);
+    return () => clearTimeout(timer);
+  }, [isTopBandPinned, isTopBandCollapsed, isTopBandHovered, project.id]);
+
+  const handleSummaryRowClick = useCallback((e: React.MouseEvent) => {
+    const target = e.target as HTMLElement | null;
+    if (!target) return;
+    const isInteractive = target.closest('button, a, input, select, textarea, [role="button"]');
+    if (isInteractive) {
+      setIsTopBandPinned(true);
+      return;
+    }
+    setIsTopBandPinned(true);
+    setIsTopBandCollapsed(prev => !prev);
+  }, []);
+
+  const overallCompletionPct = useMemo(() => {
+    const allTasks = (project.phases || []).flatMap(ph =>
+      (ph.tasks || []).flatMap(t => t.subTasks ? [t, ...t.subTasks] : [t])
+    );
+    if (allTasks.length === 0) return 0;
+    const completed = allTasks.filter(t => t.status === TaskStatus.Hundred || (t.status as string) === 'Completed').length;
+    return Math.round((completed / allTasks.length) * 100);
+  }, [project.phases]);
+
+  const priorityBreakdown = useMemo(() => {
+    const allTasks = (project.phases || []).flatMap(ph =>
+      (ph.tasks || []).flatMap(t => t.subTasks ? [t, ...t.subTasks] : [t])
+    );
+    let critical = 0;
+    let important = 0;
+    let enhancement = 0;
+    allTasks.forEach(t => {
+      const p = getEffectivePriority(t);
+      if (p === TaskPriority.Critical) critical++;
+      else if (p === TaskPriority.Important) important++;
+      else if (p === TaskPriority.Enhancement) enhancement++;
+    });
+    return { critical, important, enhancement, total: allTasks.length };
+  }, [project.phases]);
+
+  const projectStartDateLabel = useMemo(() => {
+    if (!project.startDate) return null;
+    const d = new Date(project.startDate);
+    if (isNaN(d.getTime())) return null;
+    return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+  }, [project.startDate]);
   const [isCardsCollapsed, setIsCardsCollapsed] = useState(false);
   const [collapsedPhases, setCollapsedPhases] = useState<Set<string>>(new Set());
   const [phaseAnimationKeys, setPhaseAnimationKeys] = useState<Record<string, number>>({});
@@ -889,6 +1132,35 @@ const ProjectDetail: React.FC<ProjectDetailProps> = ({ project, onBack, canEdit,
       ...prev,
       [phaseId]: (prev[phaseId] || 0) + 1
     }));
+  };
+
+  const handleScrollToSection = (phaseId: string) => {
+    // If phase is currently collapsed, expand it
+    if (collapsedPhases.has(phaseId)) {
+      setCollapsedPhases(prev => {
+        const next = new Set(prev);
+        next.delete(phaseId);
+        return next;
+      });
+      setPhaseAnimationKeys(prev => ({
+        ...prev,
+        [phaseId]: (prev[phaseId] || 0) + 1
+      }));
+    }
+    // Also if in gantt view, switch to list view so the section is visible
+    if (viewMode !== 'list') {
+      setViewMode('list');
+    }
+    setTimeout(() => {
+      const el = document.getElementById(`section-${phaseId}`);
+      if (el) {
+        el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        el.classList.add('ring-2', 'ring-brand-secondary', 'ring-offset-2', 'ring-offset-slate-900');
+        setTimeout(() => {
+          el.classList.remove('ring-2', 'ring-brand-secondary', 'ring-offset-2', 'ring-offset-slate-900');
+        }, 1800);
+      }
+    }, 50);
   };
 
   // --- User Lookup for displaying names and photos ---
@@ -1476,158 +1748,259 @@ const ProjectDetail: React.FC<ProjectDetailProps> = ({ project, onBack, canEdit,
   };
 
   return (
-    <div className="space-y-8">
-      <button onClick={onBack} className="flex items-center space-x-2 text-brand-light hover:text-white transition-colors">
-        <ArrowLeftIcon className="w-5 h-5" />
-        <span>Back to Projects</span>
-      </button>
+    <div className="space-y-6">
+      {/* Top Navigation & Action Bar */}
+      <div className="flex items-center justify-between gap-4">
+        <button onClick={onBack} className="flex items-center space-x-2 text-brand-light hover:text-white transition-colors text-sm font-medium">
+          <ArrowLeftIcon className="w-4 h-4" />
+          <span>Back to Projects</span>
+        </button>
 
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        {/* Title & Description Card */}
-        <div className={`col-span-1 lg:col-span-2 p-6 rounded-xl border ${project.isArchived
-          ? 'bg-amber-500/10 border-amber-500/50'
-          : 'bg-slate-800/50 border-slate-700'}`}>
-          {/* Archived Notice */}
-          {project.isArchived && (
-            <div className="flex items-center gap-2 mb-4 pb-4 border-b border-amber-500/30">
-              <svg className="w-5 h-5 text-amber-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <div className="flex items-center gap-2">
+          {/* Discreet Archive Button */}
+          {canArchive && !project.isArchived && (
+            <button
+              onClick={() => setArchiveConfirm({ show: true, action: 'archive' })}
+              className="text-slate-400 hover:text-amber-400 px-2.5 py-1.5 rounded-lg hover:bg-slate-800 text-xs font-medium transition-colors flex items-center gap-1.5 border border-slate-700/60"
+              title="Archive Project"
+            >
+              <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M5 8h14M5 8a2 2 0 110-4h14a2 2 0 110 4M5 8v10a2 2 0 002 2h10a2 2 0 002-2V8m-9 4h4" />
               </svg>
-              <span className="text-amber-200 font-medium flex-1">This project is archived. No edits can be made until it is unarchived.</span>
-              {canArchive && (
-                <button
-                  onClick={() => setArchiveConfirm({ show: true, action: 'unarchive' })}
-                  className="px-3 py-1 bg-amber-500 hover:bg-amber-400 text-black text-sm font-medium rounded-lg transition-colors"
-                >
-                  Unarchive
-                </button>
+              <span>Archive</span>
+            </button>
+          )}
+        </div>
+      </div>
+
+      {/* Collapsible Summary Row (Title Card + Sections Card) — auto-collapses after 3s unless clicked or hovered */}
+      <div
+        onMouseEnter={() => setIsTopBandHovered(true)}
+        onMouseLeave={() => setIsTopBandHovered(false)}
+      >
+        {/* Collapsed compact row (styled like the Project Details header) */}
+        <div className={`transition-all duration-300 ease-in-out overflow-hidden ${isTopBandCollapsed ? 'max-h-24 opacity-100' : 'max-h-0 opacity-0 pointer-events-none'}`}>
+          <div
+            role="button"
+            tabIndex={0}
+            onClick={() => {
+              setIsTopBandPinned(true);
+              setIsTopBandCollapsed(false);
+            }}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter' || e.key === ' ') {
+                e.preventDefault();
+                setIsTopBandPinned(true);
+                setIsTopBandCollapsed(false);
+              }
+            }}
+            className={`w-full p-4 flex items-center justify-between gap-4 text-left rounded-xl border transition-colors cursor-pointer hover:bg-slate-700/30 ${project.isArchived
+              ? 'bg-amber-500/10 border-amber-500/50'
+              : 'bg-slate-800/50 border-slate-700'}`}
+            title="Expand summary"
+            aria-expanded={false}
+          >
+            <div className="flex items-center gap-3 min-w-0">
+              <CircularProgress percentage={overallCompletionPct} size={30} strokeWidth={3} showText={false} />
+              <span className="font-semibold text-base text-white truncate">{project.name}</span>
+              <span className="text-xs font-semibold text-slate-400 flex-shrink-0">{overallCompletionPct}%</span>
+              {projectStartDateLabel && (
+                <span className="hidden sm:flex items-center gap-1 text-xs text-slate-400 flex-shrink-0">
+                  <CalendarIcon className="w-3.5 h-3.5" />
+                  Started {projectStartDateLabel}
+                </span>
               )}
             </div>
-          )}
-          <div className="flex items-center justify-between">
-            <div className="flex items-center space-x-4">
-              <CircularProgress
-                percentage={(() => {
-                  const allTasks = (project.phases || []).flatMap(ph =>
-                    (ph.tasks || []).flatMap(t => t.subTasks ? [t, ...t.subTasks] : [t])
-                  );
-                  if (allTasks.length === 0) return 0;
-                  const completed = allTasks.filter(t => t.status === TaskStatus.Hundred || (t.status as string) === 'Completed').length;
-                  return Math.round((completed / allTasks.length) * 100);
-                })()}
-                size={60}
-              />
-              <div>
-                <h2 className="text-3xl font-bold text-white">{project.name}</h2>
-                {project.ownerId && (
-                  <div className="flex items-center gap-2 mt-1">
-                    <span className="text-sm text-slate-400">Owner:</span>
-                    {getUserPhotoURL(project.ownerId, project.ownerEmail) ? (
-                      <img src={getUserPhotoURL(project.ownerId, project.ownerEmail)} alt="Owner" className="w-6 h-6 rounded-full object-cover" />
-                    ) : (
-                      <div className="w-6 h-6 rounded-full bg-brand-secondary/30 flex items-center justify-center">
-                        <UserIcon className="w-3 h-3 text-brand-light" />
-                      </div>
-                    )}
-                    <span className="text-sm text-brand-light">{getUserDisplayName(project.ownerId, project.ownerEmail) || project.ownerEmail}</span>
-                  </div>
-                )}
-              </div>
-            </div>
-            {/* Archive Button - visible to owner/admin when not archived */}
-            {canArchive && !project.isArchived && (
-              <button
-                onClick={() => setArchiveConfirm({ show: true, action: 'archive' })}
-                className="ml-4 px-3 py-1.5 bg-slate-700 hover:bg-slate-600 text-slate-300 text-sm font-medium rounded-lg transition-colors flex items-center gap-1.5"
-                title="Archive Project"
-              >
-                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M5 8h14M5 8a2 2 0 110-4h14a2 2 0 110 4M5 8v10a2 2 0 002 2h10a2 2 0 002-2V8m-9 4h4" />
-                </svg>
-                Archive
-              </button>
-            )}
+            <ChevronDownIcon className="w-5 h-5 text-slate-400 -rotate-90 flex-shrink-0" />
           </div>
-          <p className="text-slate-400 mt-4 max-w-4xl">{project.description}</p>
         </div>
 
-        {/* Section Progress Stats Card */}
-        {/* Section Progress Stats Card */}
-        <div className="col-span-1 bg-slate-800/50 rounded-xl border border-slate-700 p-6">
-          <div className="grid grid-cols-2 h-full gap-4">
-            {/* Left Column: Stats */}
-            <div className="flex flex-col justify-center items-center space-y-6">
-              {/* Sections Count */}
-              <div className="text-center">
-                <p className="text-4xl font-bold text-white">{(project.phases || []).length}</p>
-                <span className="text-sm text-slate-400 font-medium">Sections</span>
+        {/* Expanded summary row */}
+        <div
+          onClick={handleSummaryRowClick}
+          className={`transition-all duration-300 ease-in-out overflow-hidden ${isTopBandCollapsed ? 'max-h-0 opacity-0 pointer-events-none' : 'max-h-[600px] opacity-100'}`}
+        >
+          <div className="grid grid-cols-1 lg:grid-cols-12 gap-4">
+            {/* Title & Description Card (lg:col-span-5) */}
+            <div className={`lg:col-span-5 p-3.5 sm:p-4 rounded-xl border flex flex-col justify-between transition-colors cursor-pointer hover:border-slate-600/80 ${project.isArchived
+              ? 'bg-amber-500/10 border-amber-500/50'
+              : 'bg-slate-800/50 border-slate-700'}`}>
+              {/* Archived Notice */}
+              {project.isArchived && (
+                <div className="flex items-center gap-2 mb-2 pb-2 border-b border-amber-500/30">
+                  <svg className="w-4 h-4 text-amber-400 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M5 8h14M5 8a2 2 0 110-4h14a2 2 0 110 4M5 8v10a2 2 0 002 2h10a2 2 0 002-2V8m-9 4h4" />
+                  </svg>
+                  <span className="text-amber-200 text-xs font-medium flex-1">This project is archived.</span>
+                  {canArchive && (
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setIsTopBandPinned(true);
+                        setArchiveConfirm({ show: true, action: 'unarchive' });
+                      }}
+                      className="px-2 py-0.5 bg-amber-500 hover:bg-amber-400 text-black text-xs font-medium rounded transition-colors cursor-pointer"
+                    >
+                      Unarchive
+                    </button>
+                  )}
+                </div>
+              )}
+              <div className="flex items-start gap-3">
+                <CircularProgress
+                  percentage={overallCompletionPct}
+                  size={46}
+                  strokeWidth={4}
+                />
+                <div className="min-w-0 flex-1">
+                  <h2 className="text-base sm:text-lg font-bold text-white leading-snug line-clamp-2 break-words" title={project.name}>{project.name}</h2>
+                  <div className="flex items-center flex-wrap gap-x-3 gap-y-0.5 mt-1">
+                  {project.ownerId && (
+                    <div className="flex items-center gap-1.5 min-w-0">
+                      <span className="text-xs text-slate-400">Owner:</span>
+                      {getUserPhotoURL(project.ownerId, project.ownerEmail) ? (
+                        <img src={getUserPhotoURL(project.ownerId, project.ownerEmail)} alt="Owner" className="w-4 h-4 rounded-full object-cover flex-shrink-0" />
+                      ) : (
+                        <div className="w-4 h-4 rounded-full bg-brand-secondary/30 flex items-center justify-center flex-shrink-0">
+                          <UserIcon className="w-2.5 h-2.5 text-brand-light" />
+                        </div>
+                      )}
+                      <span className="text-xs text-brand-light truncate">{getUserDisplayName(project.ownerId, project.ownerEmail) || project.ownerEmail}</span>
+                    </div>
+                  )}
+                  {projectStartDateLabel && (
+                    <div className="flex items-center gap-1.5 flex-shrink-0" title="Project start date">
+                      <CalendarIcon className="w-3.5 h-3.5 text-slate-400" />
+                      <span className="text-xs text-slate-400">Start:</span>
+                      <span className="text-xs text-slate-200 font-medium">{projectStartDateLabel}</span>
+                    </div>
+                  )}
+                  </div>
+                </div>
               </div>
-              {/* Tasks Count */}
-              <div className="text-center">
-                <p className="text-4xl font-bold text-white">
-                  {(project.phases || []).reduce((acc, phase) =>
-                    acc + (phase.tasks || []).reduce((taskAcc, task) =>
-                      taskAcc + 1 + (task.subTasks?.length || 0), 0), 0)}
-                </p>
-                <span className="text-sm text-slate-400 font-medium">Tasks</span>
-              </div>
+              {project.description && (
+                <p className="text-xs text-slate-400 mt-2 line-clamp-2 leading-relaxed" title={project.description}>{project.description}</p>
+              )}
             </div>
 
-            {/* Right Column: Chart */}
-            <div className="flex flex-col items-center justify-center">
-              <div className="flex gap-2 items-end h-16">
-                {(project.phases || []).length === 0 ? (
-                  <div className="w-8 h-full bg-slate-600 rounded-md" title="No sections" />
-                ) : (project.phases || []).map((phase) => {
-                  const allTasks = (phase.tasks || []).flatMap(t => t.subTasks ? [t, ...t.subTasks] : [t]);
-                  const totalTasks = allTasks.length;
-                  if (totalTasks === 0) {
-                    return (
-                      <div key={phase.id} className="w-8 h-full bg-slate-600 rounded-md" title={`${phase.name}: No tasks`} />
-                    );
-                  }
-
-                  const statusCounts = {
-                    hundred: allTasks.filter(t => t.status === TaskStatus.Hundred || (t.status as string) === 'Completed').length,
-                    seventyFive: allTasks.filter(t => t.status === TaskStatus.SeventyFive).length,
-                    fifty: allTasks.filter(t => t.status === TaskStatus.Fifty || (t.status as string) === 'In Progress').length,
-                    twentyFive: allTasks.filter(t => t.status === TaskStatus.TwentyFive).length,
-                    atRisk: allTasks.filter(t => t.status === TaskStatus.AtRisk).length,
-                    zero: allTasks.filter(t => t.status === TaskStatus.Zero || (t.status as string) === 'Not Started').length,
-                  };
-
-                  const pcts = {
-                    hundred: (statusCounts.hundred / totalTasks) * 100,
-                    seventyFive: (statusCounts.seventyFive / totalTasks) * 100,
-                    fifty: (statusCounts.fifty / totalTasks) * 100,
-                    twentyFive: (statusCounts.twentyFive / totalTasks) * 100,
-                    atRisk: (statusCounts.atRisk / totalTasks) * 100,
-                    zero: (statusCounts.zero / totalTasks) * 100,
-                  };
-
-                  const completionPct = Math.round((statusCounts.hundred / totalTasks) * 100);
-
-                  return (
-                    <div
-                      key={phase.id}
-                      className="w-8 h-full bg-slate-700/50 rounded-md overflow-hidden flex flex-col-reverse"
-                      title={`${phase.name}: ${completionPct}% complete (${statusCounts.hundred}/${totalTasks} tasks)`}
-                    >
-                      {pcts.hundred > 0 && <div className="bg-green-400" style={{ height: `${pcts.hundred}%` }} />}
-                      {pcts.seventyFive > 0 && <div className="bg-indigo-400" style={{ height: `${pcts.seventyFive}%` }} />}
-                      {pcts.fifty > 0 && <div className="bg-blue-400" style={{ height: `${pcts.fifty}%` }} />}
-                      {pcts.twentyFive > 0 && <div className="bg-amber-400" style={{ height: `${pcts.twentyFive}%` }} />}
-                      {pcts.atRisk > 0 && <div className="bg-red-400" style={{ height: `${pcts.atRisk}%` }} />}
-                      {pcts.zero > 0 && <div className="bg-gray-400" style={{ height: `${pcts.zero}%` }} />}
-                    </div>
-                  );
-                })}
+            {/* Section Progress Stats Card (lg:col-span-7) */}
+            <div className="lg:col-span-7 bg-slate-800/50 rounded-xl border border-slate-700 hover:border-slate-600/80 p-3.5 sm:p-4 flex flex-col transition-colors cursor-pointer">
+              {/* Header: label, status legend, collapse chevron */}
+              <div className="flex items-center justify-between gap-3 mb-2">
+                <span className="text-[10px] font-semibold text-slate-400 uppercase tracking-wider flex-shrink-0">Section Progress</span>
+                <div className="flex items-center gap-3 min-w-0">
+                  <div className="hidden sm:flex items-center gap-2.5 flex-wrap justify-end">
+                    {[...STATUS_STACK_ORDER].reverse().map(s => (
+                      <span key={s.key} className="flex items-center gap-1 text-[10px] text-slate-400">
+                        <span className={`w-2 h-2 rounded-sm ${s.color}`} />
+                        {s.label}
+                      </span>
+                    ))}
+                  </div>
+                  <button
+                    type="button"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setIsTopBandPinned(true);
+                      setIsTopBandCollapsed(true);
+                    }}
+                    className="p-1 -m-1 rounded-md text-slate-400 hover:text-white hover:bg-slate-700/50 transition-colors flex-shrink-0 cursor-pointer"
+                    title="Hide summary"
+                    aria-label="Hide summary"
+                    aria-expanded={!isTopBandCollapsed}
+                  >
+                    <ChevronDownIcon className="w-5 h-5 transition-transform duration-300" />
+                  </button>
+                </div>
               </div>
-              <span className="text-lg font-medium text-slate-300 mt-3">Section Progress</span>
+
+              <div className="flex items-stretch gap-4 flex-1 min-h-[110px]">
+                {/* Left Column: Stats */}
+                <div className="flex flex-col justify-center gap-2 pr-4 border-r border-slate-700/60 flex-shrink-0">
+                  <div className="text-left">
+                    <p className="text-xl sm:text-2xl font-bold text-white leading-none">{(project.phases || []).length}</p>
+                    <span className="text-[11px] text-slate-400 font-medium">Sections</span>
+                  </div>
+                  <div className="text-left">
+                    <p className="text-xl sm:text-2xl font-bold text-white leading-none">
+                      {priorityBreakdown.total}
+                    </p>
+                    <span className="text-[11px] text-slate-400 font-medium">Tasks</span>
+                  </div>
+                </div>
+
+                {/* Priority Donut Chart Column */}
+                <div className="flex flex-col justify-center pr-4 border-r border-slate-700/60 flex-shrink-0">
+                  <span className="text-[10px] font-semibold text-slate-400 uppercase tracking-wider mb-1.5">Priority</span>
+                  <PriorityDonut
+                    critical={priorityBreakdown.critical}
+                    important={priorityBreakdown.important}
+                    enhancement={priorityBreakdown.enhancement}
+                    total={priorityBreakdown.total}
+                    activePriorities={filters.priorities}
+                    onTogglePriority={togglePriorityFilter}
+                  />
+                </div>
+
+                {/* Right Column: Stacked status chart using full card height */}
+                <div className="flex-1 flex min-w-0">
+                  <div className="flex gap-2 items-stretch h-full w-full overflow-x-auto pb-0.5 px-0.5">
+                    {(project.phases || []).length === 0 ? (
+                      <div className="flex flex-col items-center gap-1 h-full">
+                        <div className="w-7 flex-1 min-h-[64px] bg-slate-700/50 rounded-md border border-slate-600/30" title="No sections" />
+                        <span className="text-[10px] text-slate-500 font-medium">-</span>
+                      </div>
+                    ) : (project.phases || []).map((phase, index) => {
+                      const config = getSectionStatusConfig(phase);
+                      const breakdown = getSectionStatusBreakdown(phase);
+                      const sectionIdLabel = `S${index + 1}`;
+                      const breakdownText = STATUS_STACK_ORDER
+                        .filter(s => breakdown.counts[s.key] > 0)
+                        .map(s => `  ${s.label}: ${breakdown.counts[s.key]}`)
+                        .join('\n');
+
+                      return (
+                        <button
+                          key={phase.id}
+                          type="button"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setIsTopBandPinned(true);
+                            handleScrollToSection(phase.id);
+                          }}
+                          className="group flex flex-col items-center gap-1 h-full focus:outline-none transition-transform hover:-translate-y-0.5 cursor-pointer flex-shrink-0"
+                          title={`${sectionIdLabel}: ${phase.name}\nStatus: ${config.label}\nCompleted: ${config.completionPct}% (${config.completedTasks}/${config.totalTasks} tasks)${breakdownText ? `\n${breakdownText}` : ''}\nClick to scroll to this section`}
+                        >
+                          {/* Stacked Column: one segment per task status (bottom = 100%, top = 0%) */}
+                          <div className="relative w-7 sm:w-8 flex-1 min-h-[64px] bg-slate-900/60 rounded-md border border-slate-700/80 overflow-hidden flex flex-col-reverse group-hover:border-slate-500 group-hover:shadow-md transition-all">
+                            {breakdown.total > 0 && STATUS_STACK_ORDER.map(s => {
+                              const count = breakdown.counts[s.key];
+                              if (count === 0) return null;
+                              return (
+                                <div
+                                  key={s.key}
+                                  className={`w-full flex-shrink-0 ${s.color} border-t border-slate-900/50 transition-all duration-500 ease-out group-hover:brightness-110`}
+                                  style={{ height: `${(count / breakdown.total) * 100}%`, minHeight: '3px' }}
+                                />
+                              );
+                            })}
+                          </div>
+
+                          {/* Section ID Badge */}
+                          <span className={`text-[9px] font-bold px-1.5 py-0.2 rounded border transition-all ${config.badgeBg} ${config.badgeText} ${config.badgeBorder} group-hover:scale-105`}>
+                            {sectionIdLabel}
+                          </span>
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+              </div>
             </div>
           </div>
         </div>
       </div>
+
 
       {/* Collapsible Project Details Section */}
       <div className="bg-slate-800/50 rounded-xl border border-slate-700 overflow-hidden">
@@ -2033,8 +2406,12 @@ const ProjectDetail: React.FC<ProjectDetailProps> = ({ project, onBack, canEdit,
 
         {viewMode === 'list' ? (
           <>
-            {sortedProject.phases.map(phase => (
-              <div key={phase.id} className="border-b border-slate-700 last:border-b-0">
+            {sortedProject.phases.map((phase, phaseIndex) => {
+              const phaseConfig = getSectionStatusConfig(phase);
+              const sectionIdLabel = `S${phaseIndex + 1}`;
+
+              return (
+              <div key={phase.id} id={`section-${phase.id}`} className="border-b border-slate-700 last:border-b-0 scroll-mt-24 transition-all duration-300 rounded-lg">
                 <div
                   className="p-4 bg-slate-800 flex justify-between items-center group cursor-pointer hover:bg-slate-700/50 transition-colors"
                   onClick={(e) => {
@@ -2053,9 +2430,18 @@ const ProjectDetail: React.FC<ProjectDetailProps> = ({ project, onBack, canEdit,
                   <button
                     onClick={(e) => { e.stopPropagation(); togglePhaseCollapse(phase.id); }}
                     className="mr-2 text-slate-400 hover:text-white transition-colors flex-shrink-0"
+                    title={collapsedPhases.has(phase.id) ? "Expand section" : "Collapse section"}
                   >
                     <ChevronDownIcon className={`w-5 h-5 transition-transform duration-300 ${collapsedPhases.has(phase.id) ? '-rotate-90' : ''}`} />
                   </button>
+
+                  {/* Section ID Badge */}
+                  <span
+                    className={`mr-2.5 px-2 py-0.5 text-xs font-bold rounded border ${phaseConfig.badgeBg} ${phaseConfig.badgeText} ${phaseConfig.badgeBorder} flex-shrink-0`}
+                    title={`${sectionIdLabel} - ${phaseConfig.label} (${phaseConfig.completionPct}% complete)`}
+                  >
+                    {sectionIdLabel}
+                  </span>
 
                   {/* Section Status Donut Chart */}
                   <SectionStatusDonut
@@ -2217,7 +2603,8 @@ const ProjectDetail: React.FC<ProjectDetailProps> = ({ project, onBack, canEdit,
                   </div>
                 </div>
               </div>
-            ))}
+            );
+          })}
           </>
         ) : (
           <GanttChart project={project} />
