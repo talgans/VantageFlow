@@ -185,8 +185,8 @@ const convertProjectToFirestore = (project: Omit<Project, 'id'> | Project): any 
     if (project.ownerId) data.ownerId = project.ownerId;
     if (project.ownerEmail) data.ownerEmail = project.ownerEmail;
 
-    // RBAC: Compute memberUids from team members + owner for efficient security rules
-    const memberUids = new Set<string>();
+    // RBAC: Compute memberUids from existing memberUids, team members + owner for efficient security rules
+    const memberUids = new Set<string>((project as any).memberUids || []);
     if (project.ownerId) {
       memberUids.add(project.ownerId);
     }

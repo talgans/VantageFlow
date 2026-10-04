@@ -22,12 +22,13 @@ service cloud.firestore {
       return isAuthenticated() && (request.auth.token.role == 'manager' || isAdmin());
     }
     
-    // Check if user is project owner, superadmin, or admin member
+    // Check if user is project owner, superadmin, or manager/member of the project
     function canUpdateProject(projectData) {
       return isAuthenticated() && (
         projectData.ownerId == request.auth.uid ||
         isSuperAdmin() ||
-        (isAdmin() && projectData.memberUids != null && request.auth.uid in projectData.memberUids)
+        (isManager() && projectData.memberUids != null && request.auth.uid in projectData.memberUids) ||
+        (projectData.memberUids != null && request.auth.uid in projectData.memberUids)
       );
     }
 

@@ -196,23 +196,36 @@ const App: React.FC = () => {
         return false;
     };
 
+    // Get current user role, default to Member if not authenticated
+    const currentUserRole = user?.role || UserRole.Member;
+
+    const normalizedUserRole: 'admin' | 'manager' | 'member' =
+        currentUserRole === UserRole.SuperAdmin || currentUserRole === UserRole.Admin
+            ? 'admin'
+            : currentUserRole === UserRole.Manager
+            ? 'manager'
+            : 'member';
+
     const canEditProject = (project: Project): boolean => {
+        if (!user) return false;
         // SuperAdmin and Admin can edit projects they have access to
         if (currentUserRole === UserRole.SuperAdmin || currentUserRole === UserRole.Admin) return true;
         // Owner can edit their own project
-        if (user && project.ownerId === user.uid) return true;
-        // Any team member can create/edit items (item-level CRUD checked in ProjectDetail)
-        if (user && project.team?.members) {
-            const isMember = project.team.members.some(m => m.uid === user.uid);
+        if (project.ownerId === user.uid || (project.ownerEmail && user.email && project.ownerEmail.toLowerCase() === user.email.toLowerCase())) return true;
+        // Check if user is in memberUids
+        if (project.memberUids && project.memberUids.includes(user.uid)) return true;
+        // Any team member belonging to the project can edit/add tasks
+        if (project.team?.members) {
+            const isMember = project.team.members.some(m =>
+                (m.uid && m.uid === user.uid) ||
+                (m.email && user.email && m.email.toLowerCase() === user.email.toLowerCase())
+            );
             if (isMember) {
                 return true;
             }
         }
         return false;
     };
-
-    // Get current user role, default to Member if not authenticated
-    const currentUserRole = user?.role || UserRole.Member;
 
     const handleUpdateProject = async (updatedProject: Project) => {
         try {
@@ -389,7 +402,7 @@ const App: React.FC = () => {
                             showToast={showToast}
                             currentUserId={user?.uid}
                             currentUserEmail={user?.email || undefined}
-                            userRole={currentUserRole.toLowerCase() as 'admin' | 'manager' | 'member'}
+                            userRole={normalizedUserRole}
                             onEditProject={() => handleShowEditProjectModal(selectedProject)}
                         />
                     ) : currentPage === 'users' ? (

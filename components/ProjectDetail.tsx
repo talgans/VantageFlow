@@ -469,37 +469,338 @@ const sortTasks = (tasks: Task[], config: SortConfig): Task[] => {
 };
 
 
-const InlineTaskForm: React.FC<{
-  onSave: (name: string) => void;
-  onCancel: () => void;
-  placeholder: string;
-  className?: string;
-}> = ({ onSave, onCancel, placeholder, className }) => {
-  const [name, setName] = useState('');
+export interface TaskFormData {
+  name: string;
+  priority: TaskPriority;
+  startDate: Date;
+  endDate: Date;
+  assignees: TeamMember[];
+}
 
-  const handleSubmit = (e: React.FormEvent) => {
-    e.preventDefault();
+const formatLocalDate = (d: Date): string => {
+  const date = new Date(d);
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, '0');
+  const day = String(date.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
+};
+
+const parseLocalDate = (dateStr: string): Date => {
+  if (!dateStr) return new Date();
+  const parts = dateStr.split('-').map(Number);
+  if (parts.length !== 3) return new Date();
+  return new Date(parts[0], parts[1] - 1, parts[2], 12, 0, 0);
+};
+
+interface InlineTaskFormProps {
+  onSave: (data: TaskFormData) => void;
+  onCancel: () => void;
+  placeholder?: string;
+  className?: string;
+  teamMembers?: TeamMember[];
+  getUserDisplayName?: (uid: string, email?: string) => string | undefined;
+  getUserPhotoURL?: (uid: string, email?: string) => string | undefined;
+  sectionLabel?: string;
+  isSubtask?: boolean;
+}
+
+const InlineTaskForm: React.FC<InlineTaskFormProps> = ({
+  onSave,
+  onCancel,
+  placeholder = 'New task name',
+  className,
+  teamMembers = [],
+  getUserDisplayName,
+  getUserPhotoURL,
+  sectionLabel,
+  isSubtask = false,
+}) => {
+  const [name, setName] = useState('');
+  const [priority, setPriority] = useState<TaskPriority>(TaskPriority.Important);
+
+  // 24hr default timeline: today to tomorrow
+  const now = useMemo(() => new Date(), []);
+  const tomorrow = useMemo(() => new Date(now.getTime() + 24 * 60 * 60 * 1000), [now]);
+  const [startDateStr, setStartDateStr] = useState<string>(() => formatLocalDate(now));
+  const [endDateStr, setEndDateStr] = useState<string>(() => formatLocalDate(tomorrow));
+
+  // Assign dropdown state
+  const [selectedAssignees, setSelectedAssignees] = useState<TeamMember[]>([]);
+  const [isAssignOpen, setIsAssignOpen] = useState(false);
+  const [memberSearch, setMemberSearch] = useState('');
+  const dropdownRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    const handleClickOutside = (e: MouseEvent) => {
+      if (dropdownRef.current && !dropdownRef.current.contains(e.target as Node)) {
+        setIsAssignOpen(false);
+      }
+    };
+    if (isAssignOpen) {
+      document.addEventListener('mousedown', handleClickOutside);
+    }
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside);
+    };
+  }, [isAssignOpen]);
+
+  const handleStartDateChange = (val: string) => {
+    setStartDateStr(val);
+    if (val) {
+      const newStart = parseLocalDate(val);
+      const newEnd = new Date(newStart.getTime() + 24 * 60 * 60 * 1000);
+      setEndDateStr(formatLocalDate(newEnd));
+    }
+  };
+
+  const handleSubmit = (e?: React.FormEvent) => {
+    if (e) e.preventDefault();
     if (name.trim()) {
-      onSave(name.trim());
+      onSave({
+        name: name.trim(),
+        priority,
+        startDate: parseLocalDate(startDateStr),
+        endDate: parseLocalDate(endDateStr),
+        assignees: selectedAssignees,
+      });
       setName('');
     }
   };
 
+  const handleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (e.key === 'Enter') {
+      e.preventDefault();
+      handleSubmit();
+    } else if (e.key === 'Escape') {
+      onCancel();
+    }
+  };
+
+  const filteredMembers = useMemo(() => {
+    if (!memberSearch.trim()) return teamMembers;
+    const query = memberSearch.toLowerCase();
+    return teamMembers.filter(m => {
+      const dName = getUserDisplayName?.(m.uid, m.email) || m.displayName || '';
+      return dName.toLowerCase().includes(query) || (m.email && m.email.toLowerCase().includes(query));
+    });
+  }, [teamMembers, memberSearch, getUserDisplayName]);
+
+  const priorityPills = [
+    {
+      value: TaskPriority.Critical,
+      label: 'Critical',
+      dot: 'bg-red-500',
+      activeClass: 'bg-red-500/20 text-red-300 border-red-500/60 ring-1 ring-red-500/40',
+      inactiveClass: 'bg-slate-800/80 text-slate-400 border-slate-700 hover:text-slate-300 hover:border-slate-600',
+    },
+    {
+      value: TaskPriority.Important,
+      label: 'Important',
+      dot: 'bg-amber-500',
+      activeClass: 'bg-amber-500/20 text-amber-300 border-amber-500/60 ring-1 ring-amber-500/40',
+      inactiveClass: 'bg-slate-800/80 text-slate-400 border-slate-700 hover:text-slate-300 hover:border-slate-600',
+    },
+    {
+      value: TaskPriority.Enhancement,
+      label: 'Enhancement',
+      dot: 'bg-blue-500',
+      activeClass: 'bg-blue-500/20 text-blue-300 border-blue-500/60 ring-1 ring-blue-500/40',
+      inactiveClass: 'bg-slate-800/80 text-slate-400 border-slate-700 hover:text-slate-300 hover:border-slate-600',
+    },
+  ];
+
   return (
-    <form onSubmit={handleSubmit} className={`flex items-center gap-2 ${className || ''}`}>
-      <input
-        type="text"
-        value={name}
-        onChange={(e) => setName(e.target.value)}
-        placeholder={placeholder}
-        className="bg-slate-700 border border-slate-600 text-white text-sm rounded-md focus:ring-blue-500 focus:border-blue-500 block w-full p-2"
-        autoFocus
-      />
-      <button type="submit" className="px-3 py-2 text-sm font-medium text-white bg-brand-secondary rounded-md hover:bg-blue-500">Save</button>
-      <button type="button" onClick={onCancel} className="px-3 py-2 text-sm font-medium text-slate-300 bg-slate-700 rounded-md hover:bg-slate-600">Cancel</button>
+    <form onSubmit={handleSubmit} className={`bg-slate-800/95 border border-slate-700/80 rounded-xl p-3 shadow-lg space-y-2.5 transition-all ${className || ''}`}>
+      {/* Top row: Section Label + Name Input + Save / Cancel */}
+      <div className="flex items-center gap-2">
+        {sectionLabel && (
+          <span className="text-xs font-mono font-bold px-2 py-1.5 rounded-lg bg-slate-900 text-brand-secondary border border-slate-700/90 flex-shrink-0 select-none shadow-sm" title={`Section ${sectionLabel}`}>
+            {sectionLabel}
+          </span>
+        )}
+        <input
+          type="text"
+          value={name}
+          onChange={(e) => setName(e.target.value)}
+          onKeyDown={handleKeyDown}
+          placeholder={placeholder}
+          className="bg-slate-900/90 border border-slate-700 hover:border-slate-600 focus:border-brand-secondary text-white text-sm rounded-lg block flex-grow px-3 py-1.5 outline-none transition-colors"
+          autoFocus
+        />
+        <button
+          type="submit"
+          disabled={!name.trim()}
+          className="px-3.5 py-1.5 text-xs font-semibold text-white bg-brand-secondary hover:bg-blue-500 disabled:opacity-50 disabled:cursor-not-allowed rounded-lg transition-colors flex items-center gap-1.5 flex-shrink-0 shadow-sm"
+        >
+          <PlusCircleIcon className="w-4 h-4" />
+          <span>{isSubtask ? 'Add Subtask' : 'Add Task'}</span>
+        </button>
+        <button
+          type="button"
+          onClick={onCancel}
+          className="px-3 py-1.5 text-xs font-medium text-slate-300 bg-slate-700 hover:bg-slate-600 rounded-lg transition-colors flex-shrink-0"
+        >
+          Cancel
+        </button>
+      </div>
+
+      {/* Controls row: Assign Dropdown | Priority compact pill buttons | Timeline 24hr default */}
+      <div className="flex flex-wrap items-center justify-between gap-2.5 pt-2 border-t border-slate-700/50 text-xs">
+        <div className="flex flex-wrap items-center gap-3">
+          {/* Assign Dropdown */}
+          <div className="relative" ref={dropdownRef}>
+            <button
+              type="button"
+              onClick={() => setIsAssignOpen(!isAssignOpen)}
+              className="flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium bg-slate-900/80 hover:bg-slate-900 border border-slate-700 text-slate-300 transition-colors"
+              title="Assign task"
+            >
+              {selectedAssignees.length === 0 ? (
+                <>
+                  <UserIcon className="w-3.5 h-3.5 text-slate-400" />
+                  <span>Assign</span>
+                  <ChevronDownIcon className="w-3 h-3 text-slate-500" />
+                </>
+              ) : (
+                <>
+                  <div className="flex -space-x-1 items-center">
+                    {selectedAssignees.slice(0, 2).map((m, i) => {
+                      const photo = getUserPhotoURL?.(m.uid, m.email) || m.photoURL;
+                      const dName = getUserDisplayName?.(m.uid, m.email) || m.displayName || m.email;
+                      return (
+                        <div key={i} className="w-4 h-4 rounded-full bg-slate-700 border border-slate-900 flex items-center justify-center text-[9px] overflow-hidden">
+                          {photo ? <img src={photo} alt="" className="w-full h-full object-cover" /> : (dName[0] || '?').toUpperCase()}
+                        </div>
+                      );
+                    })}
+                  </div>
+                  <span className="max-w-[110px] truncate text-slate-200">
+                    {selectedAssignees.length === 1
+                      ? (getUserDisplayName?.(selectedAssignees[0].uid, selectedAssignees[0].email) || selectedAssignees[0].displayName || selectedAssignees[0].email.split('@')[0])
+                      : `${selectedAssignees.length} assigned`}
+                  </span>
+                  <ChevronDownIcon className="w-3 h-3 text-slate-400" />
+                </>
+              )}
+            </button>
+
+            {isAssignOpen && (
+              <div className="absolute left-0 mt-1.5 w-60 max-h-60 overflow-y-auto bg-slate-900 border border-slate-700 rounded-xl shadow-2xl p-1.5 z-50 space-y-1">
+                {teamMembers.length > 4 && (
+                  <div className="px-1 pb-1">
+                    <input
+                      type="text"
+                      placeholder="Search members..."
+                      value={memberSearch}
+                      onChange={(e) => setMemberSearch(e.target.value)}
+                      className="w-full bg-slate-800 border border-slate-700 rounded-md px-2 py-1 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-brand-secondary"
+                      autoFocus
+                    />
+                  </div>
+                )}
+                <button
+                  type="button"
+                  onClick={() => {
+                    setSelectedAssignees([]);
+                    setIsAssignOpen(false);
+                  }}
+                  className={`w-full flex items-center gap-2 px-2 py-1.5 rounded-lg text-xs transition-colors text-left ${
+                    selectedAssignees.length === 0 ? 'bg-slate-800 text-brand-secondary font-medium' : 'text-slate-400 hover:bg-slate-800/60 hover:text-slate-200'
+                  }`}
+                >
+                  <div className="w-5 h-5 rounded-full bg-slate-800 border border-slate-700 flex items-center justify-center">
+                    <UserIcon className="w-3 h-3 text-slate-500" />
+                  </div>
+                  <span>Unassigned</span>
+                  {selectedAssignees.length === 0 && <CheckCircleIcon className="w-3.5 h-3.5 ml-auto text-brand-secondary" />}
+                </button>
+
+                {filteredMembers.map(member => {
+                  const isSelected = selectedAssignees.some(m => m.uid === member.uid);
+                  const dName = getUserDisplayName?.(member.uid, member.email) || member.displayName || member.email.split('@')[0];
+                  const photo = getUserPhotoURL?.(member.uid, member.email) || member.photoURL;
+
+                  return (
+                    <button
+                      key={member.uid}
+                      type="button"
+                      onClick={() => {
+                        if (isSelected) {
+                          setSelectedAssignees(selectedAssignees.filter(m => m.uid !== member.uid));
+                        } else {
+                          setSelectedAssignees([member]);
+                          setIsAssignOpen(false);
+                        }
+                      }}
+                      className={`w-full flex items-center gap-2 px-2 py-1.5 rounded-lg text-xs transition-colors text-left ${
+                        isSelected ? 'bg-brand-secondary/15 text-white font-medium' : 'text-slate-300 hover:bg-slate-800 hover:text-white'
+                      }`}
+                    >
+                      <div className="w-5 h-5 rounded-full bg-slate-700 border border-slate-600 flex items-center justify-center text-[10px] overflow-hidden flex-shrink-0">
+                        {photo ? <img src={photo} alt="" className="w-full h-full object-cover" /> : (dName[0] || '?').toUpperCase()}
+                      </div>
+                      <div className="flex flex-col min-w-0 flex-grow">
+                        <span className="truncate">{dName}</span>
+                        <span className="text-[10px] text-slate-500 truncate">{member.email}</span>
+                      </div>
+                      {isSelected && <CheckCircleIcon className="w-3.5 h-3.5 ml-auto text-brand-secondary flex-shrink-0" />}
+                    </button>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+
+          {/* Priority Compact Pill Buttons (Default: Important) */}
+          <div className="flex items-center gap-1.5">
+            <span className="text-slate-400 font-medium flex items-center gap-1 mr-0.5">
+              <FlagIcon className="w-3.5 h-3.5 text-slate-400" />
+              <span>Priority:</span>
+            </span>
+            {priorityPills.map((pill) => {
+              const isSelected = priority === pill.value;
+              return (
+                <button
+                  key={pill.value}
+                  type="button"
+                  onClick={() => setPriority(pill.value)}
+                  className={`px-2.5 py-0.5 rounded-full text-xs font-medium border flex items-center gap-1.5 transition-all cursor-pointer ${
+                    isSelected ? pill.activeClass : pill.inactiveClass
+                  }`}
+                >
+                  <span className={`w-2 h-2 rounded-full ${pill.dot} ${isSelected ? 'scale-110' : 'opacity-70'}`} />
+                  <span>{pill.label}</span>
+                </button>
+              );
+            })}
+          </div>
+        </div>
+
+        {/* Timeline (24hr default) */}
+        <div className="flex items-center gap-2 text-slate-300 bg-slate-900/80 border border-slate-700/80 px-2.5 py-1 rounded-lg">
+          <CalendarIcon className="w-3.5 h-3.5 text-slate-400" />
+          <span className="text-slate-400 font-medium">Timeline:</span>
+          <input
+            type="date"
+            value={startDateStr}
+            onChange={(e) => handleStartDateChange(e.target.value)}
+            className="bg-transparent text-slate-200 border-none outline-none text-xs p-0 cursor-pointer"
+          />
+          <span className="text-slate-500">-</span>
+          <input
+            type="date"
+            value={endDateStr}
+            onChange={(e) => setEndDateStr(e.target.value)}
+            className="bg-transparent text-slate-200 border-none outline-none text-xs p-0 cursor-pointer"
+          />
+          <span className="text-[10px] font-semibold tracking-wide px-1.5 py-0.5 rounded bg-brand-secondary/20 text-brand-secondary border border-brand-secondary/30 select-none">
+            24h default
+          </span>
+        </div>
+      </div>
     </form>
-  )
-}
+  );
+};
 
 const STATUS_BUTTON_STYLES: Record<string, string> = {
   [TaskStatus.Hundred]: 'bg-green-500/10 text-green-400 hover:bg-green-500/20 border-green-500/20',
@@ -564,7 +865,7 @@ interface TaskRowProps {
   addingSubtaskTo: string | null;
   setAddingSubtaskTo: (taskId: string | null) => void;
   canEdit: boolean;
-  handleSaveSubtask: (parentTaskId: string, subTaskName: string) => void;
+  handleSaveSubtask: (parentTaskId: string, data: TaskFormData | string) => void;
   editingField: { taskId: string; field: string } | null;
   setEditingField: (field: { taskId: string; field: string } | null) => void;
   handleUpdateTaskField: (taskId: string, field: keyof Task, value: any) => void;
@@ -894,10 +1195,14 @@ const TaskRow: React.FC<TaskRowProps> = ({ task, level, isExpanded, onToggleExpa
 
       {addingSubtaskTo === task.id && (
         <InlineTaskForm
-          onSave={(name) => handleSaveSubtask(task.id, name)}
+          onSave={(data) => handleSaveSubtask(task.id, data)}
           onCancel={() => setAddingSubtaskTo(null)}
           placeholder="New sub-task name"
           className="mt-2 ml-12"
+          teamMembers={projectTeam}
+          getUserDisplayName={getUserDisplayName}
+          getUserPhotoURL={getUserPhotoURL}
+          isSubtask
         />
       )}
       {isExpanded && hasSubtasks && (
@@ -1034,6 +1339,24 @@ const ProjectDetail: React.FC<ProjectDetailProps> = ({ project, onBack, canEdit,
     (project.team?.members || []).forEach(m => { if (m.uid && !map.has(m.uid)) map.set(m.uid, m); });
     return Array.from(map.values());
   }, [project]);
+
+  const availableTeamMembers = useMemo(() => {
+    const map = new Map<string, TeamMember>();
+    (project.team?.members || []).forEach(m => {
+      if (m.uid && !map.has(m.uid)) map.set(m.uid, m);
+    });
+    (allProjectAssignees || []).forEach(m => {
+      if (m.uid && !map.has(m.uid)) map.set(m.uid, m);
+    });
+    if (currentUserId && !map.has(currentUserId)) {
+      map.set(currentUserId, {
+        uid: currentUserId,
+        email: currentUserEmail || '',
+        displayName: 'You',
+      });
+    }
+    return Array.from(map.values());
+  }, [project.team, allProjectAssignees, currentUserId, currentUserEmail]);
   const [editingPhase, setEditingPhase] = useState<{ id: string; field: 'name' | 'weekRange' } | null>(null);
   const [editingInfoCard, setEditingInfoCard] = useState<'duration' | 'cost' | 'team' | null>(null);
   const [phaseToDelete, setPhaseToDelete] = useState<Phase | null>(null);
@@ -1208,7 +1531,9 @@ const ProjectDetail: React.FC<ProjectDetailProps> = ({ project, onBack, canEdit,
   const checkPermission = (itemOwnerId?: string) => {
     if (!effectiveCanEdit || !currentUserId) return false;
     if (project.ownerId === currentUserId) return true;
-    const member = project.team?.members?.find(m => m.uid === currentUserId);
+    // Admins and Managers have full item management permissions for projects they belong to
+    if (userRole === 'admin' || userRole === 'manager') return true;
+    const member = project.team?.members?.find(m => m.uid === currentUserId || (currentUserEmail && m.email?.toLowerCase() === currentUserEmail.toLowerCase()));
     if (!member) return true;
     if (member.leadRole === 'primary' || member.leadRole === 'secondary') return true;
     // If no owner is set on the item, allow any team member to edit
@@ -1402,17 +1727,28 @@ const ProjectDetail: React.FC<ProjectDetailProps> = ({ project, onBack, canEdit,
     setPhaseToDelete(null);
   };
 
-  const handleSaveTask = (phaseId: string, taskName: string) => {
-    if (!taskName.trim()) return;
+  const handleSaveTask = (phaseId: string, data: TaskFormData | string) => {
+    const isString = typeof data === 'string';
+    const name = isString ? data.trim() : data.name.trim();
+    if (!name) return;
+
+    const defaultStart = new Date();
+    const defaultEnd = new Date(Date.now() + 24 * 60 * 60 * 1000); // 24hr default
+
+    const assignees = !isString && data.assignees && data.assignees.length > 0 ? data.assignees : undefined;
+    const ownerId = assignees && assignees.length > 0 ? assignees[0].uid : currentUserId;
+    const ownerEmail = assignees && assignees.length > 0 ? assignees[0].email : currentUserEmail;
 
     const newTask: Task = {
       id: `task-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
-      name: taskName.trim(),
+      name: name,
       status: TaskStatus.Zero,
-      startDate: new Date(),
-      endDate: new Date(new Date().setDate(new Date().getDate() + 7)),
-      ownerId: currentUserId,
-      ownerEmail: currentUserEmail,
+      priority: isString ? TaskPriority.Important : data.priority,
+      startDate: isString ? defaultStart : data.startDate,
+      endDate: isString ? defaultEnd : data.endDate,
+      assignees: assignees,
+      ownerId: ownerId,
+      ownerEmail: ownerEmail,
     };
 
     const updatedProject = JSON.parse(JSON.stringify(project), reviveDates);
@@ -1426,17 +1762,28 @@ const ProjectDetail: React.FC<ProjectDetailProps> = ({ project, onBack, canEdit,
     setAddingTaskToPhase(null);
   };
 
-  const handleSaveSubtask = (parentTaskId: string, subTaskName: string) => {
-    if (!subTaskName.trim()) return;
+  const handleSaveSubtask = (parentTaskId: string, data: TaskFormData | string) => {
+    const isString = typeof data === 'string';
+    const name = isString ? data.trim() : data.name.trim();
+    if (!name) return;
+
+    const defaultStart = new Date();
+    const defaultEnd = new Date(Date.now() + 24 * 60 * 60 * 1000); // 24hr default
+
+    const assignees = !isString && data.assignees && data.assignees.length > 0 ? data.assignees : undefined;
+    const ownerId = assignees && assignees.length > 0 ? assignees[0].uid : currentUserId;
+    const ownerEmail = assignees && assignees.length > 0 ? assignees[0].email : currentUserEmail;
 
     const newSubTask: Task = {
       id: `subtask-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
-      name: subTaskName.trim(),
+      name: name,
       status: TaskStatus.Zero,
-      startDate: new Date(),
-      endDate: new Date(new Date().setDate(new Date().getDate() + 7)),
-      ownerId: currentUserId,
-      ownerEmail: currentUserEmail,
+      priority: isString ? TaskPriority.Important : data.priority,
+      startDate: isString ? defaultStart : data.startDate,
+      endDate: isString ? defaultEnd : data.endDate,
+      assignees: assignees,
+      ownerId: ownerId,
+      ownerEmail: ownerEmail,
     };
 
     const updatedProject = JSON.parse(JSON.stringify(project), reviveDates);
@@ -2550,9 +2897,21 @@ const ProjectDetail: React.FC<ProjectDetailProps> = ({ project, onBack, canEdit,
                       </button>
                     )}
                     {effectiveCanEdit && (
-                      <button onClick={() => setAddingTaskToPhase(phase.id)} className="flex items-center space-x-2 bg-slate-700 hover:bg-slate-600 text-slate-300 font-semibold py-1 px-3 rounded-lg transition-colors text-sm">
-                        <PlusCircleIcon className="w-4 h-4" />
-                        <span>Add Item</span>
+                      <button
+                        onClick={() => {
+                          if (collapsedPhases.has(phase.id)) {
+                            togglePhaseCollapse(phase.id);
+                          }
+                          setAddingTaskToPhase(phase.id);
+                        }}
+                        className="flex items-center space-x-2 bg-slate-700 hover:bg-slate-600 text-slate-200 font-semibold py-1 px-3 rounded-lg transition-colors text-sm shadow-sm"
+                        title={`Add task to ${sectionIdLabel}`}
+                      >
+                        <span className="text-[11px] font-mono font-bold px-1.5 py-0.5 rounded bg-slate-800 text-brand-secondary border border-slate-600/60 leading-none">
+                          {sectionIdLabel}
+                        </span>
+                        <PlusCircleIcon className="w-4 h-4 text-slate-300" />
+                        <span>Add Task</span>
                       </button>
                     )}
                   </div>
@@ -2562,9 +2921,13 @@ const ProjectDetail: React.FC<ProjectDetailProps> = ({ project, onBack, canEdit,
                   {addingTaskToPhase === phase.id && (
                     <div className="p-4 pb-0">
                       <InlineTaskForm
-                        onSave={(name) => handleSaveTask(phase.id, name)}
+                        onSave={(data) => handleSaveTask(phase.id, data)}
                         onCancel={() => setAddingTaskToPhase(null)}
-                        placeholder="New task name"
+                        placeholder={`New task in ${sectionIdLabel}...`}
+                        teamMembers={availableTeamMembers}
+                        getUserDisplayName={getUserDisplayName}
+                        getUserPhotoURL={getUserPhotoURL}
+                        sectionLabel={sectionIdLabel}
                       />
                     </div>
                   )}
