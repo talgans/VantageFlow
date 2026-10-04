@@ -567,8 +567,8 @@ const InlineTaskForm: React.FC<InlineTaskFormProps> = ({
     }
   };
 
-  const handleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
-    if (e.key === 'Enter') {
+  const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
+    if (e.key === 'Enter' && !e.shiftKey) {
       e.preventDefault();
       handleSubmit();
     } else if (e.key === 'Escape') {
@@ -610,38 +610,49 @@ const InlineTaskForm: React.FC<InlineTaskFormProps> = ({
   ];
 
   return (
-    <form onSubmit={handleSubmit} className={`bg-slate-800/95 border border-slate-700/80 rounded-xl p-3 shadow-lg space-y-2.5 transition-all ${className || ''}`}>
-      {/* Top row: Section Label + Name Input + Save / Cancel */}
-      <div className="flex items-center gap-2">
-        {sectionLabel && (
-          <span className="text-xs font-mono font-bold px-2 py-1.5 rounded-lg bg-slate-900 text-brand-secondary border border-slate-700/90 flex-shrink-0 select-none shadow-sm" title={`Section ${sectionLabel}`}>
-            {sectionLabel}
+    <form onSubmit={handleSubmit} className={`bg-slate-800/95 border border-slate-700/80 rounded-xl p-3.5 shadow-lg space-y-3 transition-all ${className || ''}`}>
+      {/* Top row: Section Label / Title + Action buttons */}
+      <div className="flex items-center justify-between gap-2">
+        <div className="flex items-center gap-2">
+          {sectionLabel && (
+            <span className="text-xs font-mono font-bold px-2 py-1 rounded-lg bg-slate-900 text-brand-secondary border border-slate-700/90 flex-shrink-0 select-none shadow-sm" title={`Section ${sectionLabel}`}>
+              {sectionLabel}
+            </span>
+          )}
+          <span className="text-xs font-semibold text-slate-300">
+            {isSubtask ? 'New Subtask' : 'New Task'}
           </span>
-        )}
-        <input
-          type="text"
+        </div>
+        <div className="flex items-center gap-2">
+          <button
+            type="submit"
+            disabled={!name.trim()}
+            className="px-3.5 py-1.5 text-xs font-semibold text-white bg-brand-secondary hover:bg-blue-500 disabled:opacity-50 disabled:cursor-not-allowed rounded-lg transition-colors flex items-center gap-1.5 flex-shrink-0 shadow-sm"
+          >
+            <PlusCircleIcon className="w-4 h-4" />
+            <span>{isSubtask ? 'Add Subtask' : 'Add Task'}</span>
+          </button>
+          <button
+            type="button"
+            onClick={onCancel}
+            className="px-3 py-1.5 text-xs font-medium text-slate-300 bg-slate-700 hover:bg-slate-600 rounded-lg transition-colors flex-shrink-0"
+          >
+            Cancel
+          </button>
+        </div>
+      </div>
+
+      {/* 2-line text edit box before vertical scroll */}
+      <div className="relative">
+        <textarea
           value={name}
           onChange={(e) => setName(e.target.value)}
           onKeyDown={handleKeyDown}
-          placeholder={placeholder}
-          className="bg-slate-900/90 border border-slate-700 hover:border-slate-600 focus:border-brand-secondary text-white text-sm rounded-lg block flex-grow px-3 py-1.5 outline-none transition-colors"
+          placeholder={placeholder || 'Task name or description...'}
+          rows={2}
+          className="w-full bg-slate-900/90 border border-slate-700 hover:border-slate-600 focus:border-brand-secondary text-white text-sm rounded-lg p-2 outline-none transition-colors resize-none overflow-y-auto leading-relaxed"
           autoFocus
         />
-        <button
-          type="submit"
-          disabled={!name.trim()}
-          className="px-3.5 py-1.5 text-xs font-semibold text-white bg-brand-secondary hover:bg-blue-500 disabled:opacity-50 disabled:cursor-not-allowed rounded-lg transition-colors flex items-center gap-1.5 flex-shrink-0 shadow-sm"
-        >
-          <PlusCircleIcon className="w-4 h-4" />
-          <span>{isSubtask ? 'Add Subtask' : 'Add Task'}</span>
-        </button>
-        <button
-          type="button"
-          onClick={onCancel}
-          className="px-3 py-1.5 text-xs font-medium text-slate-300 bg-slate-700 hover:bg-slate-600 rounded-lg transition-colors flex-shrink-0"
-        >
-          Cancel
-        </button>
       </div>
 
       {/* Controls row: Assign Dropdown | Priority compact pill buttons | Timeline 24hr default */}
@@ -897,6 +908,8 @@ const TaskRow: React.FC<TaskRowProps> = ({ task, level, isExpanded, onToggleExpa
   const formatDate = (date: Date) => new Date(date).toLocaleString('en-US', { month: 'short', day: 'numeric' });
   const isEditing = (field: string) => editingField?.taskId === task.id && editingField?.field === field;
   const progress = calculateTaskProgress(task);
+  const originatorName = getUserDisplayName?.(task.ownerId || '', task.ownerEmail) || task.ownerEmail?.split('@')[0] || (task.ownerId ? 'Originator' : 'Unassigned');
+  const originatorPhoto = getUserPhotoURL?.(task.ownerId || '', task.ownerEmail);
   const imageInputRef = useRef<HTMLInputElement>(null);
   const hasImages = task.imageUrls && task.imageUrls.length > 0;
   const canAddMoreImages = !task.imageUrls || task.imageUrls.length < 5;
@@ -908,8 +921,8 @@ const TaskRow: React.FC<TaskRowProps> = ({ task, level, isExpanded, onToggleExpa
   const isDropTargetAbove = dropTarget?.taskId === task.id && dropTarget.position === 'above';
   const isDropTargetBelow = dropTarget?.taskId === task.id && dropTarget.position === 'below';
 
-  const handleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
-    if (e.key === 'Enter') {
+  const handleKeyDown = (e: React.KeyboardEvent<HTMLInputElement | HTMLTextAreaElement>) => {
+    if (e.key === 'Enter' && !e.shiftKey) {
       e.currentTarget.blur();
     } else if (e.key === 'Escape') {
       setEditingField(null);
@@ -947,7 +960,7 @@ const TaskRow: React.FC<TaskRowProps> = ({ task, level, isExpanded, onToggleExpa
         onDragLeave={onDragLeave}
         onPaste={handlePaste}
       >
-        <div className="col-span-4 text-white font-medium flex items-center">
+        <div className="col-span-4 text-white font-medium flex items-center min-w-0">
           {canEditTask && <GripVerticalIcon className="w-5 h-5 mr-2 text-slate-500 cursor-grab flex-shrink-0" />}
           {hasSubtasks ? (
             <button onClick={() => onToggleExpand(task.id)} className="mr-2 text-slate-400 hover:text-white flex-shrink-0" title="Has subtasks">
@@ -965,18 +978,32 @@ const TaskRow: React.FC<TaskRowProps> = ({ task, level, isExpanded, onToggleExpa
             </button>
           ) : <div className="w-4 h-4 mr-2 flex-shrink-0" style={!canEditTask ? { marginLeft: '1.75rem' } : {}} />}
 
-          <div className="w-full">
+          {/* Task Originator Icon (Square to differentiate from circular Assignee icons) */}
+          <div
+            className="w-7 h-7 rounded-md bg-slate-700 border border-slate-600 flex items-center justify-center text-xs font-bold text-slate-200 overflow-hidden flex-shrink-0 mr-2.5 shadow-sm ring-1 ring-slate-800"
+            title={`Originator: ${originatorName}${task.ownerEmail ? ` (${task.ownerEmail})` : ''}`}
+          >
+            {originatorPhoto ? (
+              <img src={originatorPhoto} className="w-full h-full object-cover" alt={originatorName} />
+            ) : task.ownerId || task.ownerEmail ? (
+              (originatorName[0] || 'U').toUpperCase()
+            ) : (
+              <UserIcon className="w-4 h-4 text-slate-400" />
+            )}
+          </div>
+
+          <div className="w-full min-w-0">
             {isEditing('name') ? (
-              <input
-                type="text"
+              <textarea
                 defaultValue={task.name}
+                rows={3}
                 onBlur={(e) => handleUpdateTaskField(task.id, 'name', e.target.value)}
                 onKeyDown={handleKeyDown}
-                className="bg-slate-700 border border-slate-600 text-white text-sm rounded-md block w-full p-1"
+                className="bg-slate-700 border border-slate-600 text-white text-sm rounded-md block w-full p-1.5 resize-none overflow-y-auto leading-relaxed focus:ring-1 focus:ring-brand-secondary outline-none"
                 autoFocus
               />
             ) : (
-              <span className="w-full cursor-pointer" onClick={() => canEditTask && setEditingField({ taskId: task.id, field: 'name' })}>{task.name}</span>
+              <span className="w-full cursor-pointer whitespace-pre-wrap break-words" onClick={() => canEditTask && setEditingField({ taskId: task.id, field: 'name' })}>{task.name}</span>
             )}
             <TaskProgressBar progress={progress} status={task.status} useProgressColor={hasSubtasks} />
             {/* Task Image Thumbnails */}
@@ -1736,8 +1763,8 @@ const ProjectDetail: React.FC<ProjectDetailProps> = ({ project, onBack, canEdit,
     const defaultEnd = new Date(Date.now() + 24 * 60 * 60 * 1000); // 24hr default
 
     const assignees = !isString && data.assignees && data.assignees.length > 0 ? data.assignees : undefined;
-    const ownerId = assignees && assignees.length > 0 ? assignees[0].uid : currentUserId;
-    const ownerEmail = assignees && assignees.length > 0 ? assignees[0].email : currentUserEmail;
+    const ownerId = currentUserId;
+    const ownerEmail = currentUserEmail;
 
     const newTask: Task = {
       id: `task-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
@@ -1771,8 +1798,8 @@ const ProjectDetail: React.FC<ProjectDetailProps> = ({ project, onBack, canEdit,
     const defaultEnd = new Date(Date.now() + 24 * 60 * 60 * 1000); // 24hr default
 
     const assignees = !isString && data.assignees && data.assignees.length > 0 ? data.assignees : undefined;
-    const ownerId = assignees && assignees.length > 0 ? assignees[0].uid : currentUserId;
-    const ownerEmail = assignees && assignees.length > 0 ? assignees[0].email : currentUserEmail;
+    const ownerId = currentUserId;
+    const ownerEmail = currentUserEmail;
 
     const newSubTask: Task = {
       id: `subtask-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
