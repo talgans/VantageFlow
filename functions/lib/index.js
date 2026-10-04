@@ -36,41 +36,52 @@ Object.defineProperty(exports, "__esModule", { value: true });
 exports.onProjectArchiveStatusChange = exports.onAchievementAwarded = exports.notifyResponsibilityAssigned = exports.notifyProjectMemberAdded = exports.sendReminderEmail = exports.inviteUser = exports.configureCors = exports.updateUserProfile = exports.deleteUser = exports.setUserRole = exports.getPublicDirectory = exports.listUsers = void 0;
 const functions = __importStar(require("firebase-functions/v1"));
 const admin = __importStar(require("firebase-admin"));
-const resend_1 = require("resend");
+const nodemailer = __importStar(require("nodemailer"));
 const emailTemplates_1 = require("./emailTemplates");
 // Prevent double initialization
 if (admin.apps.length === 0) {
     admin.initializeApp();
 }
-// --- Helper for sending emails via Resend ---
+// --- Helper for creating Nodemailer transporter using Gmail SMTP ---
+const createTransporter = () => {
+    var _a, _b;
+    const emailUser = process.env.EMAIL_USER || ((_a = functions.config().email) === null || _a === void 0 ? void 0 : _a.user);
+    const emailPassword = process.env.EMAIL_PASSWORD || ((_b = functions.config().email) === null || _b === void 0 ? void 0 : _b.password);
+    if (!emailUser || !emailPassword) {
+        console.error('[sendEmail] ERROR: Email configuration not set. Missing EMAIL_USER or EMAIL_PASSWORD.');
+        return null;
+    }
+    return nodemailer.createTransport({
+        service: 'gmail',
+        auth: {
+            user: emailUser,
+            pass: emailPassword,
+        },
+    });
+};
+// --- Helper for sending emails via Gmail SMTP ---
 const sendEmail = async (to, subject, html) => {
     var _a;
     console.log(`[sendEmail] Attempting to send email to: ${to}`);
     console.log(`[sendEmail] Subject: ${subject}`);
-    const resendApiKey = (_a = functions.config().resend) === null || _a === void 0 ? void 0 : _a.api_key;
-    if (!resendApiKey) {
-        console.error('[sendEmail] ERROR: Resend API key not set. Email not sent.');
+    const transporter = createTransporter();
+    if (!transporter) {
         return false;
     }
-    console.log(`[sendEmail] API key found (first 10 chars): ${resendApiKey.substring(0, 10)}...`);
+    const emailUser = process.env.EMAIL_USER || ((_a = functions.config().email) === null || _a === void 0 ? void 0 : _a.user);
     try {
-        const resend = new resend_1.Resend(resendApiKey);
-        console.log('[sendEmail] Calling Resend API...');
-        const { data, error } = await resend.emails.send({
-            from: 'VantageFlow <vantage@intellisys.xyz>',
-            to: [to],
+        console.log('[sendEmail] Sending email via Gmail SMTP...');
+        const info = await transporter.sendMail({
+            from: `"VantageFlow" <${emailUser}>`,
+            to,
             subject,
             html,
         });
-        if (error) {
-            console.error('[sendEmail] Resend API error:', JSON.stringify(error));
-            return false;
-        }
-        console.log(`[sendEmail] Email sent successfully! Resend ID: ${data === null || data === void 0 ? void 0 : data.id}`);
+        console.log(`[sendEmail] Email sent successfully! Message ID: ${info.messageId}`);
         return true;
     }
     catch (error) {
-        console.error('[sendEmail] Exception caught:', error.message || error);
+        console.error('[sendEmail] Gmail SMTP error:', error.message || error);
         return false;
     }
 };
@@ -116,6 +127,7 @@ exports.listUsers = functions.https.onCall(async (data, context) => {
                 role: ((_a = user.customClaims) === null || _a === void 0 ? void 0 : _a.role) || 'member',
                 createdAt: user.metadata.creationTime,
                 lastSignIn: user.metadata.lastSignInTime,
+                phoneNumber: user.phoneNumber,
             });
         });
         return { users };
@@ -149,6 +161,7 @@ exports.getPublicDirectory = functions.https.onCall(async (data, context) => {
                     role: ((_a = user.customClaims) === null || _a === void 0 ? void 0 : _a.role) || 'member',
                     createdAt: user.metadata.creationTime,
                     lastSignIn: user.metadata.lastSignInTime,
+                    phoneNumber: user.phoneNumber,
                 });
             });
             nextPageToken = result.pageToken;
@@ -246,7 +259,7 @@ exports.updateUserProfile = functions.https.onCall(async (data, context) => {
     if (!((_a = callerToken.customClaims) === null || _a === void 0 ? void 0 : _a.role) || callerToken.customClaims.role !== 'admin') {
         throw new functions.https.HttpsError('permission-denied', 'Only admins can update other user profiles');
     }
-    const { uid, displayName, photoURL } = data;
+    const { uid, displayName, photoURL, phoneNumber } = data;
     if (!uid) {
         throw new functions.https.HttpsError('invalid-argument', 'User ID is required');
     }
@@ -257,6 +270,9 @@ exports.updateUserProfile = functions.https.onCall(async (data, context) => {
         }
         if (photoURL !== undefined) {
             updateData.photoURL = photoURL;
+        }
+        if (phoneNumber !== undefined) {
+            updateData.phoneNumber = phoneNumber;
         }
         await admin.auth().updateUser(uid, updateData);
         return { success: true, message: 'User profile updated successfully' };
@@ -379,7 +395,10 @@ exports.inviteUser = functions
         };
         const resetLink = await admin.auth().generatePasswordResetLink(email, actionCodeSettings);
         const html = (0, emailTemplates_1.getInvitationEmail)(role, resetLink);
-        await sendEmail(email, 'VantageFlow: Your Account Setup Link', html);
+        const emailSent = await sendEmail(email, 'VantageFlow: Your Account Setup Link', html);
+        if (!emailSent) {
+            throw new functions.https.HttpsError('internal', `User account was created, but failed to send invitation email to ${email}. Please check SMTP configuration or use the Send Reminder button.`);
+        }
         return {
             success: true,
             message: `Invitation email sent to ${email}`,
@@ -388,6 +407,8 @@ exports.inviteUser = functions
     catch (error) {
         console.error('Error inviting user:', error);
         if (error.code === 'already-exists')
+            throw error;
+        if (error instanceof functions.https.HttpsError)
             throw error;
         throw new functions.https.HttpsError('internal', `Failed to invite user: ${error.message}`);
     }
@@ -432,7 +453,10 @@ exports.sendReminderEmail = functions
         };
         const resetLink = await admin.auth().generatePasswordResetLink(email, actionCodeSettings);
         const html = (0, emailTemplates_1.getReminderEmail)(role, resetLink);
-        await sendEmail(email, 'VantageFlow: Action Required - Complete Your Account Setup', html);
+        const emailSent = await sendEmail(email, 'VantageFlow: Action Required - Complete Your Account Setup', html);
+        if (!emailSent) {
+            throw new functions.https.HttpsError('internal', `Failed to deliver reminder email to ${email}. Please check SMTP configuration.`);
+        }
         return {
             success: true,
             message: `Reminder email sent to ${email}`,
