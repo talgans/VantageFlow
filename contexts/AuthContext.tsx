@@ -62,7 +62,8 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children, auth, fire
    */
   const extractUserRole = async (firebaseUser: User): Promise<UserRole> => {
     try {
-      const idTokenResult = await firebaseUser.getIdTokenResult();
+      // Force refresh token to ensure we always get updated custom claims
+      const idTokenResult = await firebaseUser.getIdTokenResult(true);
       const customClaims = idTokenResult.claims;
 
       // Check custom claims for role (or talgans@gmail.com as primary SuperAdmin)

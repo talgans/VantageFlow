@@ -289,16 +289,17 @@ export const updateUserProfile = functions.https.onCall(async (data, context) =>
     throw new functions.https.HttpsError('unauthenticated', 'User must be authenticated');
   }
 
-  // Check if user is admin or superadmin
-  const callerToken = await admin.auth().getUser((context as any).auth.uid);
-  if (!isAdminUser(callerToken)) {
-    throw new functions.https.HttpsError('permission-denied', 'Only admins can update other user profiles');
-  }
-
   const { uid, displayName, photoURL, phoneNumber } = data as any;
 
   if (!uid) {
     throw new functions.https.HttpsError('invalid-argument', 'User ID is required');
+  }
+
+  // Check if user is admin, superadmin, or updating their own profile
+  const callerUid = (context as any).auth.uid;
+  const callerToken = await admin.auth().getUser(callerUid);
+  if (callerUid !== uid && !isAdminUser(callerToken)) {
+    throw new functions.https.HttpsError('permission-denied', 'Only admins can update other user profiles');
   }
 
   try {
