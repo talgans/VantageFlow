@@ -5,26 +5,51 @@ service cloud.firestore {
     function isAuthenticated() {
       return request.auth != null;
     }
+
+    function isMainSuperAdmin() {
+      return isAuthenticated() && (request.auth.token.email == 'talgans@gmail.com');
+    }
+
+    function isSuperAdmin() {
+      return isAuthenticated() && (request.auth.token.role == 'superadmin' || isMainSuperAdmin());
+    }
     
     function isAdmin() {
-      return isAuthenticated() && request.auth.token.role == 'admin';
+      return isAuthenticated() && (request.auth.token.role == 'admin' || isSuperAdmin());
     }
     
     function isManager() {
-      return isAuthenticated() && (request.auth.token.role == 'manager' || request.auth.token.role == 'admin');
+      return isAuthenticated() && (request.auth.token.role == 'manager' || isAdmin());
     }
     
-    // Check if user is project owner or admin
-    function isProjectOwner(projectData) {
-      return isAuthenticated() && (projectData.ownerId == request.auth.uid || isAdmin());
+    // Check if user is project owner, superadmin, or admin member
+    function canUpdateProject(projectData) {
+      return isAuthenticated() && (
+        projectData.ownerId == request.auth.uid ||
+        isSuperAdmin() ||
+        (isAdmin() && projectData.memberUids != null && request.auth.uid in projectData.memberUids)
+      );
     }
 
-    // RBAC: Check if current user is in the project's memberUids array
-    function isProjectMember(projectData) {
+    // RBAC + Privacy: Project can be read if public, if user is owner/member, or if SuperAdmin
+    function canViewProject(projectData) {
       return isAuthenticated() && (
-        isAdmin() ||
+        projectData.isPublic == true ||
         projectData.ownerId == request.auth.uid ||
-        (projectData.memberUids != null && request.auth.uid in projectData.memberUids)
+        (projectData.memberUids != null && request.auth.uid in projectData.memberUids) ||
+        isSuperAdmin()
+      );
+    }
+
+    // Deletion:
+    // 1. talgans@gmail.com can delete ANY project
+    // 2. Other SuperAdmins can delete any project EXCEPT those created by talgans@gmail.com
+    // 3. Project owner (manager/admin) can delete their own project
+    function canDeleteProject(projectData) {
+      return isAuthenticated() && (
+        isMainSuperAdmin() ||
+        (isSuperAdmin() && projectData.ownerEmail != 'talgans@gmail.com') ||
+        (isManager() && projectData.ownerId == request.auth.uid)
       );
     }
 
@@ -41,24 +66,25 @@ service cloud.firestore {
     // Users collection
     match /users/{userId} {
       allow read: if isAuthenticated();
-      allow write: if isAdmin() || request.auth.uid == userId;
+      allow write: if isSuperAdmin() || 
+                      (isAdmin() && resource.data.email != 'talgans@gmail.com' && resource.data.role != 'superadmin') || 
+                      request.auth.uid == userId;
     }
     
-    // Projects collection - RBAC enforced
+    // Projects collection - RBAC and Privacy enforced
     match /projects/{projectId} {
-      // Read: Only team members (in memberUids) or admins can read
-      // For list queries, client must filter by memberUids containing user.uid
-      allow read: if isProjectMember(resource.data);
+      // Read: Allowed if project is public, or user is owner/member, or user is SuperAdmin
+      allow read: if canViewProject(resource.data);
       
-      // Create: Managers and Admins can create projects
+      // Create: Managers, Admins, and SuperAdmins can create projects
       allow create: if isManager();
       
-      // Update: Owner/Admin can update, but NOT if archived (unless unarchiving)
-      allow update: if isProjectOwner(resource.data) && 
+      // Update: Owner, SuperAdmin, or assigned Admin can update, but NOT if archived (unless unarchiving)
+      allow update: if canUpdateProject(resource.data) && 
                        (!isArchived(resource.data) || isUnarchiving());
       
-      // Delete: Only admins or owner (if manager) can delete
-      allow delete: if isAdmin() || (isManager() && resource.data.ownerId == request.auth.uid);
+      // Delete: Controlled by canDeleteProject
+      allow delete: if canDeleteProject(resource.data);
     }
     
     // Invites collection

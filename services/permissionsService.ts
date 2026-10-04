@@ -22,13 +22,21 @@ export interface RolePermissionsDocument {
 
 // Default system permissions
 const DEFAULT_PERMISSIONS: RolePermissions = {
+    superadmin: {
+        create: true,
+        read: true,
+        update: true,
+        delete: true,
+        isSystem: true,
+        description: 'Super administrator with elevated deletion authority'
+    },
     admin: {
         create: true,
         read: true,
         update: true,
         delete: true,
         isSystem: true,
-        description: 'Full system access'
+        description: 'Full administrative access'
     },
     manager: {
         create: true,

@@ -14,6 +14,8 @@ interface ProjectsListProps {
     onEditProject: (project: Project) => void;
     onDeleteProject: (project: Project) => void;
     canModify: boolean;
+    canDeleteProject?: (project: Project) => boolean;
+    isProjectDeleteProtected?: (project: Project) => boolean;
 }
 
 const ProjectsList: React.FC<ProjectsListProps> = ({
@@ -23,7 +25,9 @@ const ProjectsList: React.FC<ProjectsListProps> = ({
     onShowPasteModal,
     onEditProject,
     onDeleteProject,
-    canModify
+    canModify,
+    canDeleteProject,
+    isProjectDeleteProtected
 }) => {
     const { getUserDisplayName, getUserPhotoURL } = useUserLookup();
 
@@ -268,8 +272,18 @@ const ProjectsList: React.FC<ProjectsListProps> = ({
                                         onClick={() => onSelectProject(project)}
                                         className="flex-grow cursor-pointer"
                                     >
-                                        <div className="flex items-center space-x-3 mb-1">
+                                        <div className="flex items-center space-x-3 mb-1 flex-wrap gap-y-1">
                                             <p className="font-semibold text-white group-hover:text-brand-light">{project.name}</p>
+                                            {/* Privacy indicator */}
+                                            {project.isPublic ? (
+                                                <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-blue-500/10 text-blue-400 border border-blue-500/30">
+                                                    <span className="mr-1">🌐</span> Public
+                                                </span>
+                                            ) : (
+                                                <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-slate-700/80 text-slate-400 border border-slate-600">
+                                                    <span className="mr-1">🔒</span> Private
+                                                </span>
+                                            )}
                                             {/* Archived indicator */}
                                             {project.isArchived && (
                                                 <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-amber-500/10 text-amber-400 border border-amber-500/30">
@@ -339,12 +353,23 @@ const ProjectsList: React.FC<ProjectsListProps> = ({
                                 <div className="flex items-center space-x-2 ml-4">
                                     {canModify ? (
                                         <>
-                                            <button onClick={(e) => { e.stopPropagation(); onEditProject(project); }} className="p-2 text-slate-400 hover:text-white rounded-full hover:bg-slate-700 transition-colors">
+                                            <button onClick={(e) => { e.stopPropagation(); onEditProject(project); }} className="p-2 text-slate-400 hover:text-white rounded-full hover:bg-slate-700 transition-colors" title="Edit project">
                                                 <PencilIcon className="w-5 h-5" />
                                             </button>
-                                            <button onClick={(e) => { e.stopPropagation(); onDeleteProject(project); }} className="p-2 text-slate-400 hover:text-red-500 rounded-full hover:bg-slate-700 transition-colors">
-                                                <TrashIcon className="w-5 h-5" />
-                                            </button>
+                                            {canDeleteProject && canDeleteProject(project) ? (
+                                                <button onClick={(e) => { e.stopPropagation(); onDeleteProject(project); }} className="p-2 text-slate-400 hover:text-red-500 rounded-full hover:bg-slate-700 transition-colors" title="Delete project">
+                                                    <TrashIcon className="w-5 h-5" />
+                                                </button>
+                                            ) : isProjectDeleteProtected && isProjectDeleteProtected(project) ? (
+                                                <button
+                                                    disabled
+                                                    onClick={(e) => e.stopPropagation()}
+                                                    className="p-2 text-slate-600 rounded-full cursor-not-allowed opacity-40 hover:text-slate-600"
+                                                    title="Protected: Projects created by primary SuperAdmin (talgans@gmail.com) cannot be deleted"
+                                                >
+                                                    <TrashIcon className="w-5 h-5" />
+                                                </button>
+                                            ) : null}
                                         </>
                                     ) : (
                                         <ChevronRightIcon className="w-6 h-6 text-slate-500" />

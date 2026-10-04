@@ -26,6 +26,15 @@ interface UserData {
   phoneNumber?: string;
 }
 
+// Helpers for checking admin / superadmin status
+const isSuperAdminUser = (userRecord: admin.auth.UserRecord) => {
+  return userRecord.email?.toLowerCase() === 'talgans@gmail.com' || userRecord.customClaims?.role === 'superadmin';
+};
+
+const isAdminUser = (userRecord: admin.auth.UserRecord) => {
+  return isSuperAdminUser(userRecord) || userRecord.customClaims?.role === 'admin';
+};
+
 // --- Helper for creating Nodemailer transporter using Gmail SMTP ---
 const createTransporter = () => {
   const emailUser = process.env.EMAIL_USER || functions.config().email?.user;
@@ -100,10 +109,10 @@ export const listUsers = functions.https.onCall(async (data, context) => {
     throw new functions.https.HttpsError('unauthenticated', 'User must be authenticated');
   }
 
-  // Check if user is admin or manager
+  // Check if user is admin, superadmin, or manager
   const callerToken = await admin.auth().getUser((context as any).auth.uid);
   const userRole = callerToken.customClaims?.role;
-  if (!userRole || (userRole !== 'admin' && userRole !== 'manager')) {
+  if (!isAdminUser(callerToken) && userRole !== 'manager') {
     throw new functions.https.HttpsError('permission-denied', 'Only admins and managers can list users');
   }
 
@@ -115,7 +124,7 @@ export const listUsers = functions.https.onCall(async (data, context) => {
       email: user.email || '',
       displayName: user.displayName,
       photoURL: user.photoURL,
-      role: user.customClaims?.role || 'member',
+      role: user.email?.toLowerCase() === 'talgans@gmail.com' ? 'superadmin' : (user.customClaims?.role || 'member'),
       createdAt: user.metadata.creationTime,
       lastSignIn: user.metadata.lastSignInTime,
       phoneNumber: user.phoneNumber,
@@ -150,7 +159,7 @@ export const getPublicDirectory = functions.https.onCall(async (data, context) =
           email: user.email || '',
           displayName: user.displayName,
           photoURL: user.photoURL,
-          role: user.customClaims?.role || 'member',
+          role: user.email?.toLowerCase() === 'talgans@gmail.com' ? 'superadmin' : (user.customClaims?.role || 'member'),
           createdAt: user.metadata.creationTime,
           lastSignIn: user.metadata.lastSignInTime,
           phoneNumber: user.phoneNumber,
@@ -167,7 +176,7 @@ export const getPublicDirectory = functions.https.onCall(async (data, context) =
 });
 
 /**
- * Set user role (Admin only)
+ * Set user role (Admin or SuperAdmin only)
  */
 export const setUserRole = functions.https.onCall(async (data, context) => {
   // Check if user is authenticated
@@ -175,9 +184,9 @@ export const setUserRole = functions.https.onCall(async (data, context) => {
     throw new functions.https.HttpsError('unauthenticated', 'User must be authenticated');
   }
 
-  // Check if user is admin
+  // Check if user is admin or superadmin
   const callerToken = await admin.auth().getUser((context as any).auth.uid);
-  if (!callerToken.customClaims?.role || callerToken.customClaims.role !== 'admin') {
+  if (!isAdminUser(callerToken)) {
     throw new functions.https.HttpsError('permission-denied', 'Only admins can set user roles');
   }
 
@@ -191,7 +200,17 @@ export const setUserRole = functions.https.onCall(async (data, context) => {
   try {
     // Get the user's current role before changing
     const targetUser = await admin.auth().getUser(uid);
-    const previousRole = targetUser.customClaims?.role || 'member';
+    const previousRole = targetUser.email?.toLowerCase() === 'talgans@gmail.com' ? 'superadmin' : (targetUser.customClaims?.role || 'member');
+
+    // Security: The primary SuperAdmin (talgans@gmail.com) can NEVER have their role altered
+    if (targetUser.email?.toLowerCase() === 'talgans@gmail.com') {
+      throw new functions.https.HttpsError('permission-denied', 'Cannot modify the role of the primary SuperAdmin (talgans@gmail.com)');
+    }
+
+    // Security: Only SuperAdmins can assign or alter the superadmin role
+    if ((role === 'superadmin' || targetUser.customClaims?.role === 'superadmin') && !isSuperAdminUser(callerToken)) {
+      throw new functions.https.HttpsError('permission-denied', 'Only SuperAdmins can grant or revoke the SuperAdmin role');
+    }
 
     // Set the new role
     await admin.auth().setCustomUserClaims(uid, { role });
@@ -211,12 +230,13 @@ export const setUserRole = functions.https.onCall(async (data, context) => {
     return { success: true, message: `User role set to ${role}` };
   } catch (error) {
     console.error('Error setting user role:', error);
+    if (error instanceof functions.https.HttpsError) throw error;
     throw new functions.https.HttpsError('internal', 'Failed to set user role');
   }
 });
 
 /**
- * Delete user (Admin only)
+ * Delete user (Admin or SuperAdmin only)
  */
 export const deleteUser = functions.https.onCall(async (data, context) => {
   // Check if user is authenticated
@@ -224,9 +244,9 @@ export const deleteUser = functions.https.onCall(async (data, context) => {
     throw new functions.https.HttpsError('unauthenticated', 'User must be authenticated');
   }
 
-  // Check if user is admin
+  // Check if user is admin or superadmin
   const callerToken = await admin.auth().getUser((context as any).auth.uid);
-  if (!callerToken.customClaims?.role || callerToken.customClaims.role !== 'admin') {
+  if (!isAdminUser(callerToken)) {
     throw new functions.https.HttpsError('permission-denied', 'Only admins can delete users');
   }
 
@@ -238,16 +258,29 @@ export const deleteUser = functions.https.onCall(async (data, context) => {
   }
 
   try {
+    const targetUser = await admin.auth().getUser(uid);
+
+    // Security: The primary SuperAdmin (talgans@gmail.com) can NEVER be deleted
+    if (targetUser.email?.toLowerCase() === 'talgans@gmail.com') {
+      throw new functions.https.HttpsError('permission-denied', 'The primary SuperAdmin (talgans@gmail.com) cannot be deleted');
+    }
+
+    // Security: Only SuperAdmins can delete another SuperAdmin
+    if (targetUser.customClaims?.role === 'superadmin' && !isSuperAdminUser(callerToken)) {
+      throw new functions.https.HttpsError('permission-denied', 'Only SuperAdmins can delete a SuperAdmin user');
+    }
+
     await admin.auth().deleteUser(uid);
     return { success: true, message: 'User deleted successfully' };
   } catch (error) {
     console.error('Error deleting user:', error);
+    if (error instanceof functions.https.HttpsError) throw error;
     throw new functions.https.HttpsError('internal', 'Failed to delete user');
   }
 });
 
 /**
- * Update user profile (Admin only for other users)
+ * Update user profile (Admin or SuperAdmin only for other users)
  * Allows admin to update display name and photoURL for any user
  */
 export const updateUserProfile = functions.https.onCall(async (data, context) => {
@@ -256,9 +289,9 @@ export const updateUserProfile = functions.https.onCall(async (data, context) =>
     throw new functions.https.HttpsError('unauthenticated', 'User must be authenticated');
   }
 
-  // Check if user is admin
+  // Check if user is admin or superadmin
   const callerToken = await admin.auth().getUser((context as any).auth.uid);
-  if (!callerToken.customClaims?.role || callerToken.customClaims.role !== 'admin') {
+  if (!isAdminUser(callerToken)) {
     throw new functions.https.HttpsError('permission-denied', 'Only admins can update other user profiles');
   }
 
@@ -292,7 +325,7 @@ export const updateUserProfile = functions.https.onCall(async (data, context) =>
 });
 
 /**
- * Configure Storage CORS (Admin only)
+ * Configure Storage CORS (Admin or SuperAdmin only)
  * Fixes CORS issues for file uploads
  */
 export const configureCors = functions.https.onCall(async (data, context) => {
@@ -303,7 +336,7 @@ export const configureCors = functions.https.onCall(async (data, context) => {
     }
 
     const callerToken = await admin.auth().getUser((context as any).auth.uid);
-    if (!callerToken.customClaims?.role || callerToken.customClaims.role !== 'admin') {
+    if (!isAdminUser(callerToken)) {
       return { success: false, error: 'Only admins can invoke this function' };
     }
     const bucket = admin.storage().bucket('vantageflow.firebasestorage.app');
@@ -341,7 +374,7 @@ export const configureCors = functions.https.onCall(async (data, context) => {
 });
 
 /**
- * Invite user via email (Admin only)
+ * Invite user via email (Admin or SuperAdmin only)
  * Creates a user account with specified role
  */
 export const inviteUser = functions
@@ -358,20 +391,20 @@ export const inviteUser = functions
 
     console.log(`inviteUser called by: ${(context as any).auth.uid}`);
 
-    // Check if user is admin
+    // Check if user is admin or superadmin
     const callerToken = await admin.auth().getUser((context as any).auth.uid);
     console.log(`Caller role: ${callerToken.customClaims?.role}`);
 
-    if (!callerToken.customClaims?.role || callerToken.customClaims.role !== 'admin') {
+    if (!isAdminUser(callerToken)) {
       throw new functions.https.HttpsError('permission-denied', 'Only admins can invite users');
     }
 
     const { email, role } = data;
     console.log(`Attempting to invite: ${email} with role: ${role}`);
 
-    // Validate role
-    if (!role || typeof role !== 'string' || role.trim().length === 0 || role === 'admin') {
-      throw new functions.https.HttpsError('invalid-argument', 'Invalid role. Cannot invite as admin; admin role must be assigned after signup');
+    // Validate role: admin or superadmin must be assigned after signup
+    if (!role || typeof role !== 'string' || role.trim().length === 0 || role === 'admin' || role === 'superadmin') {
+      throw new functions.https.HttpsError('invalid-argument', 'Invalid role. Administrative roles must be assigned after signup from Users & Roles');
     }
 
     // Validate email
@@ -439,7 +472,7 @@ export const inviteUser = functions
 
 
 /**
- * Send reminder email to existing user who hasn't logged in (Admin only)
+ * Send reminder email to existing user who hasn't logged in (Admin or SuperAdmin only)
  * Generates a new password reset link and sends it
  */
 export const sendReminderEmail = functions
@@ -453,9 +486,9 @@ export const sendReminderEmail = functions
       throw new functions.https.HttpsError('unauthenticated', 'User must be authenticated');
     }
 
-    // Check if user is admin
+    // Check if user is admin or superadmin
     const callerToken = await admin.auth().getUser((context as any).auth.uid);
-    if (!callerToken.customClaims?.role || callerToken.customClaims.role !== 'admin') {
+    if (!isAdminUser(callerToken)) {
       throw new functions.https.HttpsError('permission-denied', 'Only admins can send reminder emails');
     }
 

@@ -30,7 +30,7 @@ const SideNav: React.FC<SideNavProps> = ({
   isCollapsed,
   onToggleCollapse
 }) => {
-  const isAdmin = userRole === UserRole.Admin;
+  const isAdmin = userRole === UserRole.Admin || userRole === UserRole.SuperAdmin;
 
   const navItems = [
     { id: 'dashboard', label: 'Dashboard', icon: HomeIcon, adminOnly: false },

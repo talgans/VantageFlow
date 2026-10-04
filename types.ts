@@ -119,9 +119,12 @@ export interface Project {
   isArchived?: boolean;
   archivedAt?: Date;
   archivedBy?: string; // UID of who archived
+  // Privacy: false/undefined = private (members/owner only), true = public to all users
+  isPublic?: boolean;
 }
 
 export enum UserRole {
+  SuperAdmin = 'SuperAdmin',
   Admin = 'Admin',
   Manager = 'Project Manager',
   Member = 'Team Member',

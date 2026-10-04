@@ -72,6 +72,8 @@ const ProjectModal: React.FC<ProjectModalProps> = ({ onClose, onSave, projectToE
   const [errors, setErrors] = useState<Partial<typeof formData>>({});
   const [showTextImport, setShowTextImport] = useState(false);
   const [importText, setImportText] = useState('');
+  const [isPublic, setIsPublic] = useState(false);
+  const [showPrivacyWarning, setShowPrivacyWarning] = useState(false);
 
   useEffect(() => {
     if (projectToEdit) {
@@ -87,12 +89,14 @@ const ProjectModal: React.FC<ProjectModalProps> = ({ onClose, onSave, projectToE
         cost: String(projectToEdit.cost || ''),
         currency: projectToEdit.currency || Currency.NGN,
       });
+      setIsPublic(projectToEdit.isPublic === true);
       // Load team members or use legacy format
       if (projectToEdit.team?.members) {
         setTeamMembers(projectToEdit.team.members);
       }
       setPhases(JSON.parse(JSON.stringify(projectToEdit.phases || [])));
     } else if (currentUserId && currentUserEmail) {
+      setIsPublic(false);
       // For new projects, auto-add creator as primary lead
       setTeamMembers([{
         uid: currentUserId,
@@ -101,6 +105,25 @@ const ProjectModal: React.FC<ProjectModalProps> = ({ onClose, onSave, projectToE
       }]);
     }
   }, [projectToEdit, currentUserId, currentUserEmail]);
+
+  const handleSelectPublic = () => {
+    if (!isPublic) {
+      setShowPrivacyWarning(true);
+    }
+  };
+
+  const handleConfirmMakePublic = () => {
+    setIsPublic(true);
+    setShowPrivacyWarning(false);
+  };
+
+  const handleCancelMakePublic = () => {
+    setShowPrivacyWarning(false);
+  };
+
+  const handleSelectPrivate = () => {
+    setIsPublic(false);
+  };
 
   // Auto-open text import if requested
   useEffect(() => {
@@ -157,6 +180,7 @@ const ProjectModal: React.FC<ProjectModalProps> = ({ onClose, onSave, projectToE
         cost: Number(formData.cost) || 0,
         currency: formData.currency,
         phases: phases,
+        isPublic: isPublic,
       });
 
       // Check for new members and notify
@@ -495,6 +519,61 @@ const ProjectModal: React.FC<ProjectModalProps> = ({ onClose, onSave, projectToE
                 </div>
               </div>
 
+              {/* Project Privacy & Visibility Section */}
+              <div className="pt-4 border-t border-slate-600 space-y-3">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <h3 className="text-sm font-semibold text-white">Project Privacy</h3>
+                    <p className="text-xs text-slate-400">Control who can see and collaborate on this project</p>
+                  </div>
+                  <span className={`text-xs px-2.5 py-1 rounded-full font-medium ${
+                    isPublic
+                      ? 'bg-blue-500/20 text-blue-300 border border-blue-500/30'
+                      : 'bg-slate-700 text-slate-300 border border-slate-600'
+                  }`}>
+                    {isPublic ? '🌐 Public Project' : '🔒 Private Project'}
+                  </span>
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <button
+                    type="button"
+                    onClick={handleSelectPrivate}
+                    className={`flex items-start gap-3 p-3 rounded-lg border text-left transition-all ${
+                      !isPublic
+                        ? 'bg-slate-700/80 border-brand-secondary ring-1 ring-brand-secondary text-white'
+                        : 'bg-slate-800/40 border-slate-700 text-slate-300 hover:bg-slate-700/50 hover:border-slate-600'
+                    }`}
+                  >
+                    <span className="text-lg">🔒</span>
+                    <div>
+                      <div className="text-sm font-medium">Private (Recommended)</div>
+                      <div className="text-xs text-slate-400 mt-0.5">
+                        Only the project owner and designated team members can view this project.
+                      </div>
+                    </div>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={handleSelectPublic}
+                    className={`flex items-start gap-3 p-3 rounded-lg border text-left transition-all ${
+                      isPublic
+                        ? 'bg-blue-500/10 border-blue-500 ring-1 ring-blue-500 text-white'
+                        : 'bg-slate-800/40 border-slate-700 text-slate-300 hover:bg-slate-700/50 hover:border-slate-600'
+                    }`}
+                  >
+                    <span className="text-lg">🌐</span>
+                    <div>
+                      <div className="text-sm font-medium">Public</div>
+                      <div className="text-xs text-slate-400 mt-0.5">
+                        Visible to all authenticated team members across the organization.
+                      </div>
+                    </div>
+                  </button>
+                </div>
+              </div>
+
               {/* Team Selection Section */}
               <div className="pt-4 border-t border-slate-600">
                 <h3 className="text-lg font-semibold text-white mb-3">Team Members <span className="text-red-500">*</span></h3>
@@ -624,6 +703,49 @@ const ProjectModal: React.FC<ProjectModalProps> = ({ onClose, onSave, projectToE
                   className="px-4 py-2 text-sm font-medium text-white bg-brand-secondary rounded-lg hover:bg-blue-500 disabled:opacity-50 disabled:cursor-not-allowed"
                 >
                   Import & Parse
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Privacy Warning Modal */}
+        {showPrivacyWarning && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/75 backdrop-blur-sm">
+            <div className="bg-slate-800 border border-amber-500/40 rounded-xl p-6 max-w-md w-full shadow-2xl space-y-4">
+              <div className="flex items-center space-x-3 text-amber-400">
+                <div className="w-10 h-10 rounded-full bg-amber-500/20 flex items-center justify-center text-xl font-bold">
+                  ⚠️
+                </div>
+                <h3 className="text-lg font-bold text-white">Project Privacy Warning</h3>
+              </div>
+              
+              <p className="text-sm text-slate-300 leading-relaxed">
+                You are about to make this project <strong className="text-white">Public</strong>.
+              </p>
+
+              <p className="text-sm text-slate-300 leading-relaxed">
+                Making this project public means that <span className="text-amber-300 font-semibold">all members and staff across the organization</span> will be able to discover and view its schedule, tasks, deliverables, budget, and team assignments.
+              </p>
+
+              <div className="p-3 bg-amber-500/10 border border-amber-500/20 rounded-lg text-xs text-amber-200/90">
+                🔒 If this project contains sensitive or confidential deliverables, we strongly recommend keeping it <strong>Private</strong>.
+              </div>
+
+              <div className="flex items-center justify-end space-x-3 pt-3 border-t border-slate-700">
+                <button
+                  type="button"
+                  onClick={handleCancelMakePublic}
+                  className="px-4 py-2 text-sm font-medium text-slate-300 hover:text-white bg-slate-700 hover:bg-slate-600 rounded-lg transition-colors cursor-pointer"
+                >
+                  Keep Private
+                </button>
+                <button
+                  type="button"
+                  onClick={handleConfirmMakePublic}
+                  className="px-4 py-2 text-sm font-medium text-white bg-amber-600 hover:bg-amber-500 rounded-lg transition-colors shadow-lg shadow-amber-600/30 cursor-pointer font-semibold"
+                >
+                  I Understand, Make Public
                 </button>
               </div>
             </div>

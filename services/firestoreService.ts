@@ -106,6 +106,7 @@ const convertFirestoreDocToProject = (docData: DocumentData): Project => {
       ...phase,
       tasks: phase.tasks?.map(convertTaskDatesFromFirestore) || [],
     })) || [],
+    isPublic: docData.isPublic === true,
   };
   return converted as Project;
 };
@@ -177,6 +178,7 @@ const convertProjectToFirestore = (project: Omit<Project, 'id'> | Project): any 
         return phaseData;
       }),
       updatedAt: Timestamp.now(),
+      isPublic: project.isPublic === true,
     };
 
     // Only add optional fields if defined
@@ -256,67 +258,115 @@ export const subscribeToProjects = (
 };
 
 /**
- * RBAC-aware subscription: Only returns projects where user is in memberUids
- * Admins see all projects.
+ * Privacy & RBAC-aware subscription:
+ * - SuperAdmins see all projects.
+ * - All other users (Admins, Managers, Members) see projects where they are in memberUids OR project isPublic == true.
  * 
  * @param userUid - The current user's UID
- * @param isAdmin - Whether the user is an admin
+ * @param isSuperAdmin - Whether the user is a SuperAdmin
  * @param callback - Callback with filtered projects
  * @param onError - Error callback
  */
 export const subscribeToUserProjects = (
   userUid: string,
-  isAdmin: boolean,
+  isSuperAdmin: boolean,
   callback: (projects: Project[]) => void,
   onError?: (error: Error) => void
 ): (() => void) => {
-  let projectsQuery;
-
-  if (isAdmin) {
-    // Admins see all projects
-    projectsQuery = query(
+  if (isSuperAdmin) {
+    // SuperAdmins see all projects
+    const projectsQuery = query(
       collection(db, 'projects'),
       orderBy('createdAt', 'desc')
     );
-  } else {
-    // Non-admins only see projects where they are in memberUids
-    projectsQuery = query(
-      collection(db, 'projects'),
-      where('memberUids', 'array-contains', userUid)
+
+    return onSnapshot(
+      projectsQuery,
+      (snapshot: QuerySnapshot) => {
+        const projects: Project[] = snapshot.docs.map((doc) => ({
+          id: doc.id,
+          ...convertFirestoreDocToProject(doc.data()),
+        }));
+        callback(projects);
+      },
+      (error) => {
+        console.error('Error in superadmin projects subscription:', error);
+        if (onError) onError(error);
+      }
     );
   }
 
-  const unsubscribe = onSnapshot(
-    projectsQuery,
-    (snapshot: QuerySnapshot) => {
-      const projects: Project[] = snapshot.docs.map((doc) => {
-        const data = doc.data();
-        return {
+  // Non-superadmin users see:
+  // 1. Projects where they are in memberUids (as owner or team member)
+  // 2. Public projects (isPublic == true)
+  const memberQuery = query(
+    collection(db, 'projects'),
+    where('memberUids', 'array-contains', userUid)
+  );
+
+  const publicQuery = query(
+    collection(db, 'projects'),
+    where('isPublic', '==', true)
+  );
+
+  const memberDocs: Map<string, Project> = new Map();
+  const publicDocs: Map<string, Project> = new Map();
+
+  const emitMerged = () => {
+    const combined = new Map<string, Project>();
+    memberDocs.forEach((val, key) => combined.set(key, val));
+    publicDocs.forEach((val, key) => combined.set(key, val));
+
+    const projects = Array.from(combined.values());
+    projects.sort((a, b) => {
+      const aTime = a.createdAt?.getTime() || 0;
+      const bTime = b.createdAt?.getTime() || 0;
+      return bTime - aTime;
+    });
+
+    callback(projects);
+  };
+
+  const unsubMember = onSnapshot(
+    memberQuery,
+    (snapshot) => {
+      memberDocs.clear();
+      snapshot.docs.forEach((doc) => {
+        memberDocs.set(doc.id, {
           id: doc.id,
-          ...convertFirestoreDocToProject(data),
-        };
-      });
-
-      // Sort by createdAt for non-admin queries (can't combine where + orderBy on different fields easily)
-      if (!isAdmin) {
-        projects.sort((a, b) => {
-          const aTime = a.createdAt?.getTime() || 0;
-          const bTime = b.createdAt?.getTime() || 0;
-          return bTime - aTime; // descending
+          ...convertFirestoreDocToProject(doc.data()),
         });
-      }
-
-      callback(projects);
+      });
+      emitMerged();
     },
     (error) => {
-      console.error('Error in user projects subscription:', error);
-      if (onError) {
-        onError(error);
-      }
+      console.error('Error in member projects subscription:', error);
+      if (onError) onError(error);
     }
   );
 
-  return unsubscribe;
+  const unsubPublic = onSnapshot(
+    publicQuery,
+    (snapshot) => {
+      publicDocs.clear();
+      snapshot.docs.forEach((doc) => {
+        publicDocs.set(doc.id, {
+          id: doc.id,
+          ...convertFirestoreDocToProject(doc.data()),
+        });
+      });
+      emitMerged();
+    },
+    (error) => {
+      console.error('Error in public projects subscription:', error);
+      if (onError) onError(error);
+    }
+  );
+
+  return () => {
+    unsubMember();
+    unsubPublic();
+  };
 };
 
 /**

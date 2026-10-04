@@ -111,11 +111,13 @@ const App: React.FC = () => {
             return;
         }
 
-        // RBAC: Use user-filtered subscription
-        const isAdmin = user.role === UserRole.Admin;
+        // Privacy & RBAC: SuperAdmins see all projects; all others see assigned + public projects
+        const isMainSuperAdmin = user.email?.toLowerCase() === 'talgans@gmail.com';
+        const isSuperAdmin = user.role === UserRole.SuperAdmin || isMainSuperAdmin;
+
         const unsubscribe = subscribeToUserProjects(
             user.uid,
-            isAdmin,
+            isSuperAdmin,
             (projectsFromDb) => {
                 setProjects(projectsFromDb);
                 setLoading(false);
@@ -124,9 +126,9 @@ const App: React.FC = () => {
                 console.error('Firestore subscription error:', error);
                 showToast('Failed to load projects from database');
                 // Fallback to mock data (filtered client-side for safety)
-                const filtered = isAdmin
+                const filtered = isSuperAdmin
                     ? MOCK_PROJECTS
-                    : MOCK_PROJECTS.filter(p => p.ownerId === user.uid || p.team?.members?.some(m => m.uid === user.uid));
+                    : MOCK_PROJECTS.filter(p => p.isPublic || p.ownerId === user.uid || p.team?.members?.some(m => m.uid === user.uid));
                 setProjects(filtered);
                 setLoading(false);
             }
@@ -159,13 +161,44 @@ const App: React.FC = () => {
         setCurrentPage('projects'); // Ensure we're on the projects page when going back
     };
 
+    const isMainSuperAdmin = user?.email?.toLowerCase() === 'talgans@gmail.com';
+    const isSuperAdminUser = user?.role === UserRole.SuperAdmin || isMainSuperAdmin;
+
     const canModify = (role: UserRole) => {
-        return role === UserRole.Admin || role === UserRole.Manager;
-    }
+        return role === UserRole.SuperAdmin || role === UserRole.Admin || role === UserRole.Manager;
+    };
+
+    const canDeleteProject = (project: Project): boolean => {
+        if (!user) return false;
+        // Primary SuperAdmin can delete ANY project
+        if (isMainSuperAdmin) return true;
+
+        // SuperAdmin can delete any project EXCEPT those created by talgans@gmail.com
+        if (isSuperAdminUser) {
+            return project.ownerEmail?.toLowerCase() !== 'talgans@gmail.com';
+        }
+
+        // Project owner can delete if manager or admin
+        if (project.ownerId === user.uid && (user.role === UserRole.Manager || user.role === UserRole.Admin)) {
+            return true;
+        }
+
+        return false;
+    };
+
+    const isProjectDeleteProtected = (project: Project): boolean => {
+        if (!user) return false;
+        if (isMainSuperAdmin) return false;
+        // If user is a SuperAdmin and project was created by talgans@gmail.com
+        if (isSuperAdminUser && project.ownerEmail?.toLowerCase() === 'talgans@gmail.com') {
+            return true;
+        }
+        return false;
+    };
 
     const canEditProject = (project: Project): boolean => {
-        // Admin can edit everything
-        if (currentUserRole === UserRole.Admin) return true;
+        // SuperAdmin and Admin can edit projects they have access to
+        if (currentUserRole === UserRole.SuperAdmin || currentUserRole === UserRole.Admin) return true;
         // Owner can edit their own project
         if (user && project.ownerId === user.uid) return true;
         // Any team member can create/edit items (item-level CRUD checked in ProjectDetail)
@@ -176,7 +209,7 @@ const App: React.FC = () => {
             }
         }
         return false;
-    }
+    };
 
     // Get current user role, default to Member if not authenticated
     const currentUserRole = user?.role || UserRole.Member;
@@ -250,6 +283,12 @@ const App: React.FC = () => {
 
     const handleConfirmDeleteProject = async () => {
         if (!projectToDelete) return;
+
+        if (!canDeleteProject(projectToDelete)) {
+            showToast('You do not have permission to delete this project');
+            setProjectToDelete(null);
+            return;
+        }
 
         try {
             await deleteFirestoreProject(projectToDelete.id);
@@ -375,6 +414,8 @@ const App: React.FC = () => {
                             onEditProject={handleShowEditProjectModal}
                             onDeleteProject={handleRequestDeleteProject}
                             canModify={canModify(currentUserRole)}
+                            canDeleteProject={canDeleteProject}
+                            isProjectDeleteProtected={isProjectDeleteProtected}
                         />
                     ) : (
                         <MasterDashboard
@@ -385,6 +426,8 @@ const App: React.FC = () => {
                             onEditProject={handleShowEditProjectModal}
                             onDeleteProject={handleRequestDeleteProject}
                             canModify={canModify(currentUserRole)}
+                            canDeleteProject={canDeleteProject}
+                            isProjectDeleteProtected={isProjectDeleteProtected}
                         />
                     )}
                 </main>

@@ -9,12 +9,14 @@ import * as path from 'path';
  */
 
 interface RoleMapping {
+  superadmin: string;
   admin: string;
   manager: string;
   member: string;
 }
 
 const VALID_ROLES: RoleMapping = {
+  superadmin: 'superadmin',
   admin: 'admin',
   manager: 'manager',
   member: 'member',

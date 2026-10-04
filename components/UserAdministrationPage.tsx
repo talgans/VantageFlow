@@ -339,6 +339,7 @@ const UserAdministrationPage: React.FC<UserAdministrationPageProps> = ({
 
   const getRoleBadgeColor = (role: string) => {
     switch (role) {
+      case 'superadmin': return 'bg-purple-500/20 text-purple-300 border-purple-500/30';
       case 'admin': return 'bg-red-500/20 text-red-300 border-red-500/30';
       case 'manager': return 'bg-blue-500/20 text-blue-300 border-blue-500/30';
       default: return 'bg-slate-500/20 text-slate-300 border-slate-500/30';
@@ -460,9 +461,11 @@ const UserAdministrationPage: React.FC<UserAdministrationPageProps> = ({
                               <p className="text-white font-medium truncate">
                                 {user.displayName || user.email}
                               </p>
-                              {user.email === currentUserEmail && (
+                              {user.email?.toLowerCase() === 'talgans@gmail.com' ? (
+                                <span className="text-xs bg-amber-500/20 text-amber-300 border border-amber-500/40 px-2 py-0.5 rounded font-semibold">Primary SuperAdmin</span>
+                              ) : user.email === currentUserEmail ? (
                                 <span className="text-xs bg-brand-secondary/20 text-brand-light px-2 py-0.5 rounded">You</span>
-                              )}
+                              ) : null}
                             </div>
                             {user.displayName && (
                               <p className="text-xs text-slate-400 truncate mb-0.5">{user.email}</p>
@@ -477,11 +480,12 @@ const UserAdministrationPage: React.FC<UserAdministrationPageProps> = ({
                         </div>
                         <div className="flex items-center space-x-3 ml-4">
                           <select
-                            value={user.role}
+                            value={user.email?.toLowerCase() === 'talgans@gmail.com' ? 'superadmin' : user.role}
                             onChange={(e) => handleRoleChange(user.uid, e.target.value)}
-                            disabled={updatingUserId === user.uid || user.email === currentUserEmail}
-                            className={`px-3 py-1.5 rounded-lg text-sm font-semibold border transition-colors ${getRoleBadgeColor(user.role)
+                            disabled={updatingUserId === user.uid || user.email === currentUserEmail || user.email?.toLowerCase() === 'talgans@gmail.com'}
+                            className={`px-3 py-1.5 rounded-lg text-sm font-semibold border transition-colors ${getRoleBadgeColor(user.email?.toLowerCase() === 'talgans@gmail.com' ? 'superadmin' : user.role)
                               } bg-slate-800 cursor-pointer hover:bg-slate-700 disabled:opacity-50 disabled:cursor-not-allowed`}
+                            title={user.email?.toLowerCase() === 'talgans@gmail.com' ? 'Primary SuperAdmin role is immutable' : undefined}
                           >
                             {availableRoles.map(role => (
                               <option key={role} value={role}>
@@ -489,7 +493,7 @@ const UserAdministrationPage: React.FC<UserAdministrationPageProps> = ({
                               </option>
                             ))}
                           </select>
-                          {user.email !== currentUserEmail && (
+                          {user.email !== currentUserEmail && user.email?.toLowerCase() !== 'talgans@gmail.com' && (
                             <>
                               {!user.lastSignIn && (
                                 <button
@@ -559,7 +563,7 @@ const UserAdministrationPage: React.FC<UserAdministrationPageProps> = ({
                     Initial Role
                   </label>
                   <div className="grid grid-cols-2 gap-4">
-                    {availableRoles.filter(r => r !== 'admin').map(role => (
+                    {availableRoles.filter(r => r !== 'admin' && r !== 'superadmin').map(role => (
                       <label key={role} className={`flex items-center space-x-3 p-4 border rounded-lg cursor-pointer transition-colors ${inviteRole === role
                         ? 'border-brand-secondary bg-brand-secondary/10'
                         : 'border-slate-700 hover:border-slate-600'
@@ -579,7 +583,7 @@ const UserAdministrationPage: React.FC<UserAdministrationPageProps> = ({
                     ))}
                   </div>
                   <p className="text-xs text-slate-500 mt-2">
-                    ⚠️ Admin role can only be assigned from the Users & Roles tab after signup
+                    ⚠️ Administrative roles (Admin, SuperAdmin) can only be assigned from the Users & Roles tab after signup
                   </p>
                 </div>
 

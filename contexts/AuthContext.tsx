@@ -65,8 +65,10 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children, auth, fire
       const idTokenResult = await firebaseUser.getIdTokenResult();
       const customClaims = idTokenResult.claims;
 
-      // Check custom claims for role
-      if (customClaims.role === 'admin') {
+      // Check custom claims for role (or talgans@gmail.com as primary SuperAdmin)
+      if (firebaseUser.email?.toLowerCase() === 'talgans@gmail.com' || customClaims.role === 'superadmin') {
+        return UserRole.SuperAdmin;
+      } else if (customClaims.role === 'admin') {
         return UserRole.Admin;
       } else if (customClaims.role === 'manager') {
         return UserRole.Manager;
@@ -75,6 +77,9 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children, auth, fire
       }
     } catch (error) {
       console.error('Error extracting user role:', error);
+      if (firebaseUser.email?.toLowerCase() === 'talgans@gmail.com') {
+        return UserRole.SuperAdmin;
+      }
       return UserRole.Member; // Default to Member on error
     }
   };

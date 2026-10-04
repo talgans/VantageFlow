@@ -26,9 +26,21 @@ interface MasterDashboardProps {
   onEditProject: (project: Project) => void;
   onDeleteProject: (project: Project) => void;
   canModify: boolean;
+  canDeleteProject?: (project: Project) => boolean;
+  isProjectDeleteProtected?: (project: Project) => boolean;
 }
 
-const MasterDashboard: React.FC<MasterDashboardProps> = ({ projects, onSelectProject, onShowCreateModal, onShowPasteModal, onEditProject, onDeleteProject, canModify }) => {
+const MasterDashboard: React.FC<MasterDashboardProps> = ({
+  projects,
+  onSelectProject,
+  onShowCreateModal,
+  onShowPasteModal,
+  onEditProject,
+  onDeleteProject,
+  canModify,
+  canDeleteProject,
+  isProjectDeleteProtected
+}) => {
   const { getUserDisplayName } = useUserLookup();
 
   // Filter States
@@ -306,7 +318,18 @@ const MasterDashboard: React.FC<MasterDashboardProps> = ({ projects, onSelectPro
                         <div className="flex items-center space-x-4 flex-grow">
                           <CircularProgress percentage={getProjectCompletionPercentage(project)} size={48} strokeWidth={4} />
                           <div className="flex-grow">
-                            <h4 className="font-semibold text-white">{project.name}</h4>
+                            <div className="flex items-center gap-2 flex-wrap">
+                              <h4 className="font-semibold text-white">{project.name}</h4>
+                              {project.isPublic ? (
+                                <span className="inline-flex items-center px-1.5 py-0.2 rounded-full text-[10px] font-medium bg-blue-500/10 text-blue-400 border border-blue-500/30">
+                                  <span className="mr-0.5">🌐</span> Public
+                                </span>
+                              ) : (
+                                <span className="inline-flex items-center px-1.5 py-0.2 rounded-full text-[10px] font-medium bg-slate-700/80 text-slate-400 border border-slate-600">
+                                  <span className="mr-0.5">🔒</span> Private
+                                </span>
+                              )}
+                            </div>
                             <p className="text-xs text-slate-400 mt-1">{getProjectStatusSummary(project)}</p>
                           </div>
                         </div>
@@ -331,12 +354,23 @@ const MasterDashboard: React.FC<MasterDashboardProps> = ({ projects, onSelectPro
                           </button>
                           {canModify && (
                             <div className="flex items-center space-x-1">
-                              <button onClick={(e) => { e.stopPropagation(); onEditProject(project); }} className="p-1.5 text-slate-400 hover:text-white rounded hover:bg-slate-700 transition-colors">
+                              <button onClick={(e) => { e.stopPropagation(); onEditProject(project); }} className="p-1.5 text-slate-400 hover:text-white rounded hover:bg-slate-700 transition-colors" title="Edit project">
                                 <PencilIcon className="w-4 h-4" />
                               </button>
-                              <button onClick={(e) => { e.stopPropagation(); onDeleteProject(project); }} className="p-1.5 text-slate-400 hover:text-red-400 rounded hover:bg-slate-700 transition-colors">
-                                <TrashIcon className="w-4 h-4" />
-                              </button>
+                              {canDeleteProject && canDeleteProject(project) ? (
+                                <button onClick={(e) => { e.stopPropagation(); onDeleteProject(project); }} className="p-1.5 text-slate-400 hover:text-red-400 rounded hover:bg-slate-700 transition-colors" title="Delete project">
+                                  <TrashIcon className="w-4 h-4" />
+                                </button>
+                              ) : isProjectDeleteProtected && isProjectDeleteProtected(project) ? (
+                                <button
+                                  disabled
+                                  onClick={(e) => e.stopPropagation()}
+                                  className="p-1.5 text-slate-600 rounded cursor-not-allowed opacity-40 hover:text-slate-600"
+                                  title="Protected: Projects created by primary SuperAdmin (talgans@gmail.com) cannot be deleted"
+                                >
+                                  <TrashIcon className="w-4 h-4" />
+                                </button>
+                              ) : null}
                             </div>
                           )}
                         </div>
