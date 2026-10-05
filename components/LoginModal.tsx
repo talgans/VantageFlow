@@ -4,14 +4,19 @@ import { useAuth } from '../contexts/AuthContext';
 interface LoginModalProps {
   isOpen: boolean;
   onClose: () => void;
+  hasInviteToken?: boolean;
+  onOpenSetup?: () => void;
 }
 
-const LoginModal: React.FC<LoginModalProps> = ({ isOpen, onClose }) => {
-  const { signIn, signUp, error: authError } = useAuth();
-  const [isSignUp, setIsSignUp] = useState(false);
+const LoginModal: React.FC<LoginModalProps> = ({
+  isOpen,
+  onClose,
+  hasInviteToken,
+  onOpenSetup,
+}) => {
+  const { signIn, error: authError } = useAuth();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
-  const [confirmPassword, setConfirmPassword] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -27,41 +32,30 @@ const LoginModal: React.FC<LoginModalProps> = ({ isOpen, onClose }) => {
       return;
     }
 
-    if (isSignUp) {
-      if (password !== confirmPassword) {
-        setError('Passwords do not match');
-        return;
-      }
-      if (password.length < 6) {
-        setError('Password must be at least 6 characters');
-        return;
-      }
-    }
-
     setLoading(true);
 
     try {
-      if (isSignUp) {
-        await signUp(email, password);
-        onClose();
-        // User will be automatically signed in after signup
-      } else {
-        await signIn(email, password);
-        onClose();
-      }
+      await signIn(email, password);
+      onClose();
     } catch (err: any) {
       // Firebase error messages
       const errorMessage = err.message || 'Authentication failed';
-      if (errorMessage.includes('user-not-found')) {
-        setError('No account found with this email');
-      } else if (errorMessage.includes('wrong-password')) {
-        setError('Incorrect password');
+      if (
+        errorMessage.includes('invalid-credential') ||
+        errorMessage.includes('wrong-password') ||
+        errorMessage.includes('user-not-found')
+      ) {
+        setError(
+          'Invalid email or password. VantageFlow is invite-only — if you received an email invitation, please use the setup link in your invitation email to complete your account setup.'
+        );
       } else if (errorMessage.includes('email-already-in-use')) {
-        setError('An account with this email already exists');
+        setError(
+          'An account with this email already exists. If you were invited, please use the link in your invitation email to set your password.'
+        );
       } else if (errorMessage.includes('invalid-email')) {
         setError('Invalid email address');
-      } else if (errorMessage.includes('weak-password')) {
-        setError('Password is too weak');
+      } else if (errorMessage.includes('too-many-requests')) {
+        setError('Too many failed login attempts. Please try again later or reset your password.');
       } else {
         setError(errorMessage);
       }
@@ -70,20 +64,15 @@ const LoginModal: React.FC<LoginModalProps> = ({ isOpen, onClose }) => {
     }
   };
 
-  const toggleMode = () => {
-    setIsSignUp(!isSignUp);
-    setError(null);
-    setConfirmPassword('');
-  };
-
   return (
     <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 p-4">
       <div className="bg-slate-800 rounded-xl max-w-md w-full border border-slate-700 shadow-2xl">
         <div className="p-6">
           <div className="flex justify-between items-center mb-6">
-            <h2 className="text-2xl font-bold text-white">
-              {isSignUp ? 'Create Account' : 'Sign In'}
-            </h2>
+            <div>
+              <h2 className="text-2xl font-bold text-white">Sign In</h2>
+              <p className="text-xs text-slate-400 mt-0.5">VantageFlow Project Platform</p>
+            </div>
             <button
               onClick={onClose}
               className="text-slate-400 hover:text-white transition-colors"
@@ -94,6 +83,21 @@ const LoginModal: React.FC<LoginModalProps> = ({ isOpen, onClose }) => {
               </svg>
             </button>
           </div>
+
+          {hasInviteToken && onOpenSetup && (
+            <div className="mb-4 p-3 bg-blue-500/15 border border-blue-500/40 rounded-xl flex items-center justify-between gap-3">
+              <div className="text-xs text-blue-200">
+                <span className="font-semibold text-white">Have an invitation?</span> Complete your new account setup.
+              </div>
+              <button
+                type="button"
+                onClick={onOpenSetup}
+                className="text-xs font-semibold text-white bg-brand-secondary hover:bg-blue-500 px-3 py-1.5 rounded-lg transition-colors flex-shrink-0"
+              >
+                Sign Up
+              </button>
+            </div>
+          )}
 
           <form onSubmit={handleSubmit} className="space-y-4">
             <div>
@@ -124,31 +128,13 @@ const LoginModal: React.FC<LoginModalProps> = ({ isOpen, onClose }) => {
                 className="w-full px-4 py-3 bg-slate-900 border border-slate-700 rounded-lg text-white placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-brand-secondary focus:border-transparent"
                 placeholder="••••••••"
                 disabled={loading}
-                autoComplete={isSignUp ? 'new-password' : 'current-password'}
+                autoComplete="current-password"
               />
             </div>
 
-            {isSignUp && (
-              <div>
-                <label htmlFor="confirmPassword" className="block text-sm font-medium text-slate-300 mb-2">
-                  Confirm Password
-                </label>
-                <input
-                  id="confirmPassword"
-                  type="password"
-                  value={confirmPassword}
-                  onChange={(e) => setConfirmPassword(e.target.value)}
-                  className="w-full px-4 py-3 bg-slate-900 border border-slate-700 rounded-lg text-white placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-brand-secondary focus:border-transparent"
-                  placeholder="••••••••"
-                  disabled={loading}
-                  autoComplete="new-password"
-                />
-              </div>
-            )}
-
             {(error || authError) && (
               <div className="bg-red-500/10 border border-red-500/50 rounded-lg p-3">
-                <p className="text-red-400 text-sm">{error || authError}</p>
+                <p className="text-red-400 text-xs leading-relaxed">{error || authError}</p>
               </div>
             )}
 
@@ -166,32 +152,29 @@ const LoginModal: React.FC<LoginModalProps> = ({ isOpen, onClose }) => {
                   Processing...
                 </span>
               ) : (
-                isSignUp ? 'Sign Up' : 'Sign In'
+                'Sign In'
               )}
             </button>
           </form>
 
-          <div className="mt-6 text-center">
-            <button
-              onClick={toggleMode}
-              className="text-brand-light hover:text-white transition-colors text-sm"
-              disabled={loading}
-            >
-              {isSignUp ? (
-                <>Already have an account? <span className="font-semibold">Sign In</span></>
-              ) : (
-                <>Don't have an account? <span className="font-semibold">Sign Up</span></>
-              )}
-            </button>
-          </div>
-
-          {isSignUp && (
-            <div className="mt-4 p-3 bg-blue-500/10 border border-blue-500/50 rounded-lg">
-              <p className="text-blue-300 text-xs">
-                <strong>Note:</strong> New accounts are created with "Member" role by default. Contact an administrator to upgrade your role.
+          <div className="mt-6 text-center text-xs text-slate-400">
+            {hasInviteToken && onOpenSetup ? (
+              <p>
+                New user with an invitation?{' '}
+                <button
+                  type="button"
+                  onClick={onOpenSetup}
+                  className="text-brand-light hover:text-white underline font-semibold transition-colors"
+                >
+                  Complete Sign Up
+                </button>
               </p>
-            </div>
-          )}
+            ) : (
+              <p className="text-slate-400">
+                VantageFlow is invite-only. If you haven't received an invitation, please contact your administrator.
+              </p>
+            )}
+          </div>
         </div>
       </div>
     </div>

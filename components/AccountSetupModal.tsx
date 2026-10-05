@@ -166,7 +166,7 @@ const AccountSetupModal: React.FC<AccountSetupModalProps> = ({
               <ShieldCheckIcon className="w-6 h-6" />
             </div>
             <div>
-              <h2 className="text-lg font-bold text-white leading-tight">Complete Account Setup</h2>
+              <h2 className="text-lg font-bold text-white leading-tight">Sign Up & Complete Account Setup</h2>
               <p className="text-xs text-slate-400">VantageFlow Project Platform</p>
             </div>
           </div>
@@ -224,7 +224,7 @@ const AccountSetupModal: React.FC<AccountSetupModalProps> = ({
               {/* 48-Hour Notice */}
               <div className="flex items-center gap-2 px-3 py-2 rounded-lg bg-amber-500/10 border border-amber-500/20 text-amber-300 text-xs">
                 <span className="font-semibold">⏳ 48-Hour Security Link:</span>
-                <span>Active link valid for your initial account setup.</span>
+                <span>Active invite valid for your account signup.</span>
               </div>
 
               {/* Display Name Input */}
@@ -312,7 +312,7 @@ const AccountSetupModal: React.FC<AccountSetupModalProps> = ({
                     <span>Completing Setup...</span>
                   </>
                 ) : (
-                  <span>Set Password & Sign In</span>
+                  <span>Create Account & Sign In</span>
                 )}
               </button>
             </form>

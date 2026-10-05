@@ -50,6 +50,10 @@ const App: React.FC = () => {
         const params = new URLSearchParams(window.location.search);
         return params.get('email') || undefined;
     });
+    const [isSetupModalOpen, setIsSetupModalOpen] = useState<boolean>(() => {
+        const params = new URLSearchParams(window.location.search);
+        return Boolean(params.get('setupToken'));
+    });
 
     // Handle deep links from notification emails (e.g., /project/:id)
     useEffect(() => {
@@ -366,11 +370,31 @@ const App: React.FC = () => {
             <>
                 <WelcomeScreen
                     onLogin={() => setIsLoginModalOpen(true)}
+                    isInvited={Boolean(setupToken)}
+                    onOpenSetup={() => setIsSetupModalOpen(true)}
                 />
                 <LoginModal
                     isOpen={isLoginModalOpen}
                     onClose={() => setIsLoginModalOpen(false)}
+                    hasInviteToken={Boolean(setupToken)}
+                    onOpenSetup={() => {
+                        setIsLoginModalOpen(false);
+                        setIsSetupModalOpen(true);
+                    }}
                 />
+                {setupToken && (
+                    <AccountSetupModal
+                        isOpen={isSetupModalOpen}
+                        token={setupToken}
+                        initialEmail={setupEmail}
+                        onClose={() => setIsSetupModalOpen(false)}
+                        showToast={showToast}
+                        onSuccess={() => {
+                            setSetupToken(null);
+                            setIsSetupModalOpen(false);
+                        }}
+                    />
+                )}
                 {toast && <Toast message={toast} />}
             </>
         );
@@ -459,16 +483,22 @@ const App: React.FC = () => {
             <LoginModal
                 isOpen={isLoginModalOpen}
                 onClose={() => setIsLoginModalOpen(false)}
+                hasInviteToken={Boolean(setupToken)}
+                onOpenSetup={() => {
+                    setIsLoginModalOpen(false);
+                    setIsSetupModalOpen(true);
+                }}
             />
             {setupToken && (
                 <AccountSetupModal
-                    isOpen={!!setupToken}
+                    isOpen={isSetupModalOpen}
                     token={setupToken}
                     initialEmail={setupEmail}
-                    onClose={() => setSetupToken(null)}
+                    onClose={() => setIsSetupModalOpen(false)}
                     showToast={showToast}
                     onSuccess={() => {
                         setSetupToken(null);
+                        setIsSetupModalOpen(false);
                         setCurrentPage('dashboard');
                     }}
                 />

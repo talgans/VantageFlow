@@ -4,6 +4,8 @@ import PrivacyPolicyModal from './PrivacyPolicyModal';
 
 interface WelcomeScreenProps {
   onLogin: () => void;
+  isInvited?: boolean;
+  onOpenSetup?: () => void;
 }
 
 interface Particle {
@@ -14,7 +16,7 @@ interface Particle {
   connections: number[];
 }
 
-const WelcomeScreen: React.FC<WelcomeScreenProps> = ({ onLogin }) => {
+const WelcomeScreen: React.FC<WelcomeScreenProps> = ({ onLogin, isInvited, onOpenSetup }) => {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const [isTermsOpen, setIsTermsOpen] = useState(false);
   const [isPrivacyOpen, setIsPrivacyOpen] = useState(false);
@@ -132,14 +134,46 @@ const WelcomeScreen: React.FC<WelcomeScreenProps> = ({ onLogin }) => {
         </div>
 
         {/* CTA Buttons */}
-        <div className="flex flex-col sm:flex-row gap-4 mb-8">
-          <button
-            onClick={onLogin}
-            className="px-8 py-4 bg-blue-500 hover:bg-blue-600 text-white text-lg font-semibold rounded-lg transition-colors shadow-lg shadow-blue-500/50"
-          >
-            Log In
-          </button>
+        <div className="flex flex-col sm:flex-row gap-4 mb-3">
+          {isInvited && onOpenSetup ? (
+            <button
+              onClick={onOpenSetup}
+              className="px-8 py-4 bg-brand-secondary hover:bg-blue-500 text-white text-lg font-semibold rounded-xl transition-all shadow-lg shadow-brand-secondary/40 flex items-center justify-center gap-2"
+            >
+              <span>Complete Sign Up</span>
+              <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M14 5l7 7m0 0l-7 7m7-7H3" />
+              </svg>
+            </button>
+          ) : (
+            <button
+              onClick={onLogin}
+              className="px-8 py-4 bg-blue-500 hover:bg-blue-600 text-white text-lg font-semibold rounded-xl transition-colors shadow-lg shadow-blue-500/50"
+            >
+              Sign In
+            </button>
+          )}
         </div>
+
+        {isInvited ? (
+          <div className="mb-8 text-center">
+            <p className="text-sm text-slate-400">
+              Already completed setup?{' '}
+              <button
+                onClick={onLogin}
+                className="text-brand-light hover:text-white underline font-medium transition-colors"
+              >
+                Sign In
+              </button>
+            </p>
+          </div>
+        ) : (
+          <div className="mb-8 text-center">
+            <p className="text-xs text-slate-500">
+              VantageFlow is currently invite-only.
+            </p>
+          </div>
+        )}
 
         {/* Footer links */}
         <div className="flex gap-6 text-slate-400 text-sm">
