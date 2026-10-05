@@ -167,6 +167,7 @@ const ProjectModal: React.FC<ProjectModalProps> = ({ onClose, onSave, projectToE
     e.preventDefault();
     if (validate()) {
       onSave({
+        ...(projectToEdit || {}),
         id: projectToEdit?.id,
         name: formData.name,
         description: formData.description,
@@ -175,6 +176,7 @@ const ProjectModal: React.FC<ProjectModalProps> = ({ onClose, onSave, projectToE
         duration: Number(formData.duration),
         durationUnit: formData.durationUnit,
         team: {
+          ...(projectToEdit?.team || {}),
           members: teamMembers,
         },
         cost: Number(formData.cost) || 0,

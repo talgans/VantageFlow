@@ -184,6 +184,8 @@ const convertProjectToFirestore = (project: Omit<Project, 'id'> | Project): any 
     // Only add optional fields if defined
     if (project.ownerId) data.ownerId = project.ownerId;
     if (project.ownerEmail) data.ownerEmail = project.ownerEmail;
+    if ((project as any).ownerName) data.ownerName = (project as any).ownerName;
+    if ((project as any).ownerPhotoURL) data.ownerPhotoURL = (project as any).ownerPhotoURL;
 
     // RBAC: Compute memberUids from existing memberUids, team members + owner for efficient security rules
     const memberUids = new Set<string>((project as any).memberUids || []);
@@ -196,9 +198,7 @@ const convertProjectToFirestore = (project: Omit<Project, 'id'> | Project): any 
     data.memberUids = Array.from(memberUids);
 
     // Project Lifecycle: Archive fields
-    if ((project as any).isArchived !== undefined) {
-      data.isArchived = (project as any).isArchived;
-    }
+    data.isArchived = (project as any).isArchived ?? false;
     if ((project as any).archivedAt) {
       const archivedAt = (project as any).archivedAt;
       data.archivedAt = archivedAt instanceof Date ? Timestamp.fromDate(archivedAt) : archivedAt;

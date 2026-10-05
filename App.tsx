@@ -281,8 +281,15 @@ const App: React.FC = () => {
             console.log('Saving project data:', projectData);
 
             if (projectData.id) {
-                // Update existing project
-                await updateFirestoreProject(projectData as Project);
+                // Update existing project - merge with existing project to preserve metadata like ownerId
+                const existingProject = projects.find(p => p.id === projectData.id);
+                const updatedPayload: Project = {
+                    ...(existingProject || {}),
+                    ...(projectData as Project),
+                    ownerId: projectData.ownerId || existingProject?.ownerId || user?.uid,
+                    ownerEmail: projectData.ownerEmail || existingProject?.ownerEmail || user?.email || undefined,
+                };
+                await updateFirestoreProject(updatedPayload);
                 showToast('Project updated successfully');
             } else {
                 // Create new project - set owner

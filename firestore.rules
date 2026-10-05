@@ -7,38 +7,47 @@ service cloud.firestore {
     }
 
     function isMainSuperAdmin() {
-      return isAuthenticated() && (request.auth.token.email == 'talgans@gmail.com');
+      return isAuthenticated() && (request.auth.token.get('email', '') == 'talgans@gmail.com');
     }
 
     function isSuperAdmin() {
-      return isAuthenticated() && (request.auth.token.role == 'superadmin' || isMainSuperAdmin());
+      return isAuthenticated() && (
+        isMainSuperAdmin() ||
+        request.auth.token.get('role', '') == 'superadmin'
+      );
     }
     
     function isAdmin() {
-      return isAuthenticated() && (request.auth.token.role == 'admin' || isSuperAdmin());
+      return isAuthenticated() && (
+        isSuperAdmin() ||
+        request.auth.token.get('role', '') == 'admin'
+      );
     }
     
     function isManager() {
-      return isAuthenticated() && (request.auth.token.role == 'manager' || isAdmin());
+      return isAuthenticated() && (
+        isAdmin() ||
+        request.auth.token.get('role', '') == 'manager'
+      );
     }
     
-    // Check if user is project owner, superadmin, or manager/member of the project
+    // Check if user is project owner, superadmin, admin, or manager/member of the project
     function canUpdateProject(projectData) {
       return isAuthenticated() && (
-        projectData.ownerId == request.auth.uid ||
         isSuperAdmin() ||
-        (isManager() && projectData.memberUids != null && request.auth.uid in projectData.memberUids) ||
-        (projectData.memberUids != null && request.auth.uid in projectData.memberUids)
+        isAdmin() ||
+        projectData.get('ownerId', '') == request.auth.uid ||
+        (projectData.get('memberUids', []) is list && request.auth.uid in projectData.get('memberUids', []))
       );
     }
 
     // RBAC + Privacy: Project can be read if public, if user is owner/member, or if SuperAdmin
     function canViewProject(projectData) {
       return isAuthenticated() && (
-        projectData.isPublic == true ||
-        projectData.ownerId == request.auth.uid ||
-        (projectData.memberUids != null && request.auth.uid in projectData.memberUids) ||
-        isSuperAdmin()
+        isSuperAdmin() ||
+        projectData.get('isPublic', false) == true ||
+        projectData.get('ownerId', '') == request.auth.uid ||
+        (projectData.get('memberUids', []) is list && request.auth.uid in projectData.get('memberUids', []))
       );
     }
 
@@ -49,26 +58,26 @@ service cloud.firestore {
     function canDeleteProject(projectData) {
       return isAuthenticated() && (
         isMainSuperAdmin() ||
-        (isSuperAdmin() && projectData.ownerEmail != 'talgans@gmail.com') ||
-        (isManager() && projectData.ownerId == request.auth.uid)
+        (isSuperAdmin() && projectData.get('ownerEmail', '') != 'talgans@gmail.com') ||
+        (isManager() && projectData.get('ownerId', '') == request.auth.uid)
       );
     }
 
     // Check if project is archived
     function isArchived(projectData) {
-      return projectData.isArchived == true;
+      return projectData.get('isArchived', false) == true;
     }
 
     // Check if update is unarchiving (setting isArchived to false)
     function isUnarchiving() {
-      return request.resource.data.isArchived == false && resource.data.isArchived == true;
+      return request.resource.data.get('isArchived', false) == false && resource.data.get('isArchived', false) == true;
     }
     
     // Users collection
     match /users/{userId} {
       allow read: if isAuthenticated();
       allow write: if isSuperAdmin() || 
-                      (isAdmin() && resource.data.email != 'talgans@gmail.com' && resource.data.role != 'superadmin') || 
+                      (isAdmin() && resource.data.get('email', '') != 'talgans@gmail.com' && resource.data.get('role', '') != 'superadmin') || 
                       request.auth.uid == userId;
     }
     
