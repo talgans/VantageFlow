@@ -781,13 +781,19 @@ exports.completeAccountSetup = functions
         if (invite.role) {
             await admin.auth().setCustomUserClaims(userRecord.uid, { role: invite.role });
         }
+        // Try to generate custom token if IAM permission exists, but do not fail account setup if signBlob is not configured
+        let customToken = null;
+        try {
+            customToken = await admin.auth().createCustomToken(userRecord.uid);
+        }
+        catch (tokenErr) {
+            console.warn('[completeAccountSetup] Could not create custom token (iam.serviceAccounts.signBlob permission not configured). Client will authenticate using email and password.', tokenErr === null || tokenErr === void 0 ? void 0 : tokenErr.message);
+        }
         // Mark invite as used
         await inviteRef.update({
             used: true,
             usedAt: admin.firestore.FieldValue.serverTimestamp(),
         });
-        // Generate custom token for immediate seamless sign-in
-        const customToken = await admin.auth().createCustomToken(userRecord.uid);
         return {
             success: true,
             message: 'Account setup completed successfully!',

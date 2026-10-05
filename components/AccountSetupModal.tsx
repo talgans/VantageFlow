@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { getFunctions, httpsCallable } from 'firebase/functions';
-import { signInWithCustomToken } from 'firebase/auth';
+import { signInWithCustomToken, signInWithEmailAndPassword } from 'firebase/auth';
 import { auth, app } from '../services/firebaseConfig';
 import { ShieldCheckIcon, CheckIcon, XMarkIcon } from './icons';
 
@@ -25,7 +25,7 @@ interface ValidateTokenResponse {
 interface CompleteSetupResponse {
   success: boolean;
   message: string;
-  customToken: string;
+  customToken?: string;
   email: string;
   role: string;
 }
@@ -123,9 +123,20 @@ const AccountSetupModal: React.FC<AccountSetupModalProps> = ({
         displayName: displayName.trim() || undefined,
       });
 
-      if (result.data.success && result.data.customToken) {
+      const targetEmail = result.data.email || email;
+
+      if (result.data.success) {
         // Automatically sign in the user immediately
-        await signInWithCustomToken(auth, result.data.customToken);
+        if (result.data.customToken) {
+          try {
+            await signInWithCustomToken(auth, result.data.customToken);
+          } catch (customTokenErr) {
+            console.warn('Custom token sign-in failed, falling back to email/password:', customTokenErr);
+            await signInWithEmailAndPassword(auth, targetEmail, password);
+          }
+        } else {
+          await signInWithEmailAndPassword(auth, targetEmail, password);
+        }
 
         // Remove token from URL so it doesn't linger in address bar
         const url = new URL(window.location.href);
@@ -133,7 +144,7 @@ const AccountSetupModal: React.FC<AccountSetupModalProps> = ({
         url.searchParams.delete('email');
         window.history.replaceState({}, document.title, url.pathname + (url.search ? url.search : ''));
 
-        showToast(`Welcome to VantageFlow, ${displayName || email}! Your account is ready.`);
+        showToast(`Welcome to VantageFlow, ${displayName || targetEmail}! Your account is ready.`);
         onSuccess?.();
         onClose();
       } else {
@@ -142,6 +153,25 @@ const AccountSetupModal: React.FC<AccountSetupModalProps> = ({
     } catch (err: any) {
       console.error('Account setup error:', err);
       const msg = err.message || 'Failed to complete account setup. Please try again.';
+
+      // If the link was marked used because a previous attempt updated the password before failing on token creation,
+      // attempt signing in directly with the credentials they just set!
+      if (msg.includes('already been used') || msg.includes('failed-precondition')) {
+        try {
+          await signInWithEmailAndPassword(auth, email, password);
+          const url = new URL(window.location.href);
+          url.searchParams.delete('setupToken');
+          url.searchParams.delete('email');
+          window.history.replaceState({}, document.title, url.pathname + (url.search ? url.search : ''));
+          showToast(`Welcome to VantageFlow, ${displayName || email}! Your account is ready.`);
+          onSuccess?.();
+          onClose();
+          return;
+        } catch (signInErr) {
+          console.warn('Auto sign-in fallback also failed:', signInErr);
+        }
+      }
+
       setSubmitError(msg);
     } finally {
       setIsSubmitting(false);
