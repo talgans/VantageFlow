@@ -11,6 +11,7 @@ import ProjectModal from './components/ProjectModal';
 import ConfirmationModal from './components/ConfirmationModal';
 import Toast from './components/Toast';
 import LoginModal from './components/LoginModal';
+import AccountSetupModal from './components/AccountSetupModal';
 import WelcomeScreen from './components/WelcomeScreen';
 import UserAdministrationPage from './components/UserAdministrationPage';
 import UserProfilePage from './components/UserProfilePage';
@@ -39,6 +40,16 @@ const App: React.FC = () => {
 
     // Track previous user to detect login vs token refresh
     const [prevUser, setPrevUser] = useState<typeof user>(null);
+
+    // Account setup token from email invite link (?setupToken=...)
+    const [setupToken, setSetupToken] = useState<string | null>(() => {
+        const params = new URLSearchParams(window.location.search);
+        return params.get('setupToken');
+    });
+    const [setupEmail, setSetupEmail] = useState<string | undefined>(() => {
+        const params = new URLSearchParams(window.location.search);
+        return params.get('email') || undefined;
+    });
 
     // Handle deep links from notification emails (e.g., /project/:id)
     useEffect(() => {
@@ -449,6 +460,19 @@ const App: React.FC = () => {
                 isOpen={isLoginModalOpen}
                 onClose={() => setIsLoginModalOpen(false)}
             />
+            {setupToken && (
+                <AccountSetupModal
+                    isOpen={!!setupToken}
+                    token={setupToken}
+                    initialEmail={setupEmail}
+                    onClose={() => setSetupToken(null)}
+                    showToast={showToast}
+                    onSuccess={() => {
+                        setSetupToken(null);
+                        setCurrentPage('dashboard');
+                    }}
+                />
+            )}
             {isProjectModalOpen && (
                 <ProjectModal
                     onClose={handleCloseProjectModal}

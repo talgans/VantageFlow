@@ -1,6 +1,7 @@
 import * as functions from 'firebase-functions/v1';
 import * as admin from 'firebase-admin';
 import * as nodemailer from 'nodemailer';
+import * as crypto from 'crypto';
 import {
   getInvitationEmail,
   getReminderEmail,
@@ -10,10 +11,57 @@ import {
   getProjectArchivedEmail
 } from './emailTemplates';
 
+// Base web app URL
+const APP_URL = process.env.APP_URL || 'https://vantageflow.vercel.app';
+
 // Prevent double initialization
 if (admin.apps.length === 0) {
   admin.initializeApp();
 }
+
+/**
+ * Creates a cryptographically secure 48-hour invitation token in Firestore (`invites/{token}`)
+ * and invalidates any previous pending invite tokens for the same email.
+ */
+const createInviteToken = async (email: string, role: string, createdBy?: string): Promise<string> => {
+  const normalizedEmail = email.toLowerCase().trim();
+  const db = admin.firestore();
+
+  // Invalidate any existing pending invites for this email
+  const existingInvites = await db.collection('invites')
+    .where('email', '==', normalizedEmail)
+    .where('used', '==', false)
+    .get();
+
+  const batch = db.batch();
+  existingInvites.docs.forEach((doc) => {
+    batch.update(doc.ref, {
+      used: true,
+      invalidated: true,
+      invalidatedAt: admin.firestore.FieldValue.serverTimestamp(),
+    });
+  });
+
+  const token = crypto.randomBytes(32).toString('hex');
+  const inviteRef = db.collection('invites').doc(token);
+
+  // Exactly 48 hours expiration
+  const expiresAt = new Date(Date.now() + 48 * 60 * 60 * 1000);
+
+  batch.set(inviteRef, {
+    token,
+    email: normalizedEmail,
+    role,
+    createdBy: createdBy || 'admin',
+    createdAt: admin.firestore.FieldValue.serverTimestamp(),
+    expiresAt: admin.firestore.Timestamp.fromDate(expiresAt),
+    used: false,
+  });
+
+  await batch.commit();
+  console.log(`[createInviteToken] Created 48-hour invite token for ${normalizedEmail}, expires at: ${expiresAt.toISOString()}`);
+  return token;
+};
 
 interface UserData {
   uid: string;
@@ -440,16 +488,12 @@ export const inviteUser = functions
       console.log(`Setting custom claims: role=${role}`);
       await admin.auth().setCustomUserClaims(userRecord.uid, { role });
 
-      // Generate password reset link with 24-hour expiration
-      console.log('Generating password reset link with 24-hour expiration...');
-      const actionCodeSettings = {
-        url: 'https://vantageflow.vercel.app',
-        handleCodeInApp: false,
-        expiresIn: 86400000, // 24 hours in milliseconds
-      };
-      const resetLink = await admin.auth().generatePasswordResetLink(email, actionCodeSettings);
+      // Generate secure 48-hour invitation token and setup link
+      console.log('Generating 48-hour secure invitation token...');
+      const setupToken = await createInviteToken(email, role, (context as any).auth?.uid);
+      const setupLink = `${APP_URL}/?setupToken=${setupToken}&email=${encodeURIComponent(email)}`;
 
-      const html = getInvitationEmail(role, resetLink);
+      const html = getInvitationEmail(role, setupLink);
 
       const emailSent = await sendEmail(email, 'VantageFlow: Your Account Setup Link', html);
       if (!emailSent) {
@@ -513,15 +557,12 @@ export const sendReminderEmail = functions
 
       const role = existingUser.customClaims?.role || 'member';
 
-      // Generate a new password reset link with 24-hour expiration
-      const actionCodeSettings = {
-        url: 'https://vantageflow.vercel.app',
-        handleCodeInApp: false,
-        expiresIn: 86400000, // 24 hours in milliseconds
-      };
-      const resetLink = await admin.auth().generatePasswordResetLink(email, actionCodeSettings);
+      // Generate fresh 48-hour invitation token for reminder
+      console.log('Generating fresh 48-hour secure invitation token for reminder...');
+      const setupToken = await createInviteToken(email, role, (context as any).auth?.uid);
+      const setupLink = `${APP_URL}/?setupToken=${setupToken}&email=${encodeURIComponent(email)}`;
 
-      const html = getReminderEmail(role, resetLink);
+      const html = getReminderEmail(role, setupLink);
 
       const emailSent = await sendEmail(email, 'VantageFlow: Action Required - Complete Your Account Setup', html);
       if (!emailSent) {
@@ -744,4 +785,138 @@ export const onProjectArchiveStatusChange = functions.firestore
     await Promise.all(notifyPromises);
     console.log(`[onProjectArchiveStatusChange] Notifications sent to ${teamMembers.length} team members.`);
     return null;
+  });
+
+/**
+ * Validate an invitation token before displaying the setup form
+ */
+export const validateInviteToken = functions
+  .runWith({ timeoutSeconds: 30, memory: '256MB' })
+  .https.onCall(async (data: any) => {
+    const { token } = data || {};
+    if (!token || typeof token !== 'string') {
+      throw new functions.https.HttpsError('invalid-argument', 'Invalid or missing invitation token');
+    }
+
+    try {
+      const inviteDoc = await admin.firestore().collection('invites').doc(token).get();
+      if (!inviteDoc.exists) {
+        return { valid: false, reason: 'not_found', message: 'Invitation link is invalid.' };
+      }
+
+      const invite = inviteDoc.data()!;
+      if (invite.used) {
+        return {
+          valid: false,
+          reason: invite.invalidated ? 'superseded' : 'already_used',
+          message: invite.invalidated
+            ? 'This invitation link was superseded by a newer reminder email. Please use the link in the most recent email.'
+            : 'This invitation link has already been used. Please sign in with your email and password.'
+        };
+      }
+
+      const expiresAt = invite.expiresAt?.toDate ? invite.expiresAt.toDate() : new Date(invite.expiresAt);
+      if (Date.now() > expiresAt.getTime()) {
+        return {
+          valid: false,
+          reason: 'expired',
+          message: 'This invitation link has expired (valid for 48 hours). Please ask your administrator to send a new invite.'
+        };
+      }
+
+      return {
+        valid: true,
+        email: invite.email,
+        role: invite.role,
+        expiresAt: expiresAt.toISOString(),
+      };
+    } catch (error: any) {
+      console.error('Error validating invite token:', error);
+      throw new functions.https.HttpsError('internal', 'Failed to validate invitation token');
+    }
+  });
+
+/**
+ * Complete account setup: validates 48-hour invite token, sets user password, and returns a custom token for auto-login
+ */
+export const completeAccountSetup = functions
+  .runWith({ timeoutSeconds: 60, memory: '256MB' })
+  .https.onCall(async (data: any) => {
+    const { token, password, displayName } = data || {};
+
+    if (!token || typeof token !== 'string') {
+      throw new functions.https.HttpsError('invalid-argument', 'Invalid or missing invitation token');
+    }
+
+    if (!password || typeof password !== 'string' || password.length < 6) {
+      throw new functions.https.HttpsError('invalid-argument', 'Password must be at least 6 characters long');
+    }
+
+    const db = admin.firestore();
+    const inviteRef = db.collection('invites').doc(token);
+    const inviteDoc = await inviteRef.get();
+
+    if (!inviteDoc.exists) {
+      throw new functions.https.HttpsError('not-found', 'Invalid invitation link');
+    }
+
+    const invite = inviteDoc.data()!;
+
+    if (invite.used) {
+      const msg = invite.invalidated
+        ? 'This invitation link was superseded by a newer reminder email. Please use the most recent email link.'
+        : 'This invitation link has already been used. Please sign in with your email and password.';
+      throw new functions.https.HttpsError('failed-precondition', msg);
+    }
+
+    const expiresAt = invite.expiresAt?.toDate ? invite.expiresAt.toDate() : new Date(invite.expiresAt);
+    if (Date.now() > expiresAt.getTime()) {
+      throw new functions.https.HttpsError(
+        'deadline-exceeded',
+        'This invitation link has expired after 48 hours. Please request a new invite from your administrator.'
+      );
+    }
+
+    try {
+      // Find the user in Firebase Auth
+      const userRecord = await admin.auth().getUserByEmail(invite.email);
+
+      // Update password, displayName, and mark emailVerified = true
+      const updateData: admin.auth.UpdateRequest = {
+        password,
+        emailVerified: true,
+      };
+
+      if (displayName && typeof displayName === 'string' && displayName.trim().length > 0) {
+        updateData.displayName = displayName.trim();
+      }
+
+      await admin.auth().updateUser(userRecord.uid, updateData);
+
+      // Ensure custom claims for role are set
+      if (invite.role) {
+        await admin.auth().setCustomUserClaims(userRecord.uid, { role: invite.role });
+      }
+
+      // Mark invite as used
+      await inviteRef.update({
+        used: true,
+        usedAt: admin.firestore.FieldValue.serverTimestamp(),
+      });
+
+      // Generate custom token for immediate seamless sign-in
+      const customToken = await admin.auth().createCustomToken(userRecord.uid);
+
+      return {
+        success: true,
+        message: 'Account setup completed successfully!',
+        customToken,
+        email: invite.email,
+        role: invite.role,
+      };
+    } catch (error: any) {
+      console.error('Error completing account setup:', error);
+      if (error instanceof functions.https.HttpsError) throw error;
+      throw new functions.https.HttpsError('internal', `Failed to complete account setup: ${error.message}`);
+    }
   });
