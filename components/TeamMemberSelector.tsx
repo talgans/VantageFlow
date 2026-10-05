@@ -41,9 +41,16 @@ const TeamMemberSelector: React.FC<TeamMemberSelectorProps> = ({
 
         try {
             const functions = getFunctions();
-            const listUsersFunction = httpsCallable(functions, 'listUsers');
-            const result = await listUsersFunction();
-            const data = result.data as { users: User[] };
+            let data: { users: User[] };
+            try {
+                const getDirectoryFunction = httpsCallable(functions, 'getPublicDirectory');
+                const result = await getDirectoryFunction();
+                data = result.data as { users: User[] };
+            } catch {
+                const listUsersFunction = httpsCallable(functions, 'listUsers');
+                const result = await listUsersFunction();
+                data = result.data as { users: User[] };
+            }
             setUsers(data.users);
         } catch (err: any) {
             console.error('Error fetching users:', err);

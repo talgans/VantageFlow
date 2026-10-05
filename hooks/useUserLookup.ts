@@ -35,9 +35,17 @@ export const useUserLookup = () => {
         const fetchUsers = async () => {
             try {
                 const functions = getFunctions();
-                const listUsersFunction = httpsCallable(functions, 'listUsers');
-                const result = await listUsersFunction();
-                const data = result.data as { users: UserInfo[] };
+                // Try getPublicDirectory first (accessible to all authenticated users including members)
+                let data: { users: UserInfo[] };
+                try {
+                    const getDirectoryFunction = httpsCallable(functions, 'getPublicDirectory');
+                    const result = await getDirectoryFunction();
+                    data = result.data as { users: UserInfo[] };
+                } catch {
+                    const listUsersFunction = httpsCallable(functions, 'listUsers');
+                    const result = await listUsersFunction();
+                    data = result.data as { users: UserInfo[] };
+                }
 
                 const usersByUid = new Map<string, UserInfo>();
                 const usersByEmail = new Map<string, UserInfo>();

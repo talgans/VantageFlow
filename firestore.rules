@@ -83,8 +83,15 @@ service cloud.firestore {
     
     // Projects collection - RBAC and Privacy enforced
     match /projects/{projectId} {
-      // Read: Allowed if project is public, or user is owner/member, or user is SuperAdmin
-      allow read: if canViewProject(resource.data);
+      // Get: Read individual project doc if public, user is owner/member, or SuperAdmin
+      allow get: if canViewProject(resource.data);
+
+      // List: Queries matching array-contains on memberUids, isPublic == true, or SuperAdmin
+      allow list: if isAuthenticated() && (
+        isSuperAdmin() ||
+        resource.data.isPublic == true ||
+        request.auth.uid in resource.data.memberUids
+      );
       
       // Create: Managers, Admins, and SuperAdmins can create projects
       allow create: if isManager();
