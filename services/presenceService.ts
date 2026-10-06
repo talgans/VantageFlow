@@ -10,8 +10,8 @@ import { db } from './firebaseConfig';
 import { UserPresence } from '../types';
 
 const PRESENCE_COLLECTION = 'presence';
-const HEARTBEAT_INTERVAL_MS = 45000; // 45 seconds
-const ONLINE_THRESHOLD_MS = 2 * 60 * 1000; // 2 minutes
+const HEARTBEAT_INTERVAL_MS = 30000; // 30 seconds
+const ONLINE_THRESHOLD_MS = 4 * 60 * 1000; // 4 minutes
 
 class PresenceService {
   private heartbeatTimer: any = null;
@@ -172,10 +172,15 @@ class PresenceService {
       (snapshot) => {
         const now = Date.now();
         const activeUsers: UserPresence[] = [];
+        let hasCurrentUser = false;
 
         snapshot.forEach((docSnap) => {
-          const data = docSnap.data() as any;
+          // Use estimate so pending local serverTimestamp writes don't evaluate to null
+          const data = docSnap.data({ serverTimestamps: 'estimate' }) as any;
           if (!data || data.state === 'offline') return;
+
+          const uid = data.uid || docSnap.id;
+          const isCurrentUser = uid === this.currentUser?.uid;
 
           let lastSeenMillis = 0;
           if (data.lastSeen instanceof Timestamp) {
@@ -188,20 +193,41 @@ class PresenceService {
             lastSeenMillis = data.lastSeen;
           }
 
+          // If it's the current active session, default to now if timestamp is still pending
+          if (isCurrentUser && lastSeenMillis === 0) {
+            lastSeenMillis = now;
+          }
+
           // Must have been seen within the threshold
-          if (now - lastSeenMillis <= ONLINE_THRESHOLD_MS) {
+          if (now - lastSeenMillis <= ONLINE_THRESHOLD_MS || isCurrentUser) {
+            if (isCurrentUser) hasCurrentUser = true;
+
             activeUsers.push({
-              uid: data.uid || docSnap.id,
+              uid,
               displayName: data.displayName || 'Member',
               email: data.email || '',
               photoURL: data.photoURL || null,
               role: data.role || 'Team Member',
               currentProjectId: data.currentProjectId || null,
-              lastSeen: data.lastSeen,
+              lastSeen: data.lastSeen || new Date(),
               state: 'online',
             });
           }
         });
+
+        // Ensure current active user is always represented if authenticated
+        if (!hasCurrentUser && this.currentUser?.uid) {
+          activeUsers.unshift({
+            uid: this.currentUser.uid,
+            displayName: this.currentUser.displayName || (this.currentUser.email ? this.currentUser.email.split('@')[0] : 'User'),
+            email: this.currentUser.email || '',
+            photoURL: this.currentUser.photoURL || null,
+            role: this.currentUser.role || 'Team Member',
+            currentProjectId: this.activeProjectId,
+            lastSeen: new Date(),
+            state: 'online',
+          });
+        }
 
         callback(activeUsers);
       },
