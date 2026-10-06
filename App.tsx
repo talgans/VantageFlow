@@ -9,6 +9,7 @@ import Header from './components/Header';
 import SideNav from './components/SideNav';
 import ProjectModal from './components/ProjectModal';
 import ConfirmationModal from './components/ConfirmationModal';
+import DeleteProjectModal from './components/DeleteProjectModal';
 import Toast from './components/Toast';
 import LoginModal from './components/LoginModal';
 import AccountSetupModal from './components/AccountSetupModal';
@@ -25,6 +26,8 @@ import {
     createProject,
     updateProject as updateFirestoreProject,
     deleteProject as deleteFirestoreProject,
+    softDeleteProject,
+    restoreProject,
     isFirestoreAvailable,
 } from './services/firestoreService';
 
@@ -109,6 +112,7 @@ const App: React.FC = () => {
     const [editingProject, setEditingProject] = useState<Project | null>(null);
     const [openWithTextImport, setOpenWithTextImport] = useState(false);
     const [projectToDelete, setProjectToDelete] = useState<Project | null>(null);
+    const [deleteModalMode, setDeleteModalMode] = useState<'soft' | 'permanent'>('soft');
     const [toast, setToast] = useState<string | null>(null);
 
     const showToast = (message: string) => {
@@ -323,29 +327,81 @@ const App: React.FC = () => {
 
     const handleRequestDeleteProject = (project: Project) => {
         setProjectToDelete(project);
+        setDeleteModalMode(project.isDeleted ? 'permanent' : 'soft');
     };
 
-    const handleConfirmDeleteProject = async () => {
-        if (!projectToDelete) return;
+    const handleRequestPermanentDeleteProject = (project: Project) => {
+        setProjectToDelete(project);
+        setDeleteModalMode('permanent');
+    };
 
-        if (!canDeleteProject(projectToDelete)) {
+    const handleConfirmSoftDelete = async (project: Project) => {
+        if (!user) return;
+        try {
+            await softDeleteProject(project.id, {
+                uid: user.uid,
+                displayName: user.displayName || undefined,
+                email: user.email || undefined,
+            });
+
+            if (selectedProject?.id === project.id) {
+                setSelectedProject(null);
+            }
+
+            setProjectToDelete(null);
+            showToast(`"${project.name}" moved to Trash. You can restore it anytime.`);
+        } catch (error) {
+            console.error('Error moving project to trash:', error);
+            showToast('Failed to move project to Trash');
+        }
+    };
+
+    const handleConfirmPermanentDelete = async (project: Project) => {
+        if (!canDeleteProject(project)) {
             showToast('You do not have permission to delete this project');
             setProjectToDelete(null);
             return;
         }
 
         try {
-            await deleteFirestoreProject(projectToDelete.id);
+            await deleteFirestoreProject(project.id);
 
-            if (selectedProject?.id === projectToDelete.id) {
+            if (selectedProject?.id === project.id) {
                 setSelectedProject(null);
             }
 
             setProjectToDelete(null);
-            showToast('Project deleted successfully');
+            showToast(`Project "${project.name}" permanently deleted.`);
         } catch (error) {
-            console.error('Error deleting project:', error);
+            console.error('Error permanently deleting project:', error);
             showToast('Failed to delete project');
+        }
+    };
+
+    const handleRestoreProject = async (project: Project) => {
+        try {
+            await restoreProject(project.id);
+            showToast(`Project "${project.name}" restored successfully.`);
+        } catch (error) {
+            console.error('Error restoring project:', error);
+            showToast('Failed to restore project');
+        }
+    };
+
+    const handleArchiveProjectFromModal = async (project: Project) => {
+        try {
+            const updatedProject = {
+                ...project,
+                isArchived: true,
+                archivedAt: new Date(),
+                archivedBy: user?.uid,
+            };
+            await updateFirestoreProject(updatedProject);
+            setProjectToDelete(null);
+            showToast(`Project "${project.name}" archived successfully.`);
+        } catch (error) {
+            console.error('Error archiving project:', error);
+            showToast('Failed to archive project');
         }
     };
 
@@ -471,7 +527,7 @@ const App: React.FC = () => {
                             showToast={showToast}
                         />
                     ) : currentPage === 'performance' ? (
-                        <UserPerformanceDashboard projects={projects} />
+                        <UserPerformanceDashboard projects={projects.filter(p => !p.isDeleted)} />
                     ) : currentPage === 'projects' ? (
                         <ProjectsList
                             projects={projects}
@@ -480,6 +536,8 @@ const App: React.FC = () => {
                             onShowPasteModal={handleShowPasteModal}
                             onEditProject={handleShowEditProjectModal}
                             onDeleteProject={handleRequestDeleteProject}
+                            onRestoreProject={handleRestoreProject}
+                            onPermanentDeleteProject={handleRequestPermanentDeleteProject}
                             canModify={canModify(currentUserRole)}
                             canDeleteProject={canDeleteProject}
                             isProjectDeleteProtected={isProjectDeleteProtected}
@@ -533,12 +591,15 @@ const App: React.FC = () => {
                 />
             )}
             {projectToDelete && (
-                <ConfirmationModal
+                <DeleteProjectModal
                     isOpen={!!projectToDelete}
+                    project={projectToDelete}
+                    initialMode={deleteModalMode}
                     onClose={() => setProjectToDelete(null)}
-                    onConfirm={handleConfirmDeleteProject}
-                    title="Delete Project"
-                    message={<>Are you sure you want to delete the project "<strong>{projectToDelete.name}</strong>"? This action cannot be undone.</>}
+                    onMoveToTrash={handleConfirmSoftDelete}
+                    onArchive={handleArchiveProjectFromModal}
+                    onPermanentDelete={handleConfirmPermanentDelete}
+                    canPermanentDelete={canDeleteProject(projectToDelete)}
                 />
             )}
             {toast && <Toast message={toast} />}

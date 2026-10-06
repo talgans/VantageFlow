@@ -124,6 +124,11 @@ export interface Project {
   archivedBy?: string; // UID of who archived
   // Privacy: false/undefined = private (members/owner only), true = public to all users
   isPublic?: boolean;
+  // Project Lifecycle: Soft Delete state
+  isDeleted?: boolean;
+  deletedAt?: Date;
+  deletedBy?: string;
+  deletedByName?: string;
 }
 
 export enum UserRole {

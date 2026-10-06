@@ -2167,6 +2167,22 @@ const ProjectDetail: React.FC<ProjectDetailProps> = ({ project, onBack, canEdit,
         </div>
       </div>
 
+      {/* In Trash Banner */}
+      {project.isDeleted && (
+        <div className="p-4 bg-red-950/40 border border-red-800/60 rounded-xl flex items-center justify-between text-sm text-red-200 shadow-md">
+          <div className="flex items-center gap-3">
+            <span className="text-2xl">🗑️</span>
+            <div>
+              <strong className="text-red-300 font-semibold">This project is in the Trash</strong>
+              <p className="text-xs text-red-300/80 mt-0.5">
+                Deleted on {project.deletedAt ? new Date(project.deletedAt).toLocaleDateString() : 'Recently'}
+                {project.deletedByName ? ` by ${project.deletedByName}` : ''}. You can restore it from the Projects list Trash tab.
+              </p>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Collapsible Summary Row (Title Card + Sections Card) — auto-collapses after 3s unless clicked or hovered */}
       <div
         onMouseEnter={() => setIsTopBandHovered(true)}

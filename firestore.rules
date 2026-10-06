@@ -72,6 +72,21 @@ service cloud.firestore {
     function isUnarchiving() {
       return request.resource.data.get('isArchived', false) == false && resource.data.get('isArchived', false) == true;
     }
+
+    // Check if project is in trash (soft-deleted)
+    function isDeleted(projectData) {
+      return projectData.get('isDeleted', false) == true;
+    }
+
+    // Check if update is restoring from trash (setting isDeleted to false)
+    function isRestoring() {
+      return request.resource.data.get('isDeleted', false) == false && resource.data.get('isDeleted', false) == true;
+    }
+
+    // Check if update is soft-deleting (moving to trash)
+    function isSoftDeleting() {
+      return request.resource.data.get('isDeleted', false) == true && resource.data.get('isDeleted', false) == false;
+    }
     
     // Users collection
     match /users/{userId} {
@@ -106,9 +121,9 @@ service cloud.firestore {
       // Create: Managers, Admins, and SuperAdmins can create projects
       allow create: if isManager();
       
-      // Update: Owner, SuperAdmin, or assigned Admin can update, but NOT if archived (unless unarchiving)
+      // Update: Owner, SuperAdmin, or assigned Admin can update, but NOT if archived or in trash (unless unarchiving, restoring, or soft-deleting)
       allow update: if canUpdateProject(resource.data) && 
-                       (!isArchived(resource.data) || isUnarchiving());
+                       ((!isArchived(resource.data) && !isDeleted(resource.data)) || isUnarchiving() || isRestoring() || isSoftDeleting());
       
       // Delete: Controlled by canDeleteProject
       allow delete: if canDeleteProject(resource.data);

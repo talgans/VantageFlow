@@ -55,7 +55,7 @@ const MasterDashboard: React.FC<MasterDashboardProps> = ({
     const membersMap = new Map<string, TeamMember>();
     const emailMap = new Set<string>();
 
-    projects.forEach(p => {
+    projects.filter(p => !p.isDeleted).forEach(p => {
       p.team?.members?.forEach(m => {
         if (!membersMap.has(m.uid) && !emailMap.has(m.email.toLowerCase())) {
           membersMap.set(m.uid, m);
@@ -72,6 +72,7 @@ const MasterDashboard: React.FC<MasterDashboardProps> = ({
 
   const filteredProjects = useMemo(() => {
     return projects.filter(p => {
+      if (p.isDeleted) return false;
       if (filterTitle && !p.name.toLowerCase().includes(filterTitle.toLowerCase())) return false;
       if (filterMemberId !== 'all') {
         const isMember = p.team?.members?.some(m => m.uid === filterMemberId);

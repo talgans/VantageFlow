@@ -4,6 +4,7 @@ import {
   addDoc,
   updateDoc,
   deleteDoc,
+  deleteField,
   onSnapshot,
   query,
   where,
@@ -108,6 +109,13 @@ const convertFirestoreDocToProject = (docData: DocumentData): Project => {
       tasks: phase.tasks?.map(convertTaskDatesFromFirestore) || [],
     })) || [],
     isPublic: docData.isPublic === true,
+    isArchived: docData.isArchived === true,
+    archivedAt: docData.archivedAt?.toDate ? docData.archivedAt.toDate() : (docData.archivedAt ? new Date(docData.archivedAt) : undefined),
+    archivedBy: docData.archivedBy,
+    isDeleted: docData.isDeleted === true,
+    deletedAt: docData.deletedAt?.toDate ? docData.deletedAt.toDate() : (docData.deletedAt ? new Date(docData.deletedAt) : undefined),
+    deletedBy: docData.deletedBy,
+    deletedByName: docData.deletedByName,
   };
   return converted as Project;
 };
@@ -210,6 +218,19 @@ const convertProjectToFirestore = (project: Omit<Project, 'id'> | Project): any 
     }
     if ((project as any).archivedBy) {
       data.archivedBy = (project as any).archivedBy;
+    }
+
+    // Project Lifecycle: Soft Delete fields
+    data.isDeleted = (project as any).isDeleted ?? false;
+    if ((project as any).deletedAt) {
+      const deletedAt = (project as any).deletedAt;
+      data.deletedAt = deletedAt instanceof Date ? Timestamp.fromDate(deletedAt) : deletedAt;
+    }
+    if ((project as any).deletedBy) {
+      data.deletedBy = (project as any).deletedBy;
+    }
+    if ((project as any).deletedByName) {
+      data.deletedByName = (project as any).deletedByName;
     }
 
     console.log('Converted Firestore data:', data);
@@ -421,7 +442,50 @@ export const updateProject = async (project: Project): Promise<void> => {
 };
 
 /**
- * Delete a project
+ * Soft delete a project (moves project to Trash / Recently Deleted)
+ */
+export const softDeleteProject = async (
+  projectId: string,
+  user: { uid: string; displayName?: string; email?: string }
+): Promise<void> => {
+  try {
+    const docRef = doc(db, 'projects', projectId);
+    await updateDoc(docRef, {
+      isDeleted: true,
+      deletedAt: Timestamp.now(),
+      deletedBy: user.uid,
+      deletedByName: user.displayName || user.email || 'User',
+      updatedAt: Timestamp.now(),
+    });
+    console.log('Project soft-deleted (moved to Trash):', projectId);
+  } catch (error) {
+    console.error('Error soft-deleting project:', error);
+    throw new Error('Failed to move project to Trash. Please try again.');
+  }
+};
+
+/**
+ * Restore a soft-deleted project from Trash
+ */
+export const restoreProject = async (projectId: string): Promise<void> => {
+  try {
+    const docRef = doc(db, 'projects', projectId);
+    await updateDoc(docRef, {
+      isDeleted: false,
+      deletedAt: deleteField(),
+      deletedBy: deleteField(),
+      deletedByName: deleteField(),
+      updatedAt: Timestamp.now(),
+    });
+    console.log('Project restored from Trash:', projectId);
+  } catch (error) {
+    console.error('Error restoring project:', error);
+    throw new Error('Failed to restore project. Please try again.');
+  }
+};
+
+/**
+ * Permanently delete a project from Firestore (Hard Delete)
  */
 export const deleteProject = async (projectId: string): Promise<void> => {
   try {

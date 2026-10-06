@@ -117,6 +117,10 @@ export interface Project {
   isArchived?: boolean;
   archivedAt?: Date;
   archivedBy?: string;
+  isDeleted?: boolean;
+  deletedAt?: Date;
+  deletedBy?: string;
+  deletedByName?: string;
 }
 
 export enum UserRole {

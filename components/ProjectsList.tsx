@@ -13,6 +13,8 @@ interface ProjectsListProps {
     onShowPasteModal: () => void;
     onEditProject: (project: Project) => void;
     onDeleteProject: (project: Project) => void;
+    onRestoreProject?: (project: Project) => void;
+    onPermanentDeleteProject?: (project: Project) => void;
     canModify: boolean;
     canDeleteProject?: (project: Project) => boolean;
     isProjectDeleteProtected?: (project: Project) => boolean;
@@ -25,6 +27,8 @@ const ProjectsList: React.FC<ProjectsListProps> = ({
     onShowPasteModal,
     onEditProject,
     onDeleteProject,
+    onRestoreProject,
+    onPermanentDeleteProject,
     canModify,
     canDeleteProject,
     isProjectDeleteProtected
@@ -101,18 +105,32 @@ const ProjectsList: React.FC<ProjectsListProps> = ({
         return { status: TaskStatus.Zero, label: '0%' };
     }
 
+    const [lifecycleFilter, setLifecycleFilter] = React.useState<'active' | 'archived' | 'trash'>('active');
     const [timeFilter, setTimeFilter] = React.useState<'all' | 'today' | 'week' | 'month' | 'quarter' | 'year'>('all');
     const [typeFilter, setTypeFilter] = React.useState<string>('all');
     const [searchQuery, setSearchQuery] = React.useState<string>('');
 
-    // Get unique project types for filter
+    const activeCount = React.useMemo(() => projects.filter(p => !p.isDeleted && !p.isArchived).length, [projects]);
+    const archivedCount = React.useMemo(() => projects.filter(p => !p.isDeleted && p.isArchived).length, [projects]);
+    const trashCount = React.useMemo(() => projects.filter(p => p.isDeleted).length, [projects]);
+
+    // Get unique project types for filter (from non-deleted projects)
     const projectTypes = React.useMemo(() => {
-        const types = new Set(projects.map(p => p.coreSystem).filter(Boolean));
+        const types = new Set(projects.filter(p => !p.isDeleted).map(p => p.coreSystem).filter(Boolean));
         return Array.from(types).sort();
     }, [projects]);
 
     const filteredProjects = React.useMemo(() => {
         return projects.filter(project => {
+            // Filter by Lifecycle (Active vs Archived vs Trash)
+            if (lifecycleFilter === 'active') {
+                if (project.isDeleted || project.isArchived) return false;
+            } else if (lifecycleFilter === 'archived') {
+                if (project.isDeleted || !project.isArchived) return false;
+            } else if (lifecycleFilter === 'trash') {
+                if (!project.isDeleted) return false;
+            }
+
             // Filter by Search Query
             if (searchQuery && !project.name.toLowerCase().includes(searchQuery.toLowerCase()) &&
                 !project.coreSystem.toLowerCase().includes(searchQuery.toLowerCase())) {
@@ -179,8 +197,69 @@ const ProjectsList: React.FC<ProjectsListProps> = ({
                         )}
                     </div>
 
+                    {/* Lifecycle Status Tabs */}
+                    <div className="flex items-center gap-2 border-b border-slate-700/60 pb-3 flex-wrap">
+                        <button
+                            onClick={() => setLifecycleFilter('active')}
+                            className={`flex items-center gap-2 px-3.5 py-1.5 rounded-lg text-xs font-semibold transition-all ${lifecycleFilter === 'active'
+                                ? 'bg-brand-secondary text-white shadow-sm'
+                                : 'text-slate-400 hover:text-white hover:bg-slate-700/50'
+                                }`}
+                        >
+                            <span>Active Projects</span>
+                            <span className={`px-1.5 py-0.5 rounded-full text-[10px] ${lifecycleFilter === 'active' ? 'bg-white/20 text-white' : 'bg-slate-800 text-slate-400'
+                                }`}>
+                                {activeCount}
+                            </span>
+                        </button>
+
+                        <button
+                            onClick={() => setLifecycleFilter('archived')}
+                            className={`flex items-center gap-2 px-3.5 py-1.5 rounded-lg text-xs font-semibold transition-all ${lifecycleFilter === 'archived'
+                                ? 'bg-amber-600 text-white shadow-sm'
+                                : 'text-slate-400 hover:text-white hover:bg-slate-700/50'
+                                }`}
+                        >
+                            <span>Archived</span>
+                            <span className={`px-1.5 py-0.5 rounded-full text-[10px] ${lifecycleFilter === 'archived' ? 'bg-white/20 text-white' : 'bg-slate-800 text-slate-400'
+                                }`}>
+                                {archivedCount}
+                            </span>
+                        </button>
+
+                        <button
+                            onClick={() => setLifecycleFilter('trash')}
+                            className={`flex items-center gap-2 px-3.5 py-1.5 rounded-lg text-xs font-semibold transition-all ${lifecycleFilter === 'trash'
+                                ? 'bg-red-600/90 text-white shadow-sm'
+                                : 'text-slate-400 hover:text-white hover:bg-slate-700/50'
+                                }`}
+                        >
+                            <span className="flex items-center gap-1">
+                                <span>Trash</span>
+                            </span>
+                            <span className={`px-1.5 py-0.5 rounded-full text-[10px] ${trashCount > 0
+                                ? (lifecycleFilter === 'trash' ? 'bg-white/20 text-white' : 'bg-red-500/20 text-red-400 font-bold')
+                                : 'bg-slate-800 text-slate-400'
+                                }`}>
+                                {trashCount}
+                            </span>
+                        </button>
+                    </div>
+
+                    {/* Trash Information Banner */}
+                    {lifecycleFilter === 'trash' && (
+                        <div className="p-3.5 bg-red-950/20 border border-red-900/40 rounded-xl flex items-center justify-between text-xs text-red-200">
+                            <div className="flex items-center gap-2.5">
+                                <span className="text-base">🗑️</span>
+                                <div>
+                                    <strong className="text-red-300">Recycle Bin (Recently Deleted):</strong> Projects here are safe from active workflows. You can restore them anytime with a single click, or permanently delete them with typed confirmation.
+                                </div>
+                            </div>
+                        </div>
+                    )}
+
                     {/* Filters */}
-                    <div className="flex flex-wrap gap-4 items-center pt-2">
+                    <div className="flex flex-wrap gap-4 items-center pt-1">
                         {/* Search Input */}
                         <div className="relative">
                             <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
@@ -285,12 +364,18 @@ const ProjectsList: React.FC<ProjectsListProps> = ({
                                                 </span>
                                             )}
                                             {/* Archived indicator */}
-                                            {project.isArchived && (
+                                            {project.isArchived && !project.isDeleted && (
                                                 <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-amber-500/10 text-amber-400 border border-amber-500/30">
                                                     <svg className="w-3 h-3 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M5 8h14M5 8a2 2 0 110-4h14a2 2 0 110 4M5 8v10a2 2 0 002 2h10a2 2 0 002-2V8m-9 4h4" />
                                                     </svg>
                                                     Archived
+                                                </span>
+                                            )}
+                                            {/* In Trash indicator */}
+                                            {project.isDeleted && (
+                                                <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-red-500/10 text-red-400 border border-red-500/30">
+                                                    <span className="mr-1">🗑️</span> In Trash
                                                 </span>
                                             )}
                                             <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${(() => {
@@ -343,6 +428,16 @@ const ProjectsList: React.FC<ProjectsListProps> = ({
                                             <span className="text-slate-600">•</span>
                                             <span>Created: {project.createdAt ? new Date(project.createdAt).toLocaleDateString() : 'N/A'}</span>
 
+                                            {project.isDeleted && (
+                                                <>
+                                                    <span className="text-slate-600">•</span>
+                                                    <span className="text-red-400 font-medium">
+                                                        Deleted: {project.deletedAt ? new Date(project.deletedAt).toLocaleDateString() : 'Recently'}
+                                                        {project.deletedByName ? ` by ${project.deletedByName}` : ''}
+                                                    </span>
+                                                </>
+                                            )}
+
                                             {/* Member count chart */}
                                             {getMemberCount(project) > 0 && (
                                                 <MemberCountChart count={getMemberCount(project)} size={32} />
@@ -351,7 +446,39 @@ const ProjectsList: React.FC<ProjectsListProps> = ({
                                     </div>
                                 </div>
                                 <div className="flex items-center space-x-2 ml-4">
-                                    {canModify ? (
+                                    {project.isDeleted ? (
+                                        <div className="flex items-center space-x-2">
+                                            <button
+                                                onClick={(e) => { e.stopPropagation(); onRestoreProject?.(project); }}
+                                                className="flex items-center gap-1.5 px-3 py-1.5 bg-emerald-600/20 hover:bg-emerald-600 text-emerald-300 hover:text-white rounded-lg text-xs font-semibold border border-emerald-500/30 transition-all shadow-sm"
+                                                title="Restore project to active list"
+                                            >
+                                                <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                                                </svg>
+                                                <span>Restore</span>
+                                            </button>
+                                            {canDeleteProject && canDeleteProject(project) ? (
+                                                <button
+                                                    onClick={(e) => { e.stopPropagation(); onPermanentDeleteProject?.(project); }}
+                                                    className="flex items-center gap-1 px-2.5 py-1.5 bg-red-500/10 hover:bg-red-600 text-red-400 hover:text-white rounded-lg text-xs font-medium border border-red-500/20 transition-all"
+                                                    title="Permanently delete project"
+                                                >
+                                                    <TrashIcon className="w-3.5 h-3.5" />
+                                                    <span>Delete</span>
+                                                </button>
+                                            ) : isProjectDeleteProtected && isProjectDeleteProtected(project) ? (
+                                                <button
+                                                    disabled
+                                                    onClick={(e) => e.stopPropagation()}
+                                                    className="p-1.5 text-slate-600 rounded cursor-not-allowed opacity-40 hover:text-slate-600"
+                                                    title="Protected: Projects created by primary SuperAdmin (talgans@gmail.com) cannot be deleted"
+                                                >
+                                                    <TrashIcon className="w-4 h-4" />
+                                                </button>
+                                            ) : null}
+                                        </div>
+                                    ) : canModify ? (
                                         <>
                                             <button onClick={(e) => { e.stopPropagation(); onEditProject(project); }} className="p-2 text-slate-400 hover:text-white rounded-full hover:bg-slate-700 transition-colors" title="Edit project">
                                                 <PencilIcon className="w-5 h-5" />
