@@ -68,6 +68,7 @@ const ProjectModal: React.FC<ProjectModalProps> = ({ onClose, onSave, projectToE
   });
 
   const [teamMembers, setTeamMembers] = useState<TeamMember[]>([]);
+  const [formerMembers, setFormerMembers] = useState<TeamMember[]>([]);
   const [phases, setPhases] = useState<Phase[]>([]);
   const [errors, setErrors] = useState<Partial<typeof formData>>({});
   const [showTextImport, setShowTextImport] = useState(false);
@@ -94,9 +95,11 @@ const ProjectModal: React.FC<ProjectModalProps> = ({ onClose, onSave, projectToE
       if (projectToEdit.team?.members) {
         setTeamMembers(projectToEdit.team.members);
       }
+      setFormerMembers(projectToEdit.team?.formerMembers || []);
       setPhases(JSON.parse(JSON.stringify(projectToEdit.phases || [])));
     } else if (currentUserId && currentUserEmail) {
       setIsPublic(false);
+      setFormerMembers([]);
       // For new projects, auto-add creator as primary lead
       setTeamMembers([{
         uid: currentUserId,
@@ -163,6 +166,64 @@ const ProjectModal: React.FC<ProjectModalProps> = ({ onClose, onSave, projectToE
     return Object.keys(newErrors).length === 0 && teamMembers.length > 0;
   };
 
+  const handleMemberRemovedWithChoice = (member: TeamMember, choice: 'former' | 'clear') => {
+    if (choice === 'former') {
+      // Add to formerMembers with isFormerMember flag
+      setFormerMembers(prev => {
+        if (prev.some(m => m.uid === member.uid)) return prev;
+        return [...prev, { ...member, isFormerMember: true, departedAt: new Date() }];
+      });
+      // Mark them as former member on tasks in phases
+      setPhases(prevPhases => prevPhases.map(phase => ({
+        ...phase,
+        assignees: phase.assignees?.map(a => a.uid === member.uid ? { ...a, isFormerMember: true } : a),
+        tasks: phase.tasks.map(task => ({
+          ...task,
+          assignees: task.assignees?.map(a => a.uid === member.uid ? { ...a, isFormerMember: true } : a),
+          subTasks: task.subTasks?.map(sub => ({
+            ...sub,
+            assignees: sub.assignees?.map(a => a.uid === member.uid ? { ...a, isFormerMember: true } : a),
+          })),
+        })),
+      })));
+    } else if (choice === 'clear') {
+      // Unassign them completely from all tasks and phases
+      setFormerMembers(prev => prev.filter(m => m.uid !== member.uid));
+      setPhases(prevPhases => prevPhases.map(phase => ({
+        ...phase,
+        assignees: phase.assignees?.filter(a => a.uid !== member.uid),
+        tasks: phase.tasks.map(task => ({
+          ...task,
+          assignees: task.assignees?.filter(a => a.uid !== member.uid),
+          subTasks: task.subTasks?.map(sub => ({
+            ...sub,
+            assignees: sub.assignees?.filter(a => a.uid !== member.uid),
+          })),
+        })),
+      })));
+    }
+  };
+
+  const handleRestoreFormerMember = (member: TeamMember) => {
+    // Remove from formerMembers and add back to teamMembers
+    setFormerMembers(prev => prev.filter(m => m.uid !== member.uid));
+    const restoredMember = { ...member, isFormerMember: false, departedAt: undefined };
+    setTeamMembers(prev => [...prev, restoredMember]);
+    // Update in phases as active member again
+    setPhases(prevPhases => prevPhases.map(phase => ({
+      ...phase,
+      assignees: phase.assignees?.map(a => a.uid === member.uid ? { ...a, isFormerMember: false } : a),
+      tasks: phase.tasks.map(task => ({
+        ...task,
+        assignees: task.assignees?.map(a => a.uid === member.uid ? { ...a, isFormerMember: false } : a),
+        subTasks: task.subTasks?.map(sub => ({
+          ...sub,
+          assignees: sub.assignees?.map(a => a.uid === member.uid ? { ...a, isFormerMember: false } : a),
+        })),
+      })),
+    })));
+  };
+
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     if (validate()) {
@@ -178,6 +239,7 @@ const ProjectModal: React.FC<ProjectModalProps> = ({ onClose, onSave, projectToE
         team: {
           ...(projectToEdit?.team || {}),
           members: teamMembers,
+          formerMembers: formerMembers,
         },
         cost: Number(formData.cost) || 0,
         currency: formData.currency,
@@ -583,6 +645,10 @@ const ProjectModal: React.FC<ProjectModalProps> = ({ onClose, onSave, projectToE
                   selectedMembers={teamMembers}
                   onChange={setTeamMembers}
                   projectOwnerId={projectOwnerId}
+                  phases={phases}
+                  formerMembers={formerMembers}
+                  onMemberRemovedWithChoice={handleMemberRemovedWithChoice}
+                  onRestoreFormerMember={handleRestoreFormerMember}
                 />
                 {teamError && <p className="mt-2 text-xs text-red-500">{teamError}</p>}
               </div>

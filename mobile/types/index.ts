@@ -32,6 +32,8 @@ export interface TeamMember {
   photoURL?: string;
   phoneNumber?: string;
   leadRole?: 'primary' | 'secondary';
+  isFormerMember?: boolean;
+  departedAt?: Date;
 }
 
 export interface Task {
@@ -98,6 +100,7 @@ export interface Project {
   durationUnit: DurationUnit;
   team: {
     members: TeamMember[];
+    formerMembers?: TeamMember[];
     name?: string;
     size?: number;
     manager?: string;

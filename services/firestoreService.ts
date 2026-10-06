@@ -87,6 +87,7 @@ const convertFirestoreDocToProject = (docData: DocumentData): Project => {
   const team = docData.team || {};
   const normalizedTeam = {
     members: team.members || [],
+    formerMembers: team.formerMembers || [],
     // Keep legacy fields for backward compatibility
     name: team.name,
     size: team.size,
@@ -149,6 +150,7 @@ const convertProjectToFirestore = (project: Omit<Project, 'id'> | Project): any 
     // Prepare team data, ensuring members array exists
     const teamData = {
       members: project.team?.members || [],
+      ...(project.team?.formerMembers && { formerMembers: project.team.formerMembers }),
       ...(project.team?.name && { name: project.team.name }),
       ...(project.team?.size !== undefined && { size: project.team.size }),
       ...(project.team?.manager && { manager: project.team.manager }),
@@ -187,13 +189,16 @@ const convertProjectToFirestore = (project: Omit<Project, 'id'> | Project): any 
     if ((project as any).ownerName) data.ownerName = (project as any).ownerName;
     if ((project as any).ownerPhotoURL) data.ownerPhotoURL = (project as any).ownerPhotoURL;
 
-    // RBAC: Compute memberUids from existing memberUids, team members + owner for efficient security rules
-    const memberUids = new Set<string>((project as any).memberUids || []);
+    // RBAC: Compute memberUids strictly from owner + active team members for Firestore security rules.
+    // Former or removed members are strictly excluded so they immediately lose read/list access to private projects.
+    const memberUids = new Set<string>();
     if (project.ownerId) {
       memberUids.add(project.ownerId);
     }
     (project.team?.members || []).forEach((m: any) => {
-      if (m.uid) memberUids.add(m.uid);
+      if (m.uid && !m.isFormerMember) {
+        memberUids.add(m.uid);
+      }
     });
     data.memberUids = Array.from(memberUids);
 

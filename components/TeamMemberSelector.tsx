@@ -4,6 +4,8 @@ import { XMarkIcon, UserIcon, MagnifyingGlassIcon, StarIcon } from './icons';
 import { getFunctions, httpsCallable } from 'firebase/functions';
 import UserAchievementBadge from './UserAchievementBadge';
 
+import { Phase } from '../types';
+
 interface User {
     uid: string;
     email: string;
@@ -17,6 +19,10 @@ interface TeamMemberSelectorProps {
     onChange: (members: TeamMember[]) => void;
     projectOwnerId?: string; // The project owner is auto-set as primary lead
     disabled?: boolean;
+    phases?: Phase[];
+    formerMembers?: TeamMember[];
+    onMemberRemovedWithChoice?: (member: TeamMember, choice: 'former' | 'clear') => void;
+    onRestoreFormerMember?: (member: TeamMember) => void;
 }
 
 const TeamMemberSelector: React.FC<TeamMemberSelectorProps> = ({
@@ -24,12 +30,22 @@ const TeamMemberSelector: React.FC<TeamMemberSelectorProps> = ({
     onChange,
     projectOwnerId,
     disabled = false,
+    phases,
+    formerMembers = [],
+    onMemberRemovedWithChoice,
+    onRestoreFormerMember,
 }) => {
     const [users, setUsers] = useState<User[]>([]);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState<string | null>(null);
     const [searchQuery, setSearchQuery] = useState('');
     const [isExpanded, setIsExpanded] = useState(false);
+    const [isFormerExpanded, setIsFormerExpanded] = useState(false);
+    const [pendingRemoval, setPendingRemoval] = useState<{
+        member: TeamMember;
+        taskCount: number;
+    } | null>(null);
+    const [removalChoice, setRemovalChoice] = useState<'former' | 'clear'>('former');
 
     useEffect(() => {
         fetchUsers();
@@ -74,13 +90,57 @@ const TeamMemberSelector: React.FC<TeamMemberSelectorProps> = ({
     const getSelectedMember = (uid: string) => selectedMembers.find((m) => m.uid === uid);
     const isPrimaryLead = (uid: string) => uid === projectOwnerId;
 
+    const getAssignedTaskCount = (uid: string) => {
+        if (!phases) return 0;
+        let count = 0;
+        phases.forEach((phase) => {
+            (phase.tasks || []).forEach((task) => {
+                if (task.assignees?.some((a) => a.uid === uid) || task.ownerId === uid) {
+                    count++;
+                }
+                (task.subTasks || []).forEach((sub) => {
+                    if (sub.assignees?.some((a) => a.uid === uid) || sub.ownerId === uid) {
+                        count++;
+                    }
+                });
+            });
+        });
+        return count;
+    };
+
+    const initiateRemoveMember = (uid: string) => {
+        if (disabled) return;
+        if (isPrimaryLead(uid)) return;
+
+        const member = getSelectedMember(uid);
+        if (!member) return;
+
+        const taskCount = getAssignedTaskCount(uid);
+        if (taskCount > 0) {
+            setPendingRemoval({ member, taskCount });
+            setRemovalChoice('former');
+        } else {
+            // No tasks assigned, remove directly
+            onChange(selectedMembers.filter((m) => m.uid !== uid));
+            onMemberRemovedWithChoice?.(member, 'clear');
+        }
+    };
+
+    const confirmRemoval = () => {
+        if (!pendingRemoval) return;
+        const { member } = pendingRemoval;
+        onMemberRemovedWithChoice?.(member, removalChoice);
+        onChange(selectedMembers.filter((m) => m.uid !== member.uid));
+        setPendingRemoval(null);
+    };
+
     const handleToggleMember = (user: User) => {
         if (disabled) return;
         // Cannot remove the project owner
         if (isSelected(user.uid) && isPrimaryLead(user.uid)) return;
 
         if (isSelected(user.uid)) {
-            onChange(selectedMembers.filter((m) => m.uid !== user.uid));
+            initiateRemoveMember(user.uid);
         } else {
             onChange([
                 ...selectedMembers,
@@ -116,10 +176,7 @@ const TeamMemberSelector: React.FC<TeamMemberSelectorProps> = ({
 
     const handleRemoveMember = (uid: string, e: React.MouseEvent) => {
         e.stopPropagation();
-        if (disabled) return;
-        // Cannot remove the project owner
-        if (isPrimaryLead(uid)) return;
-        onChange(selectedMembers.filter((m) => m.uid !== uid));
+        initiateRemoveMember(uid);
     };
 
     const primaryLeads = selectedMembers.filter((m) => m.leadRole === 'primary');
@@ -308,6 +365,145 @@ const TeamMemberSelector: React.FC<TeamMemberSelectorProps> = ({
                                 );
                             })
                         )}
+                    </div>
+                </div>
+            )}
+
+            {/* Former Project Members (Retained for Historical Attribution) */}
+            {formerMembers && formerMembers.length > 0 && (
+                <div className="pt-2 border-t border-slate-700/60">
+                    <div className="flex items-center justify-between">
+                        <span className="text-xs font-medium text-slate-400 flex items-center gap-1.5">
+                            <span className="w-1.5 h-1.5 rounded-full bg-amber-400/80"></span>
+                            Former Project Members ({formerMembers.length})
+                        </span>
+                        <button
+                            type="button"
+                            onClick={() => setIsFormerExpanded(!isFormerExpanded)}
+                            className="text-xs text-brand-light hover:text-white transition-colors"
+                        >
+                            {isFormerExpanded ? 'Hide' : 'View'}
+                        </button>
+                    </div>
+                    {isFormerExpanded && (
+                        <div className="mt-2 space-y-1 bg-slate-900/40 border border-slate-700/60 rounded-lg p-2 max-h-40 overflow-y-auto">
+                            {formerMembers.map((fm) => (
+                                <div key={fm.uid} className="flex items-center justify-between p-2 rounded hover:bg-slate-800/60 text-xs">
+                                    <div className="flex items-center gap-2 min-w-0">
+                                        <div className="w-6 h-6 rounded-full bg-slate-700 border border-slate-600 flex items-center justify-center shrink-0 text-[10px] text-slate-300">
+                                            {fm.photoURL ? <img src={fm.photoURL} className="w-6 h-6 rounded-full" alt="" /> : (fm.displayName?.[0] || fm.email[0]).toUpperCase()}
+                                        </div>
+                                        <div className="truncate">
+                                            <span className="font-medium text-slate-300 truncate block">
+                                                {fm.displayName || fm.email}
+                                            </span>
+                                            <span className="text-[10px] text-slate-500">Retained for task attribution</span>
+                                        </div>
+                                    </div>
+                                    {onRestoreFormerMember && !disabled && (
+                                        <button
+                                            type="button"
+                                            onClick={() => onRestoreFormerMember(fm)}
+                                            className="px-2 py-1 text-[11px] font-medium bg-brand-secondary/20 hover:bg-brand-secondary/30 text-brand-light rounded border border-brand-secondary/30 transition-colors ml-2 shrink-0"
+                                        >
+                                            Re-add to Team
+                                        </button>
+                                    )}
+                                </div>
+                            ))}
+                        </div>
+                    )}
+                </div>
+            )}
+
+            {/* Member Removal Confirmation Dialog */}
+            {pendingRemoval && (
+                <div className="fixed inset-0 bg-black/75 z-50 flex items-center justify-center p-4" onClick={() => setPendingRemoval(null)}>
+                    <div className="bg-slate-800 border border-slate-700 rounded-xl max-w-md w-full p-6 shadow-2xl space-y-4" onClick={(e) => e.stopPropagation()}>
+                        <div className="flex items-center gap-3 border-b border-slate-700 pb-3">
+                            <div className="w-10 h-10 rounded-full bg-amber-500/20 text-amber-300 flex items-center justify-center shrink-0">
+                                <UserIcon className="w-5 h-5" />
+                            </div>
+                            <div>
+                                <h3 className="text-base font-semibold text-white">Remove Team Member</h3>
+                                <p className="text-xs text-slate-400">
+                                    {pendingRemoval.member.displayName || pendingRemoval.member.email}
+                                </p>
+                            </div>
+                        </div>
+
+                        <div className="bg-amber-500/10 border border-amber-500/30 rounded-lg p-3 text-xs text-amber-200">
+                            This member is currently assigned to <strong className="text-white">{pendingRemoval.taskCount} task(s)</strong> in this project.
+                            Choose how to handle their assigned tasks:
+                        </div>
+
+                        <div className="space-y-3 pt-1">
+                            <label className={`block p-3 rounded-lg border cursor-pointer transition-colors ${
+                                removalChoice === 'former'
+                                    ? 'bg-brand-secondary/10 border-brand-secondary text-white'
+                                    : 'bg-slate-900/40 border-slate-700 text-slate-300 hover:bg-slate-700/40'
+                            }`}>
+                                <div className="flex items-start gap-3">
+                                    <input
+                                        type="radio"
+                                        name="removalChoice"
+                                        checked={removalChoice === 'former'}
+                                        onChange={() => setRemovalChoice('former')}
+                                        className="mt-1 text-brand-secondary focus:ring-brand-secondary"
+                                    />
+                                    <div>
+                                        <p className="text-sm font-semibold flex items-center gap-2">
+                                            Retain as Former Member
+                                            <span className="text-[10px] bg-green-500/20 text-green-300 px-1.5 py-0.5 rounded font-normal">Recommended</span>
+                                        </p>
+                                        <p className="text-xs text-slate-400 mt-1">
+                                            Preserves their name and avatar on past & existing tasks to keep historical records and deliverables intact. Their access to this project is immediately revoked.
+                                        </p>
+                                    </div>
+                                </div>
+                            </label>
+
+                            <label className={`block p-3 rounded-lg border cursor-pointer transition-colors ${
+                                removalChoice === 'clear'
+                                    ? 'bg-red-500/10 border-red-500/50 text-white'
+                                    : 'bg-slate-900/40 border-slate-700 text-slate-300 hover:bg-slate-700/40'
+                            }`}>
+                                <div className="flex items-start gap-3">
+                                    <input
+                                        type="radio"
+                                        name="removalChoice"
+                                        checked={removalChoice === 'clear'}
+                                        onChange={() => setRemovalChoice('clear')}
+                                        className="mt-1 text-red-500 focus:ring-red-500"
+                                    />
+                                    <div>
+                                        <p className="text-sm font-semibold text-red-300">
+                                            Unassign from All Tasks
+                                        </p>
+                                        <p className="text-xs text-slate-400 mt-1">
+                                            Completely removes them from all {pendingRemoval.taskCount} task(s) in this project.
+                                        </p>
+                                    </div>
+                                </div>
+                            </label>
+                        </div>
+
+                        <div className="flex gap-3 pt-2">
+                            <button
+                                type="button"
+                                onClick={() => setPendingRemoval(null)}
+                                className="flex-1 px-4 py-2 bg-slate-700 hover:bg-slate-600 text-slate-200 rounded-lg text-sm font-medium transition-colors"
+                            >
+                                Cancel
+                            </button>
+                            <button
+                                type="button"
+                                onClick={confirmRemoval}
+                                className="flex-1 px-4 py-2 bg-brand-primary hover:bg-brand-primary/90 text-white rounded-lg text-sm font-medium transition-colors"
+                            >
+                                Confirm Removal
+                            </button>
+                        </div>
                     </div>
                 </div>
             )}

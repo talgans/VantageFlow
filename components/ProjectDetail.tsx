@@ -1182,9 +1182,13 @@ const TaskRow: React.FC<TaskRowProps> = ({ task, level, isExpanded, onToggleExpa
                       name = name.charAt(0).toUpperCase() + name.slice(1);
                     }
 
+                    const isFormer = a.isFormerMember || (project.team?.formerMembers && project.team.formerMembers.some(fm => fm.uid === a.uid));
+
                     return (
-                      <div key={i} className="w-6 h-6 shrink-0 rounded-full bg-slate-600 border border-slate-700 flex items-center justify-center text-[10px] text-white cursor-help"
-                        title={`${name} (${a.email})`}>
+                      <div key={i} className={`w-6 h-6 shrink-0 rounded-full flex items-center justify-center text-[10px] text-white cursor-help border ${
+                        isFormer ? 'bg-slate-700 border-amber-500/60 ring-1 ring-amber-500/30' : 'bg-slate-600 border-slate-700'
+                      }`}
+                        title={`${name} (${a.email})${isFormer ? ' — Former Member' : ''}`}>
                         {photoURL ? <img src={photoURL} className="w-6 h-6 rounded-full" alt="" /> : (displayName?.[0] || a.email[0]).toUpperCase()}
                       </div>
                     );
@@ -2916,9 +2920,13 @@ const ProjectDetail: React.FC<ProjectDetailProps> = ({ project, onBack, canEdit,
                             name = name.charAt(0).toUpperCase() + name.slice(1);
                           }
 
+                          const isFormer = assignee.isFormerMember || (project.team?.formerMembers && project.team.formerMembers.some(fm => fm.uid === assignee.uid));
+
                           return (
-                            <div key={i} className="w-6 h-6 rounded-full bg-slate-700 border border-slate-800 flex items-center justify-center text-xs overflow-hidden"
-                              title={`${name} (${assignee.email})`}>
+                            <div key={i} className={`w-6 h-6 rounded-full flex items-center justify-center text-xs overflow-hidden border ${
+                              isFormer ? 'bg-slate-700 border-amber-500/60 ring-1 ring-amber-500/30' : 'bg-slate-700 border-slate-800'
+                            }`}
+                              title={`${name} (${assignee.email})${isFormer ? ' — Former Member' : ''}`}>
                               {photoURL ? <img src={photoURL} alt="" className="w-6 h-6 rounded-full" /> : (displayName?.[0] || assignee.email[0]).toUpperCase()}
                             </div>
                           );

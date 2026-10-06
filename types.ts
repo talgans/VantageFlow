@@ -33,6 +33,8 @@ export interface TeamMember {
   photoURL?: string;
   phoneNumber?: string;
   leadRole?: 'primary' | 'secondary'; // undefined = regular member, primary = project owner, secondary = other leads
+  isFormerMember?: boolean; // true if member was removed from active team but retained for task attribution
+  departedAt?: Date;
 }
 
 export interface Task {
@@ -100,6 +102,7 @@ export interface Project {
   durationUnit: DurationUnit; // hours/days/weeks/months
   team: {
     members: TeamMember[];
+    formerMembers?: TeamMember[]; // Historical records of members who contributed to tasks
     // Legacy fields for backward compatibility
     name?: string;
     size?: number;

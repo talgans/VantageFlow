@@ -35,6 +35,13 @@ const ResponsibilitySelector: React.FC<ResponsibilitySelectorProps> = ({
     // Use the user lookup hook for dynamic data
     const { getUserById, hasUserLoggedIn, loading: usersLoading } = useUserLookup();
 
+    const teamMemberUids = useMemo(() => new Set(teamMembers.map(m => m.uid)), [teamMembers]);
+
+    // Members who were previously assigned to this task but are no longer in the active project team
+    const formerAssignedMembers = useMemo(() => {
+        return assignedMembers.filter(m => !teamMemberUids.has(m.uid));
+    }, [assignedMembers, teamMemberUids]);
+
     // Filter members: exclude those who haven't logged in (pending invitation)
     const activatedMembers = useMemo(() => {
         return teamMembers.filter(member => hasUserLoggedIn(member.uid, member.email));
@@ -61,11 +68,7 @@ const ResponsibilitySelector: React.FC<ResponsibilitySelectorProps> = ({
     };
 
     const handleSaveClick = () => {
-        // If notify is checked, we might want to confirm? 
-        // The user requirement was "Ask for send confirmation".
-        // If we have a checkbox, that IS the user choice. 
-        // But maybe they want a pop-up to be absolutely sure?
-        // "Ask for send confirmation" implies a modal.
+        // If notify is checked, ask for confirmation
         if (notify && selectedIds.size > 0) {
             setShowConfirmation(true);
         } else {
@@ -74,8 +77,8 @@ const ResponsibilitySelector: React.FC<ResponsibilitySelectorProps> = ({
     };
 
     const finalizeSave = () => {
-        // Enrich members with fresh user data (including photoURL) before saving
-        const finalMembers = teamMembers
+        // Enrich active members with fresh user data before saving
+        const activeMembers = teamMembers
             .filter(m => selectedIds.has(m.uid))
             .map(member => {
                 const cachedUser = getUserById(member.uid, member.email);
@@ -85,6 +88,16 @@ const ResponsibilitySelector: React.FC<ResponsibilitySelectorProps> = ({
                     photoURL: cachedUser?.photoURL || member.photoURL,
                 };
             });
+
+        // Retain former assignees who are still selected (preserves historical attribution)
+        const preservedFormer = formerAssignedMembers
+            .filter(m => selectedIds.has(m.uid))
+            .map(member => ({
+                ...member,
+                isFormerMember: true,
+            }));
+
+        const finalMembers = [...activeMembers, ...preservedFormer];
         onSave(finalMembers, notify, propagate);
     };
 
@@ -171,6 +184,75 @@ const ResponsibilitySelector: React.FC<ResponsibilitySelectorProps> = ({
                                 </div>
                             );
                         })}
+                    </div>
+                )}
+
+                {/* Former Contributors / Past Assignees */}
+                {formerAssignedMembers.length > 0 && (
+                    <div className="mt-4 pt-3 border-t border-slate-700/80">
+                        <div className="flex items-center justify-between mb-2 px-1">
+                            <span className="text-xs font-semibold uppercase tracking-wider text-amber-400/90 flex items-center gap-1.5">
+                                <span className="w-1.5 h-1.5 rounded-full bg-amber-400"></span>
+                                Past Contributors / Former Members
+                            </span>
+                            <span className="text-[11px] text-slate-400">
+                                Historical record
+                            </span>
+                        </div>
+                        <div className="space-y-1">
+                            {formerAssignedMembers.map(member => {
+                                const isSelected = selectedIds.has(member.uid);
+                                const cachedUser = getUserById(member.uid, member.email);
+                                const displayName = cachedUser?.displayName || member.displayName;
+                                const photoURL = cachedUser?.photoURL || member.photoURL;
+
+                                let name = displayName;
+                                if (!name || name.includes('@')) {
+                                    name = member.email.split('@')[0];
+                                    name = name.charAt(0).toUpperCase() + name.slice(1);
+                                }
+
+                                return (
+                                    <div
+                                        key={member.uid}
+                                        onClick={() => toggleMember(member.uid)}
+                                        className={`flex items-center p-2 rounded-lg cursor-pointer transition-colors ${
+                                            isSelected
+                                                ? 'bg-amber-500/10 border border-amber-500/30'
+                                                : 'hover:bg-slate-700/60 border border-transparent opacity-60'
+                                        }`}
+                                    >
+                                        <div className="w-8 h-8 rounded-full flex items-center justify-center mr-3 bg-amber-500/20 text-amber-300 border border-amber-500/30 shrink-0">
+                                            {photoURL ? (
+                                                <img src={photoURL} alt="" className="w-8 h-8 rounded-full" />
+                                            ) : (
+                                                <UserIcon className="w-4 h-4" />
+                                            )}
+                                        </div>
+                                        <div className="flex-1 min-w-0">
+                                            <div className="flex items-center gap-2">
+                                                <p className={`text-sm font-medium ${isSelected ? 'text-amber-200' : 'text-slate-400 line-through'}`}>
+                                                    {name}
+                                                </p>
+                                                <span className="text-[10px] bg-amber-500/20 text-amber-300 border border-amber-500/30 px-1.5 py-0.5 rounded font-medium">
+                                                    Former Member
+                                                </span>
+                                            </div>
+                                            <p className="text-xs text-slate-500 truncate">{member.email}</p>
+                                        </div>
+                                        <div className={`w-5 h-5 rounded border flex items-center justify-center ml-2 ${
+                                            isSelected ? 'bg-amber-500 border-amber-500' : 'border-slate-600'
+                                        }`}>
+                                            {isSelected && (
+                                                <svg className="w-3.5 h-3.5 text-slate-900" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M5 13l4 4L19 7" />
+                                                </svg>
+                                            )}
+                                        </div>
+                                    </div>
+                                );
+                            })}
+                        </div>
                     </div>
                 )}
             </div>

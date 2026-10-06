@@ -318,8 +318,74 @@ export const deleteUser = functions.https.onCall(async (data, context) => {
       throw new functions.https.HttpsError('permission-denied', 'Only SuperAdmins can delete a SuperAdmin user');
     }
 
+    // Reassign any projects owned by this user to SuperAdmin to prevent orphaned projects
+    const db = admin.firestore();
+    let superAdminUid = (context as any).auth.uid;
+    try {
+      const superAdminRecord = await admin.auth().getUserByEmail('talgans@gmail.com');
+      if (superAdminRecord) superAdminUid = superAdminRecord.uid;
+    } catch (e) {
+      console.warn('[deleteUser] Could not locate primary superadmin by email, using caller UID');
+    }
+
+    const ownedProjectsQuery = await db.collection('projects').where('ownerId', '==', uid).get();
+    const batch = db.batch();
+
+    ownedProjectsQuery.docs.forEach((doc) => {
+      batch.update(doc.ref, {
+        ownerId: superAdminUid,
+        ownerEmail: 'talgans@gmail.com',
+        ownerName: 'SuperAdmin',
+        updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+      });
+    });
+
+    // Remove user from memberUids across all projects to immediately revoke access to private projects,
+    // while moving them to formerMembers to preserve task attribution and historical records
+    const memberProjectsQuery = await db.collection('projects').where('memberUids', 'array-contains', uid).get();
+    memberProjectsQuery.docs.forEach((doc) => {
+      const data = doc.data();
+      const currentMemberUids: string[] = data.memberUids || [];
+      const updatedMemberUids = currentMemberUids.filter((id) => id !== uid);
+
+      const team = data.team || {};
+      const currentMembers: any[] = team.members || [];
+      const formerMembers: any[] = team.formerMembers || [];
+
+      const memberToMove = currentMembers.find((m) => m.uid === uid);
+      const updatedMembers = currentMembers.filter((m) => m.uid !== uid);
+
+      if (memberToMove && !formerMembers.some((fm) => fm.uid === uid)) {
+        formerMembers.push({
+          ...memberToMove,
+          isFormerMember: true,
+          departedAt: admin.firestore.FieldValue.serverTimestamp(),
+        });
+      }
+
+      batch.update(doc.ref, {
+        memberUids: updatedMemberUids,
+        'team.members': updatedMembers,
+        'team.formerMembers': formerMembers,
+        updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+      });
+    });
+
+    // Mark user record in /users collection as deleted
+    const userDocRef = db.collection('users').doc(uid);
+    batch.set(
+      userDocRef,
+      {
+        isDeleted: true,
+        deletedAt: admin.firestore.FieldValue.serverTimestamp(),
+      },
+      { merge: true }
+    );
+
+    await batch.commit();
+
     await admin.auth().deleteUser(uid);
-    return { success: true, message: 'User deleted successfully' };
+    return { success: true, message: 'User deleted and projects safely updated' };
   } catch (error) {
     console.error('Error deleting user:', error);
     if (error instanceof functions.https.HttpsError) throw error;
