@@ -895,6 +895,7 @@ interface TaskRowProps {
   checkPermission: (ownerId?: string) => boolean;
   onAssign?: (task: Task) => void;
   projectTeam?: TeamMember[];
+  formerMembers?: TeamMember[];
   getUserDisplayName?: (uid: string, email?: string) => string | undefined;
   getUserPhotoURL?: (uid: string, email?: string) => string | undefined;
   onImageUpload?: (taskId: string, file: File) => void;
@@ -902,7 +903,7 @@ interface TaskRowProps {
   onViewImage?: (imageUrl: string) => void;
 }
 
-const TaskRow: React.FC<TaskRowProps> = ({ task, level, isExpanded, onToggleExpand, addingSubtaskTo, setAddingSubtaskTo, canEdit, handleSaveSubtask, editingField, setEditingField, handleUpdateTaskField, onRequestDelete, phaseId, parentId, onDragStart, onDragOver, onDrop, onDragEnd, onDragLeave, draggedItemId, dropTarget, checkPermission, onAssign, projectTeam, getUserDisplayName, getUserPhotoURL, onImageUpload, onRemoveImage, onViewImage }) => {
+const TaskRow: React.FC<TaskRowProps> = ({ task, level, isExpanded, onToggleExpand, addingSubtaskTo, setAddingSubtaskTo, canEdit, handleSaveSubtask, editingField, setEditingField, handleUpdateTaskField, onRequestDelete, phaseId, parentId, onDragStart, onDragOver, onDrop, onDragEnd, onDragLeave, draggedItemId, dropTarget, checkPermission, onAssign, projectTeam, formerMembers, getUserDisplayName, getUserPhotoURL, onImageUpload, onRemoveImage, onViewImage }) => {
   const effectivePriority = getEffectivePriority(task);
   const priorityColor = PRIORITY_COLORS[effectivePriority];
   const isPriorityUnset = task.priority === undefined || task.priority === null;
@@ -1182,7 +1183,7 @@ const TaskRow: React.FC<TaskRowProps> = ({ task, level, isExpanded, onToggleExpa
                       name = name.charAt(0).toUpperCase() + name.slice(1);
                     }
 
-                    const isFormer = a.isFormerMember || (project.team?.formerMembers && project.team.formerMembers.some(fm => fm.uid === a.uid));
+                    const isFormer = a.isFormerMember || (formerMembers && formerMembers.some(fm => fm.uid === a.uid));
 
                     return (
                       <div key={i} className={`w-6 h-6 shrink-0 rounded-full flex items-center justify-center text-[10px] text-white cursor-help border ${
@@ -1264,6 +1265,9 @@ const TaskRow: React.FC<TaskRowProps> = ({ task, level, isExpanded, onToggleExpa
             draggedItemId={draggedItemId}
             dropTarget={dropTarget}
             checkPermission={checkPermission}
+            onAssign={onAssign}
+            projectTeam={projectTeam}
+            formerMembers={formerMembers}
             getUserDisplayName={getUserDisplayName}
             getUserPhotoURL={getUserPhotoURL}
             onImageUpload={onImageUpload}
@@ -3022,6 +3026,7 @@ const ProjectDetail: React.FC<ProjectDetailProps> = ({ project, onBack, canEdit,
                             });
                           }}
                           projectTeam={project.team?.members || []}
+                          formerMembers={project.team?.formerMembers || []}
                           getUserDisplayName={getUserDisplayName}
                           getUserPhotoURL={getUserPhotoURL}
                           onImageUpload={handleTaskImageUpload}
