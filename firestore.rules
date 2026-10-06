@@ -76,9 +76,13 @@ service cloud.firestore {
     // Users collection
     match /users/{userId} {
       allow read: if isAuthenticated();
-      allow write: if isSuperAdmin() || 
-                      (isAdmin() && resource.data.get('email', '') != 'talgans@gmail.com' && resource.data.get('role', '') != 'superadmin') || 
-                      request.auth.uid == userId;
+      allow create: if isSuperAdmin() || 
+                       (isAdmin() && request.resource.data.get('email', '') != 'talgans@gmail.com' && request.resource.data.get('role', '') != 'superadmin') || 
+                       request.auth.uid == userId;
+      allow update: if isSuperAdmin() || 
+                       (isAdmin() && resource.data.get('email', '') != 'talgans@gmail.com' && resource.data.get('role', '') != 'superadmin') || 
+                       request.auth.uid == userId;
+      allow delete: if isSuperAdmin();
     }
     
     // Presence collection (heartbeat and online status)
@@ -119,16 +123,15 @@ service cloud.firestore {
     // Force Logout collection (for role changes)
     match /forceLogout/{userId} {
       allow read: if isAuthenticated() && request.auth.uid == userId;
-      allow write: if isAdmin();
+      allow create, update, delete: if isAdmin();
     }
 
     // Notifications
     match /notifications/{notificationId} {
       // User can read their own notifications (both get and list)
-      // For list queries, we rely on the client filtering by userId == request.auth.uid
-      allow read: if isAuthenticated() && (
-        resource == null || resource.data.userId == request.auth.uid
-      );
+      // Client queries must filter by where('userId', '==', auth.uid)
+      allow get: if isAuthenticated() && resource.data.userId == request.auth.uid;
+      allow list: if isAuthenticated() && resource.data.userId == request.auth.uid;
       // User can mark their own notifications as read (update)
       allow update: if isAuthenticated() && resource.data.userId == request.auth.uid;
       // Cloud functions (admin SDK) bypass rules, so no create needed here unless client creates.
