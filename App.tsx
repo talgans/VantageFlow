@@ -18,6 +18,7 @@ import UserProfilePage from './components/UserProfilePage';
 import UserPerformanceDashboard from './components/UserPerformanceDashboard';
 import RoleChangeNotification from './components/RoleChangeNotification';
 import { useAuth } from './contexts/AuthContext';
+import { presenceService } from './services/presenceService';
 import {
     subscribeToProjects,
     subscribeToUserProjects,
@@ -93,6 +94,14 @@ const App: React.FC = () => {
         }
         setPrevUser(user);
     }, [user, prevUser, pendingProjectId]);
+
+    // Keep presence service informed of the actively viewed project
+    useEffect(() => {
+        if (user) {
+            presenceService.updateCurrentProject(selectedProject?.id || null);
+        }
+    }, [user, selectedProject]);
+
     const [isSideNavOpen, setIsSideNavOpen] = useState(false);
     const [isSideNavCollapsed, setIsSideNavCollapsed] = useState(false);
 
@@ -342,6 +351,9 @@ const App: React.FC = () => {
 
     const handleSignOut = async () => {
         try {
+            if (user?.uid) {
+                await presenceService.setOffline(user.uid);
+            }
             await signOut();
             showToast('Signed out successfully');
         } catch (error) {

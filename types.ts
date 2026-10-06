@@ -129,3 +129,14 @@ export enum UserRole {
   Manager = 'Project Manager',
   Member = 'Team Member',
 }
+
+export interface UserPresence {
+  uid: string;
+  displayName: string;
+  email: string;
+  photoURL?: string | null;
+  role?: string;
+  currentProjectId?: string | null;
+  lastSeen: any; // Firestore serverTimestamp, Timestamp, or Date
+  state: 'online' | 'away' | 'offline';
+}

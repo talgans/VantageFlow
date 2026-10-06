@@ -111,6 +111,8 @@ import { useUserLookup } from '../hooks/useUserLookup';
 import SectionStatusDonut from './charts/SectionStatusDonut';
 import PriorityDonut from './charts/PriorityDonut';
 import UserAchievementBadge from './UserAchievementBadge';
+import { usePresence } from '../hooks/usePresence';
+import OnlineUsersPanel from './OnlineUsersPanel';
 
 // Helper function to calculate task progress recursively
 const calculateTaskProgress = (task: Task): number => {
@@ -1305,6 +1307,8 @@ const SortableHeaderCell: React.FC<SortableHeaderCellProps> = ({ label, sortKey,
 
 
 const ProjectDetail: React.FC<ProjectDetailProps> = ({ project, onBack, canEdit, onUpdateProject, showToast, currentUserId, currentUserEmail, userRole, onEditProject }) => {
+  const { getProjectOnlineUsers } = usePresence(project.id);
+  const projectOnlineUsers = useMemo(() => getProjectOnlineUsers(project), [getProjectOnlineUsers, project]);
   const [aiInsight, setAiInsight] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [expandedTasks, setExpandedTasks] = useState<Set<string>>(new Set());
@@ -2130,7 +2134,15 @@ const ProjectDetail: React.FC<ProjectDetailProps> = ({ project, onBack, canEdit,
           <span>Back to Projects</span>
         </button>
 
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2.5">
+          <OnlineUsersPanel
+            users={projectOnlineUsers}
+            currentUserId={currentUserId}
+            currentProjectId={project.id}
+            title="Project Members Online"
+            alignPopover="right"
+          />
+
           {/* Discreet Archive Button */}
           {canArchive && !project.isArchived && (
             <button

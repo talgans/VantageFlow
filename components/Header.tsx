@@ -4,7 +4,9 @@ import { UserRole, Project, TaskStatus } from '../types';
 import { UsersIcon, Bars3Icon, UserIcon, ChevronDownIcon } from './icons';
 import { useAuth } from '../contexts/AuthContext';
 import { useUserLookup } from '../hooks/useUserLookup';
+import { usePresence } from '../hooks/usePresence';
 import UserAchievementBadge from './UserAchievementBadge';
+import OnlineUsersPanel from './OnlineUsersPanel';
 
 interface HeaderProps {
   currentUserRole: UserRole;
@@ -18,6 +20,7 @@ interface HeaderProps {
 const Header: React.FC<HeaderProps> = ({ currentUserRole, onSignOut, onSignInClick, onMenuClick, onNavigateToProfile, projects = [] }) => {
   const { user } = useAuth();
   const { getUserById } = useUserLookup();
+  const { onlineUsers } = usePresence();
   const [isUserMenuOpen, setIsUserMenuOpen] = useState(false);
   const dropdownRef = useRef<HTMLDivElement>(null);
 
@@ -89,7 +92,15 @@ const Header: React.FC<HeaderProps> = ({ currentUserRole, onSignOut, onSignInCli
           VantageFlow
         </h1>
       </div>
-      <div className="flex items-center space-x-4">
+      <div className="flex items-center space-x-3 sm:space-x-4">
+        {user && (
+          <OnlineUsersPanel
+            users={onlineUsers}
+            currentUserId={user.uid}
+            title="Online Teammates"
+            alignPopover="right"
+          />
+        )}
         {user ? (
           <div className="relative" ref={dropdownRef}>
             <button
