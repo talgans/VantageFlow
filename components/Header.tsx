@@ -108,10 +108,10 @@ const Header: React.FC<HeaderProps> = ({ currentUserRole, onSignOut, onSignInCli
               className="flex items-center space-x-2 px-3 py-1.5 bg-slate-800 rounded-lg border border-slate-700 hover:bg-slate-700 transition-colors cursor-pointer"
             >
               {photoURL ? (
-                <img src={photoURL} alt="" className="w-7 h-7 rounded-full" />
+                <img src={photoURL} alt="" className="w-8 h-8 rounded-md object-cover" />
               ) : (
-                <div className="w-7 h-7 rounded-full bg-slate-700 flex items-center justify-center">
-                  <UsersIcon className="w-4 h-4 text-slate-400" />
+                <div className="w-8 h-8 rounded-md bg-slate-700 flex items-center justify-center">
+                  <UsersIcon className="w-4.5 h-4.5 text-slate-400" />
                 </div>
               )}
               <div className="text-sm text-left">
