@@ -1,5 +1,5 @@
-import React, { useState, useEffect, useRef } from 'react';
-import { UserIcon, ShieldCheckIcon, TrashIcon, EnvelopeIcon, PlusCircleIcon, XMarkIcon, PencilIcon, CheckIcon, CameraIcon } from './icons';
+import React, { useState, useEffect, useRef, useMemo } from 'react';
+import { UserIcon, ShieldCheckIcon, TrashIcon, EnvelopeIcon, PlusCircleIcon, XMarkIcon, PencilIcon, CheckIcon, CameraIcon, MagnifyingGlassIcon } from './icons';
 import { getFunctions, httpsCallable } from 'firebase/functions';
 import { app } from '../services/firebaseConfig';
 import { UserRole } from '../types';
@@ -23,6 +23,7 @@ interface User {
   role: string;
   createdAt: string;
   lastSignIn?: string;
+  phoneNumber?: string;
 }
 
 interface UserAdministrationPageProps {
@@ -39,6 +40,12 @@ const UserAdministrationPage: React.FC<UserAdministrationPageProps> = ({
   const [error, setError] = useState<string | null>(null);
   const [updatingUserId, setUpdatingUserId] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState<'users' | 'permissions' | 'invite'>('users');
+
+  // Search, filter, and sort state
+  const [searchQuery, setSearchQuery] = useState('');
+  const [roleFilter, setRoleFilter] = useState('all');
+  const [statusFilter, setStatusFilter] = useState<'all' | 'active' | 'pending'>('all');
+  const [sortBy, setSortBy] = useState<'name-asc' | 'name-desc' | 'recent' | 'role'>('name-asc');
 
   // Invite form state
   const [inviteEmail, setInviteEmail] = useState('');
@@ -372,6 +379,61 @@ const UserAdministrationPage: React.FC<UserAdministrationPageProps> = ({
   // Get available roles for dropdowns
   const availableRoles = Object.keys(permissions);
 
+  // Filtered and sorted users
+  const filteredUsers = useMemo(() => {
+    return users
+      .filter(user => {
+        // Search query filter (matches name, email, phone)
+        if (searchQuery.trim()) {
+          const q = searchQuery.trim().toLowerCase();
+          const nameMatch = (user.displayName || '').toLowerCase().includes(q);
+          const emailMatch = (user.email || '').toLowerCase().includes(q);
+          const phoneMatch = (user.phoneNumber || '').toLowerCase().includes(q);
+          if (!nameMatch && !emailMatch && !phoneMatch) {
+            return false;
+          }
+        }
+
+        // Role filter
+        if (roleFilter !== 'all') {
+          const effectiveRole = user.email?.toLowerCase() === 'talgans@gmail.com' ? 'superadmin' : user.role.toLowerCase();
+          if (effectiveRole !== roleFilter.toLowerCase()) {
+            return false;
+          }
+        }
+
+        // Status filter
+        if (statusFilter === 'active' && !user.lastSignIn) {
+          return false;
+        }
+        if (statusFilter === 'pending' && user.lastSignIn) {
+          return false;
+        }
+
+        return true;
+      })
+      .sort((a, b) => {
+        if (sortBy === 'name-asc') {
+          const nameA = a.displayName || a.email;
+          const nameB = b.displayName || b.email;
+          return nameA.localeCompare(nameB);
+        } else if (sortBy === 'name-desc') {
+          const nameA = a.displayName || a.email;
+          const nameB = b.displayName || b.email;
+          return nameB.localeCompare(nameA);
+        } else if (sortBy === 'recent') {
+          const timeA = new Date(a.createdAt || 0).getTime();
+          const timeB = new Date(b.createdAt || 0).getTime();
+          return timeB - timeA;
+        } else if (sortBy === 'role') {
+          const roleA = a.email?.toLowerCase() === 'talgans@gmail.com' ? 'superadmin' : a.role;
+          const roleB = b.email?.toLowerCase() === 'talgans@gmail.com' ? 'superadmin' : b.role;
+          return roleA.localeCompare(roleB);
+        }
+        return 0;
+      });
+  }, [users, searchQuery, roleFilter, statusFilter, sortBy]);
+
   return (
     <div className="space-y-6">
       {/* Page Header */}
@@ -438,92 +500,221 @@ const UserAdministrationPage: React.FC<UserAdministrationPageProps> = ({
                 </div>
               </div>
             ) : (
-              <div className="space-y-2">
+              <div className="space-y-4">
+                {/* Search & Filter Toolbar */}
+                <div className="bg-slate-900/60 border border-slate-700/80 rounded-xl p-4 space-y-3">
+                  <div className="grid grid-cols-1 md:grid-cols-12 gap-3 items-center">
+                    {/* Search Input */}
+                    <div className="md:col-span-5 relative">
+                      <div className="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none text-slate-400">
+                        <MagnifyingGlassIcon className="w-4 h-4" />
+                      </div>
+                      <input
+                        type="text"
+                        value={searchQuery}
+                        onChange={(e) => setSearchQuery(e.target.value)}
+                        placeholder="Search by name, email, or phone..."
+                        className="w-full bg-slate-800 border border-slate-700 focus:border-brand-secondary focus:ring-1 focus:ring-brand-secondary rounded-xl pl-9 pr-9 py-2 text-white text-sm placeholder-slate-400 outline-none transition-all shadow-inner"
+                      />
+                      {searchQuery && (
+                        <button
+                          onClick={() => setSearchQuery('')}
+                          className="absolute inset-y-0 right-0 pr-3 flex items-center text-slate-400 hover:text-white transition-colors"
+                          title="Clear search"
+                        >
+                          <XMarkIcon className="w-4 h-4" />
+                        </button>
+                      )}
+                    </div>
+
+                    {/* Role Filter */}
+                    <div className="md:col-span-3">
+                      <select
+                        value={roleFilter}
+                        onChange={(e) => setRoleFilter(e.target.value)}
+                        className="w-full bg-slate-800 border border-slate-700 focus:border-brand-secondary rounded-xl px-3 py-2 text-slate-200 text-sm outline-none cursor-pointer transition-colors"
+                      >
+                        <option value="all">All Roles ({users.length})</option>
+                        {availableRoles.map(role => {
+                          const count = users.filter(u => (u.email?.toLowerCase() === 'talgans@gmail.com' ? 'superadmin' : u.role.toLowerCase()) === role.toLowerCase()).length;
+                          return (
+                            <option key={role} value={role}>
+                              {role.charAt(0).toUpperCase() + role.slice(1).replace(/_/g, ' ')} ({count})
+                            </option>
+                          );
+                        })}
+                      </select>
+                    </div>
+
+                    {/* Status Filter */}
+                    <div className="md:col-span-2">
+                      <select
+                        value={statusFilter}
+                        onChange={(e) => setStatusFilter(e.target.value as any)}
+                        className="w-full bg-slate-800 border border-slate-700 focus:border-brand-secondary rounded-xl px-3 py-2 text-slate-200 text-sm outline-none cursor-pointer transition-colors"
+                      >
+                        <option value="all">All Status</option>
+                        <option value="active">Active ({users.filter(u => u.lastSignIn).length})</option>
+                        <option value="pending">Pending Invite ({users.filter(u => !u.lastSignIn).length})</option>
+                      </select>
+                    </div>
+
+                    {/* Sort Options */}
+                    <div className="md:col-span-2">
+                      <select
+                        value={sortBy}
+                        onChange={(e) => setSortBy(e.target.value as any)}
+                        className="w-full bg-slate-800 border border-slate-700 focus:border-brand-secondary rounded-xl px-3 py-2 text-slate-200 text-sm outline-none cursor-pointer transition-colors"
+                      >
+                        <option value="name-asc">Name (A-Z)</option>
+                        <option value="name-desc">Name (Z-A)</option>
+                        <option value="recent">Recently Added</option>
+                        <option value="role">Role</option>
+                      </select>
+                    </div>
+                  </div>
+
+                  {/* Summary & Active Filters Indicator */}
+                  <div className="flex flex-wrap items-center justify-between gap-2 pt-1 text-xs text-slate-400">
+                    <div className="flex items-center gap-2">
+                      <span>Showing <strong className="text-white font-semibold">{filteredUsers.length}</strong> of <strong className="text-white font-semibold">{users.length}</strong> user{users.length !== 1 ? 's' : ''}</span>
+                      {(searchQuery || roleFilter !== 'all' || statusFilter !== 'all') && (
+                        <span className="text-amber-400 text-[11px] bg-amber-500/10 border border-amber-500/20 px-2 py-0.5 rounded-full font-medium">
+                          Filtered
+                        </span>
+                      )}
+                    </div>
+
+                    {(searchQuery || roleFilter !== 'all' || statusFilter !== 'all') && (
+                      <button
+                        onClick={() => {
+                          setSearchQuery('');
+                          setRoleFilter('all');
+                          setStatusFilter('all');
+                        }}
+                        className="text-brand-light hover:underline flex items-center gap-1 font-medium cursor-pointer"
+                      >
+                        Reset filters
+                      </button>
+                    )}
+                  </div>
+                </div>
+
+                {/* Users List or Empty States */}
                 {users.length === 0 ? (
                   <p className="text-center text-slate-400 py-12">No users found</p>
-                ) : (
-                  users.map(user => (
-                    <div
-                      key={user.uid}
-                      className="bg-slate-900/50 border border-slate-700 rounded-lg p-4 hover:bg-slate-900 transition-colors"
+                ) : filteredUsers.length === 0 ? (
+                  <div className="bg-slate-900/40 border border-slate-800 rounded-xl p-10 text-center space-y-3">
+                    <div className="w-12 h-12 rounded-full bg-slate-800 flex items-center justify-center mx-auto text-slate-500">
+                      <MagnifyingGlassIcon className="w-6 h-6" />
+                    </div>
+                    <p className="text-base font-semibold text-white">No matching users</p>
+                    <p className="text-xs text-slate-400 max-w-sm mx-auto">
+                      No users match your search term or active filters. Try modifying your criteria.
+                    </p>
+                    <button
+                      onClick={() => {
+                        setSearchQuery('');
+                        setRoleFilter('all');
+                        setStatusFilter('all');
+                      }}
+                      className="mt-2 px-3.5 py-2 bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-semibold rounded-lg border border-slate-700 transition-colors cursor-pointer"
                     >
-                      <div className="flex items-center justify-between">
-                        <div className="flex items-center space-x-4 flex-grow">
-                          <div className="w-12 h-12 bg-brand-secondary/20 rounded-full flex items-center justify-center flex-shrink-0 overflow-hidden">
-                            {user.photoURL ? (
-                              <img src={user.photoURL} alt={user.displayName || user.email} className="w-full h-full object-cover" />
-                            ) : (
-                              <UserIcon className="w-6 h-6 text-brand-secondary" />
-                            )}
-                          </div>
-                          <div className="flex-grow min-w-0">
-                            <div className="flex items-center space-x-2 mb-1">
-                              <p className="text-white font-medium truncate">
-                                {user.displayName || user.email}
-                              </p>
-                              {user.email?.toLowerCase() === 'talgans@gmail.com' ? (
-                                <span className="text-xs bg-amber-500/20 text-amber-300 border border-amber-500/40 px-2 py-0.5 rounded font-semibold">Primary SuperAdmin</span>
-                              ) : user.email === currentUserEmail ? (
-                                <span className="text-xs bg-brand-secondary/20 text-brand-light px-2 py-0.5 rounded">You</span>
-                              ) : null}
-                            </div>
-                            {user.displayName && (
-                              <p className="text-xs text-slate-400 truncate mb-0.5">{user.email}</p>
-                            )}
-                            <p className="text-xs text-slate-500">
-                              {user.lastSignIn
-                                ? `Joined ${new Date(user.createdAt).toLocaleDateString()} • Last sign in ${new Date(user.lastSignIn).toLocaleDateString()}`
-                                : `Invited ${new Date(user.createdAt).toLocaleDateString()}`
-                              }
-                            </p>
-                          </div>
-                        </div>
-                        <div className="flex items-center space-x-3 ml-4">
-                          <select
-                            value={user.email?.toLowerCase() === 'talgans@gmail.com' ? 'superadmin' : user.role}
-                            onChange={(e) => handleRoleChange(user.uid, e.target.value)}
-                            disabled={updatingUserId === user.uid || user.email === currentUserEmail || user.email?.toLowerCase() === 'talgans@gmail.com'}
-                            className={`px-3 py-1.5 rounded-lg text-sm font-semibold border transition-colors ${getRoleBadgeColor(user.email?.toLowerCase() === 'talgans@gmail.com' ? 'superadmin' : user.role)
-                              } bg-slate-800 cursor-pointer hover:bg-slate-700 disabled:opacity-50 disabled:cursor-not-allowed`}
-                            title={user.email?.toLowerCase() === 'talgans@gmail.com' ? 'Primary SuperAdmin role is immutable' : undefined}
-                          >
-                            {availableRoles.map(role => (
-                              <option key={role} value={role}>
-                                {role.charAt(0).toUpperCase() + role.slice(1).replace(/_/g, ' ')}
-                              </option>
-                            ))}
-                          </select>
-                          {user.email !== currentUserEmail && user.email?.toLowerCase() !== 'talgans@gmail.com' && (
-                            <>
-                              {!user.lastSignIn && (
-                                <button
-                                  onClick={() => handleRemindUser(user)}
-                                  className="p-2 text-slate-400 hover:text-yellow-400 rounded-lg hover:bg-slate-800 transition-colors"
-                                  title="Send reminder email"
-                                >
-                                  <EnvelopeIcon className="w-5 h-5" />
-                                </button>
+                      Clear Filters
+                    </button>
+                  </div>
+                ) : (
+                  <div className="space-y-2">
+                    {filteredUsers.map(user => (
+                      <div
+                        key={user.uid}
+                        className="bg-slate-900/50 border border-slate-700 rounded-lg p-4 hover:bg-slate-900 transition-colors"
+                      >
+                        <div className="flex items-center justify-between">
+                          <div className="flex items-center space-x-4 flex-grow">
+                            <div className="w-12 h-12 bg-brand-secondary/20 rounded-full flex items-center justify-center flex-shrink-0 overflow-hidden">
+                              {user.photoURL ? (
+                                <img src={user.photoURL} alt={user.displayName || user.email} className="w-full h-full object-cover" />
+                              ) : (
+                                <UserIcon className="w-6 h-6 text-brand-secondary" />
                               )}
-                              <button
-                                onClick={() => handleEditProfile(user)}
-                                className="p-2 text-slate-400 hover:text-brand-secondary rounded-lg hover:bg-slate-800 transition-colors"
-                                title="Edit profile"
-                              >
-                                <PencilIcon className="w-5 h-5" />
-                              </button>
-                              <button
-                                onClick={() => handleDeleteUser(user.uid, user.email)}
-                                className="p-2 text-slate-400 hover:text-red-500 rounded-lg hover:bg-slate-800 transition-colors"
-                                title="Delete user"
-                              >
-                                <TrashIcon className="w-5 h-5" />
-                              </button>
-                            </>
-                          )}
+                            </div>
+                            <div className="flex-grow min-w-0">
+                              <div className="flex items-center space-x-2 mb-1">
+                                <p className="text-white font-medium truncate">
+                                  {user.displayName || user.email}
+                                </p>
+                                {user.email?.toLowerCase() === 'talgans@gmail.com' ? (
+                                  <span className="text-xs bg-amber-500/20 text-amber-300 border border-amber-500/40 px-2 py-0.5 rounded font-semibold">Primary SuperAdmin</span>
+                                ) : user.email === currentUserEmail ? (
+                                  <span className="text-xs bg-brand-secondary/20 text-brand-light px-2 py-0.5 rounded">You</span>
+                                ) : null}
+                              </div>
+                              <div className="flex items-center flex-wrap gap-2 text-xs text-slate-400 mb-0.5">
+                                {user.displayName && (
+                                  <span className="truncate">{user.email}</span>
+                                )}
+                                {user.phoneNumber && (
+                                  <span className="text-slate-500 font-mono">
+                                    • {user.phoneNumber}
+                                  </span>
+                                )}
+                              </div>
+                              <p className="text-xs text-slate-500">
+                                {user.lastSignIn
+                                  ? `Joined ${new Date(user.createdAt).toLocaleDateString()} • Last sign in ${new Date(user.lastSignIn).toLocaleDateString()}`
+                                  : `Invited ${new Date(user.createdAt).toLocaleDateString()}`
+                                }
+                              </p>
+                            </div>
+                          </div>
+                          <div className="flex items-center space-x-3 ml-4">
+                            <select
+                              value={user.email?.toLowerCase() === 'talgans@gmail.com' ? 'superadmin' : user.role}
+                              onChange={(e) => handleRoleChange(user.uid, e.target.value)}
+                              disabled={updatingUserId === user.uid || user.email === currentUserEmail || user.email?.toLowerCase() === 'talgans@gmail.com'}
+                              className={`px-3 py-1.5 rounded-lg text-sm font-semibold border transition-colors ${getRoleBadgeColor(user.email?.toLowerCase() === 'talgans@gmail.com' ? 'superadmin' : user.role)
+                                } bg-slate-800 cursor-pointer hover:bg-slate-700 disabled:opacity-50 disabled:cursor-not-allowed`}
+                              title={user.email?.toLowerCase() === 'talgans@gmail.com' ? 'Primary SuperAdmin role is immutable' : undefined}
+                            >
+                              {availableRoles.map(role => (
+                                <option key={role} value={role}>
+                                  {role.charAt(0).toUpperCase() + role.slice(1).replace(/_/g, ' ')}
+                                </option>
+                              ))}
+                            </select>
+                            {user.email !== currentUserEmail && user.email?.toLowerCase() !== 'talgans@gmail.com' && (
+                              <>
+                                {!user.lastSignIn && (
+                                  <button
+                                    onClick={() => handleRemindUser(user)}
+                                    className="p-2 text-slate-400 hover:text-yellow-400 rounded-lg hover:bg-slate-800 transition-colors"
+                                    title="Send reminder email"
+                                  >
+                                    <EnvelopeIcon className="w-5 h-5" />
+                                  </button>
+                                )}
+                                <button
+                                  onClick={() => handleEditProfile(user)}
+                                  className="p-2 text-slate-400 hover:text-brand-secondary rounded-lg hover:bg-slate-800 transition-colors"
+                                  title="Edit profile"
+                                >
+                                  <PencilIcon className="w-5 h-5" />
+                                </button>
+                                <button
+                                  onClick={() => handleDeleteUser(user.uid, user.email)}
+                                  className="p-2 text-slate-400 hover:text-red-500 rounded-lg hover:bg-slate-800 transition-colors"
+                                  title="Delete user"
+                                >
+                                  <TrashIcon className="w-5 h-5" />
+                                </button>
+                              </>
+                            )}
+                          </div>
                         </div>
                       </div>
-                    </div>
-                  ))
+                    ))}
+                  </div>
                 )}
               </div>
             )}
