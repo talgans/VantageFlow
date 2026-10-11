@@ -28,7 +28,7 @@ export const nivoTheme = {
             },
             text: {
                 fontSize: 11,
-                fill: '#64748b', // slate-500
+                fill: '#94a3b8', // slate-400
                 outlineWidth: 0,
                 outlineColor: 'transparent',
             },
@@ -38,6 +38,14 @@ export const nivoTheme = {
         line: {
             stroke: '#1e293b', // slate-800
             strokeWidth: 1,
+        },
+    },
+    dots: {
+        text: {
+            fontSize: 11,
+            fill: '#f8fafc',
+            outlineWidth: 0,
+            outlineColor: 'transparent',
         },
     },
     legends: {
@@ -59,7 +67,7 @@ export const nivoTheme = {
             line: {},
             text: {
                 fontSize: 10,
-                fill: '#333333',
+                fill: '#94a3b8',
                 outlineWidth: 0,
                 outlineColor: 'transparent',
             },
@@ -68,46 +76,52 @@ export const nivoTheme = {
     annotations: {
         text: {
             fontSize: 13,
-            fill: '#333333',
+            fill: '#f8fafc',
             outlineWidth: 2,
-            outlineColor: '#ffffff',
+            outlineColor: '#0f172a',
             outlineOpacity: 1,
         },
         link: {
-            stroke: '#000000',
+            stroke: '#64748b',
             strokeWidth: 1,
             outlineWidth: 2,
-            outlineColor: '#ffffff',
+            outlineColor: '#0f172a',
             outlineOpacity: 1,
         },
         outline: {
-            stroke: '#000000',
+            stroke: '#64748b',
             strokeWidth: 2,
             outlineWidth: 2,
-            outlineColor: '#ffffff',
+            outlineColor: '#0f172a',
             outlineOpacity: 1,
         },
         symbol: {
-            fill: '#000000',
+            fill: '#38bdf8',
             outlineWidth: 2,
-            outlineColor: '#ffffff',
+            outlineColor: '#0f172a',
             outlineOpacity: 1,
         },
     },
     tooltip: {
         container: {
-            background: '#1e293b', // slate-800
-            color: '#f1f5f9', // slate-100
+            background: '#0f172a', // slate-900
+            color: '#f8fafc', // slate-50
             fontSize: 12,
-            borderRadius: '6px',
-            boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1), 0 2px 4px -2px rgb(0 0 0 / 0.1)',
+            borderRadius: '8px',
+            boxShadow: '0 10px 15px -3px rgba(0, 0, 0, 0.4), 0 4px 6px -4px rgba(0, 0, 0, 0.4)',
             border: '1px solid #334155', // slate-700
+            padding: '8px 12px',
         },
         basic: {},
         chip: {},
         table: {},
-        tableCell: {},
-        tableCellValue: {},
+        tableCell: {
+            color: '#f8fafc',
+            padding: '3px 6px',
+        },
+        tableCellValue: {
+            color: '#f8fafc',
+        },
     },
 };
 

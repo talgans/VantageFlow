@@ -32,6 +32,16 @@ const UserAnalytics: React.FC<UserAnalyticsProps> = ({ userId }) => {
         );
     }
 
+    // --- Helper to safely parse dates from Firestore or strings ---
+    const parseAwardedDate = (awardedAt: any): Date => {
+        if (!awardedAt) return new Date();
+        if (typeof awardedAt.toDate === 'function') return awardedAt.toDate();
+        if (awardedAt.seconds) return new Date(awardedAt.seconds * 1000);
+        if (awardedAt instanceof Date) return awardedAt;
+        const parsed = new Date(awardedAt);
+        return isNaN(parsed.getTime()) ? new Date() : parsed;
+    };
+
     // --- Prepare Radar Data (Skills/Categories) ---
     // Categories: task_complete, phase_complete, milestone, collaboration, quality
     const categoryCounts: Record<string, number> = {
@@ -53,18 +63,25 @@ const UserAnalytics: React.FC<UserAnalyticsProps> = ({ userId }) => {
         value: categoryCounts[key]
     }));
 
-    // --- Prepare Bar Data (Activity over time - last 7 days or weeks) ---
-    // Simple view: Last 5 achievements points
+    // --- Prepare Bar Data (Activity over time - last 7 achievements) ---
     const recentActivity = [...achievements]
-        .sort((a, b) => (b.awardedAt as any) - (a.awardedAt as any)) // Descending
+        .sort((a, b) => {
+            const timeA = parseAwardedDate(a.awardedAt).getTime();
+            const timeB = parseAwardedDate(b.awardedAt).getTime();
+            return timeB - timeA;
+        })
         .slice(0, 7)
         .reverse()
-        .map((a, i) => ({
-            id: i,
-            date: new Date(a.awardedAt).toLocaleDateString(undefined, { month: 'short', day: 'numeric' }),
-            points: a.points,
-            name: a.description.slice(0, 15) + '...'
-        }));
+        .map((a, i) => {
+            const d = parseAwardedDate(a.awardedAt);
+            return {
+                id: i,
+                date: d.toLocaleDateString(undefined, { month: 'short', day: 'numeric' }),
+                points: a.points || 0,
+                name: a.description || 'Achievement',
+                category: a.category || 'General'
+            };
+        });
 
     return (
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mt-6">
@@ -85,22 +102,62 @@ const UserAnalytics: React.FC<UserAnalyticsProps> = ({ userId }) => {
                         gridShape="circular"
                         gridLabelOffset={36}
                         enableDots={true}
-                        dotSize={10}
-                        dotColor={{ theme: 'background' }}
+                        dotSize={8}
+                        dotColor="#3b82f6"
                         dotBorderWidth={2}
-                        dotBorderColor={{ from: 'color' }}
+                        dotBorderColor="#1e293b"
                         enableDotLabel={true}
                         dotLabel="value"
                         dotLabelYOffset={-12}
-                        colors={{ scheme: 'category10' }} // or custom
-                        fillOpacity={0.25}
-                        blendMode="multiply"
+                        colors={['#3b82f6']}
+                        fillOpacity={0.35}
+                        blendMode="normal"
+                        sliceTooltip={({ index, data }) => (
+                            <div className="bg-slate-900 border border-slate-700 p-3 rounded-lg shadow-xl text-xs space-y-1.5 min-w-[150px] pointer-events-none">
+                                <div className="font-semibold text-white border-b border-slate-700/80 pb-1">{index}</div>
+                                {data.map(d => (
+                                    <div key={d.id} className="flex items-center justify-between gap-3">
+                                        <span className="text-slate-300">Earned Points:</span>
+                                        <span className="font-bold text-amber-400">+{d.value}</span>
+                                    </div>
+                                ))}
+                            </div>
+                        )}
                         theme={{
-                            textColor: '#94a3b8',
-                            fontSize: 12,
-                            grid: {
-                                line: { stroke: '#475569', strokeWidth: 1 } // slate-600
+                            text: {
+                                fill: '#cbd5e1',
+                                fontSize: 12
                             },
+                            axis: {
+                                ticks: {
+                                    text: {
+                                        fill: '#cbd5e1', // High contrast slate-300 for category labels
+                                        fontSize: 12,
+                                        fontWeight: 600
+                                    }
+                                }
+                            },
+                            dots: {
+                                text: {
+                                    fill: '#f8fafc', // High contrast white for point numbers
+                                    fontSize: 11,
+                                    fontWeight: 700
+                                }
+                            },
+                            grid: {
+                                line: { stroke: '#334155', strokeWidth: 1 } // slate-700
+                            },
+                            tooltip: {
+                                container: {
+                                    background: '#0f172a',
+                                    color: '#f8fafc',
+                                    fontSize: 12,
+                                    borderRadius: 8,
+                                    border: '1px solid #334155',
+                                    boxShadow: '0 10px 15px -3px rgba(0, 0, 0, 0.4)',
+                                    padding: '8px 12px'
+                                }
+                            }
                         }}
                     />
                 </div>
@@ -118,10 +175,11 @@ const UserAnalytics: React.FC<UserAnalyticsProps> = ({ userId }) => {
                         padding={0.3}
                         valueScale={{ type: 'linear' }}
                         indexScale={{ type: 'band', round: true }}
-                        colors={{ scheme: 'nivo' }}
+                        colors={['#f59e0b', '#3b82f6', '#10b981', '#8b5cf6', '#ec4899', '#06b6d4', '#6366f1']}
+                        colorBy="indexValue"
                         borderColor={{
                             from: 'color',
-                            modifiers: [['darker', 1.6]]
+                            modifiers: [['darker', 0.6]]
                         }}
                         axisTop={null}
                         axisRight={null}
@@ -131,7 +189,7 @@ const UserAnalytics: React.FC<UserAnalyticsProps> = ({ userId }) => {
                             tickRotation: 0,
                             legend: 'Date',
                             legendPosition: 'middle',
-                            legendOffset: 32
+                            legendOffset: 36
                         }}
                         axisLeft={{
                             tickSize: 5,
@@ -143,24 +201,58 @@ const UserAnalytics: React.FC<UserAnalyticsProps> = ({ userId }) => {
                         }}
                         labelSkipWidth={12}
                         labelSkipHeight={12}
-                        labelTextColor={{
-                            from: 'color',
-                            modifiers: [['darker', 1.6]]
-                        }}
+                        labelTextColor="#ffffff"
+                        tooltip={({ value, data, color }) => (
+                            <div className="bg-slate-900 border border-slate-700 p-3 rounded-lg shadow-xl text-xs space-y-1.5 min-w-[170px] pointer-events-none">
+                                <div className="font-semibold text-white line-clamp-2 leading-snug">{(data as any).name}</div>
+                                <div className="text-slate-400 text-[11px] flex items-center justify-between">
+                                    <span>{(data as any).date}</span>
+                                    <span className="capitalize text-slate-400">{(data as any).category?.replace('_', ' ')}</span>
+                                </div>
+                                <div className="flex items-center justify-between pt-1.5 border-t border-slate-700/60 mt-1">
+                                    <div className="flex items-center gap-1.5">
+                                        <span className="w-2.5 h-2.5 rounded-full" style={{ backgroundColor: color }} />
+                                        <span className="text-slate-300 font-medium">Points</span>
+                                    </div>
+                                    <span className="font-bold text-amber-400">+{value} pts</span>
+                                </div>
+                            </div>
+                        )}
                         theme={{
-                            textColor: '#94a3b8',
-                            fontSize: 12,
+                            text: {
+                                fill: '#cbd5e1',
+                                fontSize: 11
+                            },
                             axis: {
-                                domain: { line: { stroke: '#475569' } },
-                                ticks: { line: { stroke: '#475569' } }
+                                domain: { line: { stroke: '#475569', strokeWidth: 1 } },
+                                ticks: {
+                                    line: { stroke: '#475569', strokeWidth: 1 },
+                                    text: {
+                                        fill: '#cbd5e1', // High contrast slate-300 for tick labels
+                                        fontSize: 11,
+                                        fontWeight: 500
+                                    }
+                                },
+                                legend: {
+                                    text: {
+                                        fill: '#94a3b8', // slate-400 for axis names ('Date', 'Points')
+                                        fontSize: 12,
+                                        fontWeight: 600
+                                    }
+                                }
+                            },
+                            grid: {
+                                line: { stroke: '#334155', strokeWidth: 1 } // slate-700
                             },
                             tooltip: {
                                 container: {
-                                    background: '#1e293b', // slate-800
-                                    color: '#f8fafc', // slate-50
+                                    background: '#0f172a',
+                                    color: '#f8fafc',
                                     fontSize: 12,
-                                    borderRadius: 4,
-                                    boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)'
+                                    borderRadius: 8,
+                                    border: '1px solid #334155',
+                                    boxShadow: '0 10px 15px -3px rgba(0, 0, 0, 0.4)',
+                                    padding: '8px 12px'
                                 }
                             }
                         }}
