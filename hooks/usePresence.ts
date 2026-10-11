@@ -15,10 +15,10 @@ export const usePresence = (currentProjectId?: string | null) => {
 
     const cachedUser = getUserById(user.uid, user.email || undefined);
     const displayName =
-      cachedUser?.displayName ||
       user.displayName ||
+      cachedUser?.displayName ||
       (user.email ? user.email.split('@')[0] : 'User');
-    const photoURL = cachedUser?.photoURL || user.photoURL || null;
+    const photoURL = user.photoURL || cachedUser?.photoURL || null;
 
     presenceService.startPresence(
       {

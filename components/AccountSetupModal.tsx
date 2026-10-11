@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { getFunctions, httpsCallable } from 'firebase/functions';
-import { signInWithCustomToken, signInWithEmailAndPassword } from 'firebase/auth';
+import { signInWithCustomToken, signInWithEmailAndPassword, updateProfile } from 'firebase/auth';
 import { auth, app } from '../services/firebaseConfig';
 import { ShieldCheckIcon, CheckIcon, XMarkIcon } from './icons';
 
@@ -138,6 +138,23 @@ const AccountSetupModal: React.FC<AccountSetupModalProps> = ({
           await signInWithEmailAndPassword(auth, targetEmail, password);
         }
 
+        // Ensure display name is also set directly on the client Auth user and reloaded
+        const trimmedName = displayName.trim();
+        if (auth.currentUser) {
+          if (trimmedName && auth.currentUser.displayName !== trimmedName) {
+            try {
+              await updateProfile(auth.currentUser, { displayName: trimmedName });
+            } catch (pErr) {
+              console.warn('Could not updateProfile on client:', pErr);
+            }
+          }
+          try {
+            await auth.currentUser.reload();
+          } catch (rErr) {
+            console.warn('Could not reload currentUser:', rErr);
+          }
+        }
+
         // Remove token from URL so it doesn't linger in address bar
         const url = new URL(window.location.href);
         url.searchParams.delete('setupToken');
@@ -159,6 +176,21 @@ const AccountSetupModal: React.FC<AccountSetupModalProps> = ({
       if (msg.includes('already been used') || msg.includes('failed-precondition')) {
         try {
           await signInWithEmailAndPassword(auth, email, password);
+          if (auth.currentUser) {
+            const trimmedName = displayName.trim();
+            if (trimmedName && auth.currentUser.displayName !== trimmedName) {
+              try {
+                await updateProfile(auth.currentUser, { displayName: trimmedName });
+              } catch (pErr) {
+                console.warn('Could not update profile directly on client in fallback:', pErr);
+              }
+            }
+            try {
+              await auth.currentUser.reload();
+            } catch (rErr) {
+              console.warn('Could not reload currentUser in fallback:', rErr);
+            }
+          }
           const url = new URL(window.location.href);
           url.searchParams.delete('setupToken');
           url.searchParams.delete('email');

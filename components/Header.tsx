@@ -40,7 +40,7 @@ const Header: React.FC<HeaderProps> = ({ currentUserRole, onSignOut, onSignInCli
     if (!user) return { name: '', photo: null };
 
     const cachedUser = getUserById(user.uid, user.email || undefined);
-    let name = cachedUser?.displayName || user.displayName;
+    let name = user.displayName || cachedUser?.displayName;
 
     // If no name or name looks like email, format the email handle
     if (!name || name.includes('@')) {
@@ -48,7 +48,7 @@ const Header: React.FC<HeaderProps> = ({ currentUserRole, onSignOut, onSignInCli
       name = emailHandle.charAt(0).toUpperCase() + emailHandle.slice(1);
     }
 
-    return { name, photo: cachedUser?.photoURL || user.photoURL };
+    return { name, photo: user.photoURL || cachedUser?.photoURL };
   };
 
   const { name: displayName, photo: photoURL } = getUserDisplayInfo();

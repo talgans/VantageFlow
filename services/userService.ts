@@ -8,7 +8,7 @@ import { auth } from './firebaseConfig';
 export const updateUserProfile = async (
     displayName?: string,
     photoURL?: string,
-    phoneNumber?: string
+    phoneNumber?: string | null
 ): Promise<void> => {
     const user = auth.currentUser;
 
@@ -27,20 +27,32 @@ export const updateUserProfile = async (
     }
 
     try {
-        await updateProfile(user, updates);
-
-        // Update custom fields (like phoneNumber) via Cloud Function if provided
-        if (phoneNumber !== undefined) {
-            const functions = getFunctions();
-            const updateUserProfileFunction = httpsCallable(functions, 'updateUserProfile');
-            await updateUserProfileFunction({
-                uid: user.uid,
-                phoneNumber
-            });
+        if (Object.keys(updates).length > 0) {
+            await updateProfile(user, updates);
         }
-    } catch (error) {
+
+        // Only update phoneNumber via Cloud Function if it was explicitly provided and changed
+        if (phoneNumber !== undefined) {
+            const currentPhone = (user.phoneNumber || '').trim();
+            const newPhone = phoneNumber === null ? '' : phoneNumber.trim();
+
+            if (newPhone !== currentPhone) {
+                // If setting a phone number, validate E.164 format
+                if (newPhone !== '' && !/^\+[1-9]\d{6,14}$/.test(newPhone)) {
+                    throw new Error('Phone number must start with + and include country code (e.g. +2348012345678 or +1234567890)');
+                }
+
+                const functions = getFunctions();
+                const updateUserProfileFunction = httpsCallable(functions, 'updateUserProfile');
+                await updateUserProfileFunction({
+                    uid: user.uid,
+                    phoneNumber: newPhone === '' ? null : newPhone
+                });
+            }
+        }
+    } catch (error: any) {
         console.error('Error updating profile:', error);
-        throw new Error('Failed to update profile. Please try again.');
+        throw new Error(error?.message || 'Failed to update profile. Please try again.');
     }
 };
 

@@ -392,14 +392,25 @@ exports.updateUserProfile = functions.https.onCall(async (data, context) => {
             updateData.photoURL = photoURL;
         }
         if (phoneNumber !== undefined) {
-            updateData.phoneNumber = phoneNumber;
+            if (phoneNumber === null || (typeof phoneNumber === 'string' && phoneNumber.trim() === '')) {
+                updateData.phoneNumber = null;
+            }
+            else if (typeof phoneNumber === 'string' && phoneNumber.trim().length > 0) {
+                const cleaned = phoneNumber.trim();
+                if (!/^\+[1-9]\d{6,14}$/.test(cleaned)) {
+                    throw new functions.https.HttpsError('invalid-argument', 'Phone number must be in international E.164 format with country code (e.g. +2348012345678 or +1234567890)');
+                }
+                updateData.phoneNumber = cleaned;
+            }
         }
         await admin.auth().updateUser(uid, updateData);
         return { success: true, message: 'User profile updated successfully' };
     }
     catch (error) {
         console.error('Error updating user profile:', error);
-        throw new functions.https.HttpsError('internal', 'Failed to update user profile');
+        if (error instanceof functions.https.HttpsError)
+            throw error;
+        throw new functions.https.HttpsError('internal', (error === null || error === void 0 ? void 0 : error.message) || 'Failed to update user profile');
     }
 });
 /**
@@ -791,7 +802,7 @@ exports.completeAccountSetup = functions
     .runWith({ timeoutSeconds: 60, memory: '256MB' })
     .https.onCall(async (data) => {
     var _a;
-    const { token, password, displayName } = data || {};
+    const { token, password, displayName, phoneNumber } = data || {};
     if (!token || typeof token !== 'string') {
         throw new functions.https.HttpsError('invalid-argument', 'Invalid or missing invitation token');
     }
@@ -825,6 +836,12 @@ exports.completeAccountSetup = functions
         };
         if (displayName && typeof displayName === 'string' && displayName.trim().length > 0) {
             updateData.displayName = displayName.trim();
+        }
+        if (phoneNumber && typeof phoneNumber === 'string' && phoneNumber.trim().length > 0) {
+            const cleaned = phoneNumber.trim();
+            if (/^\+[1-9]\d{6,14}$/.test(cleaned)) {
+                updateData.phoneNumber = cleaned;
+            }
         }
         await admin.auth().updateUser(userRecord.uid, updateData);
         // Ensure custom claims for role are set

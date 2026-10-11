@@ -29,6 +29,7 @@ interface AuthUser {
   role: UserRole;
   displayName?: string | null;
   photoURL?: string | null;
+  phoneNumber?: string | null;
 }
 
 interface AuthContextType {
@@ -95,6 +96,7 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children, auth, fire
       email: firebaseUser.email,
       displayName: firebaseUser.displayName,
       photoURL: firebaseUser.photoURL,
+      phoneNumber: firebaseUser.phoneNumber,
       role,
     };
   };
@@ -111,15 +113,17 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children, auth, fire
 
     try {
       setLoading(true);
+      // Reload user profile from server to ensure latest displayName, photoURL, phoneNumber
+      await auth.currentUser.reload();
       // Force token refresh to get updated custom claims
       await auth.currentUser.getIdToken(true);
 
-      // Re-extract role from refreshed token
+      // Re-extract role and profile from refreshed user
       const updatedUser = await convertToAuthUser(auth.currentUser);
       setUser(updatedUser);
       setError(null);
 
-      console.log('User role refreshed:', updatedUser.role);
+      console.log('User role and profile refreshed:', updatedUser.role);
     } catch (err) {
       const errorMessage = err instanceof Error ? err.message : 'Failed to refresh user role';
       console.error('Error refreshing user role:', err);

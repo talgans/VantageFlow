@@ -44,15 +44,31 @@ const UserProfilePage: React.FC<UserProfilePageProps> = ({
         });
     }, [projects, user]);
 
+    React.useEffect(() => {
+        if (!isEditing && user) {
+            setEditDisplayName(user.displayName || '');
+            setEditPhoneNumber(user.phoneNumber || '');
+        }
+    }, [user, isEditing]);
+
     const handleSaveProfile = async () => {
         if (!editDisplayName.trim()) {
             showToast('Display name cannot be empty');
             return;
         }
 
+        const trimmedPhone = editPhoneNumber.trim();
+        const originalPhone = (user?.phoneNumber || '').trim();
+
+        if (trimmedPhone && !/^\+[1-9]\d{6,14}$/.test(trimmedPhone)) {
+            showToast('Phone number must start with + and include country code (e.g. +2348012345678)');
+            return;
+        }
+
         setSaving(true);
         try {
-            await updateUserProfile(editDisplayName.trim(), undefined, editPhoneNumber.trim());
+            const phoneToUpdate = trimmedPhone !== originalPhone ? (trimmedPhone || null) : undefined;
+            await updateUserProfile(editDisplayName.trim(), undefined, phoneToUpdate);
             await refreshUserRole(); // Refresh to get updated user data
             setIsEditing(false);
             showToast('Profile updated successfully!');
