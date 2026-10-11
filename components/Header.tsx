@@ -80,7 +80,7 @@ const Header: React.FC<HeaderProps> = ({ currentUserRole, onSignOut, onSignInCli
   }, [projects, user]);
 
   return (
-    <header className="bg-slate-900/70 backdrop-blur-sm sticky top-0 z-10 p-4 border-b border-slate-700 flex justify-between items-center">
+    <header className="flex-shrink-0 bg-slate-900/70 backdrop-blur-sm sticky top-0 z-10 p-4 border-b border-slate-700 flex justify-between items-center">
       <div className="flex items-center space-x-4">
         <button
           onClick={onMenuClick}
@@ -111,7 +111,7 @@ const Header: React.FC<HeaderProps> = ({ currentUserRole, onSignOut, onSignInCli
                 <img src={photoURL} alt="" className="w-8 h-8 rounded-md object-cover" />
               ) : (
                 <div className="w-8 h-8 rounded-md bg-slate-700 flex items-center justify-center">
-                  <UsersIcon className="w-4.5 h-4.5 text-slate-400" />
+                  <UsersIcon className="w-5 h-5 text-slate-400" />
                 </div>
               )}
               <div className="text-sm text-left">
