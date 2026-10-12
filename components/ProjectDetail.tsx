@@ -1646,55 +1646,79 @@ const ProjectDetail: React.FC<ProjectDetailProps> = ({ project, onBack, canEdit,
   const getTaskFeedbackRecipients = useCallback((targetTask: Task): TeamMember[] => {
     const recipientsMap = new Map<string, TeamMember>();
 
-    // 1. Task Assigner
-    if (targetTask.assignedBy?.email && targetTask.assignedBy.uid !== currentUserId) {
-      recipientsMap.set(targetTask.assignedBy.uid || targetTask.assignedBy.email, targetTask.assignedBy);
+    const addMember = (m?: Partial<TeamMember> | null) => {
+      if (!m) return;
+      const key = (m.email || m.uid || '').toLowerCase().trim();
+      if (!key) return;
+      if (!recipientsMap.has(key)) {
+        recipientsMap.set(key, {
+          uid: m.uid || '',
+          email: m.email || '',
+          displayName: m.displayName || (m.uid ? getUserDisplayName(m.uid, m.email) : undefined) || m.email?.split('@')[0] || 'Team Member',
+          leadRole: m.leadRole,
+          photoURL: m.photoURL || (m.uid ? getUserPhotoURL(m.uid, m.email) : undefined),
+        });
+      }
+    };
+
+    // 1. Task Assigner (the person who assigned the task)
+    if (targetTask.assignedBy) {
+      addMember(targetTask.assignedBy);
     }
 
     // 2. Task Owner / Originator
-    if (targetTask.ownerId && targetTask.ownerId !== currentUserId) {
-      const ownerMember = project.team?.members?.find(m => m.uid === targetTask.ownerId);
+    if (targetTask.ownerId || targetTask.ownerEmail) {
+      const ownerMember = project.team?.members?.find(
+        m => (targetTask.ownerId && m.uid === targetTask.ownerId) ||
+             (targetTask.ownerEmail && m.email?.toLowerCase() === targetTask.ownerEmail.toLowerCase())
+      );
       if (ownerMember) {
-        recipientsMap.set(ownerMember.uid, ownerMember);
+        addMember(ownerMember);
       } else if (targetTask.ownerEmail) {
-        recipientsMap.set(targetTask.ownerEmail, {
-          uid: targetTask.ownerId,
+        addMember({
+          uid: targetTask.ownerId || '',
           email: targetTask.ownerEmail,
-          displayName: getUserDisplayName(targetTask.ownerId, targetTask.ownerEmail),
+          displayName: getUserDisplayName(targetTask.ownerId || '', targetTask.ownerEmail),
         });
       }
     }
 
-    // 3. Project Owner
-    if (project.ownerId && project.ownerId !== currentUserId) {
-      const projOwner = project.team?.members?.find(m => m.uid === project.ownerId);
+    // 3. Project Owner (always notified of task feedback, blockers, and completions)
+    if (project.ownerId || project.ownerEmail) {
+      const projOwner = project.team?.members?.find(
+        m => (project.ownerId && m.uid === project.ownerId) ||
+             (project.ownerEmail && m.email?.toLowerCase() === project.ownerEmail.toLowerCase())
+      );
       if (projOwner) {
-        recipientsMap.set(projOwner.uid, projOwner);
+        addMember(projOwner);
       } else if (project.ownerEmail) {
-        recipientsMap.set(project.ownerEmail, {
-          uid: project.ownerId,
+        addMember({
+          uid: project.ownerId || '',
           email: project.ownerEmail,
-          displayName: project.ownerName || getUserDisplayName(project.ownerId, project.ownerEmail),
+          displayName: project.ownerName || getUserDisplayName(project.ownerId || '', project.ownerEmail),
         });
       }
     }
 
-    // 4. Project Leads (primary or secondary)
+    // 4. Project Leads (primary or secondary leads)
     (project.team?.members || []).forEach(m => {
-      if ((m.leadRole === 'primary' || m.leadRole === 'secondary') && m.uid !== currentUserId) {
-        recipientsMap.set(m.uid || m.email, m);
+      if (m.leadRole === 'primary' || m.leadRole === 'secondary') {
+        addMember(m);
       }
     });
 
-    // 5. Also task assignees (for notes/updates), excluding current user
+    // 5. Task Assignees
     (targetTask.assignees || []).forEach(a => {
-      if (a.uid !== currentUserId && (a.email || a.uid)) {
-        recipientsMap.set(a.uid || a.email, a);
-      }
+      addMember(a);
     });
+
+    // Fallback: If map is still empty, include current user so notifications never fail silently
+    if (recipientsMap.size === 0 && currentUserMember) {
+      addMember(currentUserMember);
+    }
 
     return Array.from(recipientsMap.values());
-  }, [currentUserId, project, getUserDisplayName]);
+  }, [project, getUserDisplayName, getUserPhotoURL, currentUserMember]);
 
   const handleSaveImpediment = async (taskToBlock: Task, impediment: TaskImpediment, notify: boolean) => {
     const updatedProject = JSON.parse(JSON.stringify(project), reviveDates);

@@ -108,11 +108,23 @@ const createTransporter = () => {
         },
     });
 };
+// --- Helper for ensuring email subject starts with "Vantage: " ---
+const ensureVantageSubject = (subject) => {
+    const trimmed = (subject || '').trim();
+    if (trimmed.startsWith('Vantage: ')) {
+        return trimmed;
+    }
+    if (trimmed.startsWith('VantageFlow: ')) {
+        return `Vantage: ${trimmed.slice('VantageFlow: '.length).trim()}`;
+    }
+    return `Vantage: ${trimmed}`;
+};
 // --- Helper for sending emails via Gmail SMTP ---
 const sendEmail = async (to, subject, html) => {
     var _a;
+    const finalSubject = ensureVantageSubject(subject);
     console.log(`[sendEmail] Attempting to send email to: ${to}`);
-    console.log(`[sendEmail] Subject: ${subject}`);
+    console.log(`[sendEmail] Subject: ${finalSubject}`);
     const transporter = createTransporter();
     if (!transporter) {
         return false;
@@ -121,9 +133,9 @@ const sendEmail = async (to, subject, html) => {
     try {
         console.log('[sendEmail] Sending email via Gmail SMTP...');
         const info = await transporter.sendMail({
-            from: `"VantageFlow" <${emailUser}>`,
+            from: `"Vantage" <${emailUser}>`,
             to,
-            subject,
+            subject: finalSubject,
             html,
         });
         console.log(`[sendEmail] Email sent successfully! Message ID: ${info.messageId}`);
@@ -521,7 +533,7 @@ exports.inviteUser = functions
         const setupToken = await createInviteToken(email, role, (_b = context.auth) === null || _b === void 0 ? void 0 : _b.uid);
         const setupLink = `${APP_URL}/?setupToken=${setupToken}&email=${encodeURIComponent(email)}`;
         const html = (0, emailTemplates_1.getInvitationEmail)(role, setupLink);
-        const emailSent = await sendEmail(email, 'VantageFlow: Your Account Setup Link', html);
+        const emailSent = await sendEmail(email, 'Vantage: Your Account Setup Link', html);
         if (!emailSent) {
             throw new functions.https.HttpsError('internal', `User account was created, but failed to send invitation email to ${email}. Please check SMTP configuration or use the Send Reminder button.`);
         }
@@ -576,7 +588,7 @@ exports.sendReminderEmail = functions
         const setupToken = await createInviteToken(email, role, (_b = context.auth) === null || _b === void 0 ? void 0 : _b.uid);
         const setupLink = `${APP_URL}/?setupToken=${setupToken}&email=${encodeURIComponent(email)}`;
         const html = (0, emailTemplates_1.getReminderEmail)(role, setupLink);
-        const emailSent = await sendEmail(email, 'VantageFlow: Action Required - Complete Your Account Setup', html);
+        const emailSent = await sendEmail(email, 'Vantage: Action Required - Complete Your Account Setup', html);
         if (!emailSent) {
             throw new functions.https.HttpsError('internal', `Failed to deliver reminder email to ${email}. Please check SMTP configuration.`);
         }
@@ -608,7 +620,7 @@ exports.notifyProjectMemberAdded = functions
     }
     const { projectId, projectName, newMemberEmail, newMemberName, teamEmails } = data;
     const inviterName = context.auth.token.name || context.auth.token.email;
-    const subject = `New Team Member: ${newMemberName || newMemberEmail}`;
+    const subject = `Vantage: New Team Member: ${newMemberName || newMemberEmail}`;
     const link = `https://vantageflow.vercel.app/project/${projectId}`;
     const html = (0, emailTemplates_1.getNewMemberEmail)(newMemberName || newMemberEmail, projectName, inviterName, link);
     const validEmails = (teamEmails || []).filter(e => e && e.includes('@'));
@@ -640,7 +652,7 @@ exports.notifyResponsibilityAssigned = functions
     const { projectId, projectName, itemType, itemName, assignees } = data;
     // assignees: { uid: string, email: string, displayName: string }[]
     const assignerName = context.auth.token.name || context.auth.token.email;
-    const subject = `New Responsibility: ${itemName}`;
+    const subject = `Vantage: New Responsibility: ${itemName}`;
     const link = `https://vantageflow.vercel.app/project/${projectId}`;
     const html = (0, emailTemplates_1.getResponsibilityAssignedEmail)(itemType, itemName, projectName, assignerName, link);
     // Send emails and create notifications
@@ -669,7 +681,7 @@ exports.notifyTaskImpediment = functions
     }
     const { projectId, projectName, taskName, category, description, recipients } = data;
     const reportedByName = context.auth.token.name || context.auth.token.email || 'Team Member';
-    const subject = `⚠️ Impediment Flagged: ${taskName} (${projectName})`;
+    const subject = `Vantage: ⚠️ Impediment Flagged: ${taskName} (${projectName})`;
     const link = `https://vantageflow.vercel.app/project/${projectId}`;
     const html = (0, emailTemplates_1.getTaskImpedimentEmail)(taskName, projectName, reportedByName, category, description, link);
     const promises = (recipients || []).map(async (member) => {
@@ -697,7 +709,7 @@ exports.notifyTaskImpedimentResolved = functions
     }
     const { projectId, projectName, taskName, resolutionNote, recipients } = data;
     const resolvedByName = context.auth.token.name || context.auth.token.email || 'Lead';
-    const subject = `✅ Impediment Cleared: ${taskName} (${projectName})`;
+    const subject = `Vantage: ✅ Impediment Cleared: ${taskName} (${projectName})`;
     const link = `https://vantageflow.vercel.app/project/${projectId}`;
     const html = (0, emailTemplates_1.getTaskImpedimentResolvedEmail)(taskName, projectName, resolvedByName, resolutionNote || '', link);
     const promises = (recipients || []).map(async (member) => {
@@ -725,7 +737,7 @@ exports.notifyTaskCompleted = functions
     }
     const { projectId, projectName, taskName, deliverablesSummary, recipients } = data;
     const completedByName = context.auth.token.name || context.auth.token.email || 'Assignee';
-    const subject = `🎉 Task Complete: ${taskName} (${projectName})`;
+    const subject = `Vantage: 🎉 Task Complete: ${taskName} (${projectName})`;
     const link = `https://vantageflow.vercel.app/project/${projectId}`;
     const html = (0, emailTemplates_1.getTaskCompletedEmail)(taskName, projectName, completedByName, deliverablesSummary || '', link);
     const promises = (recipients || []).map(async (member) => {
@@ -753,7 +765,7 @@ exports.notifyTaskFeedback = functions
     }
     const { projectId, projectName, taskName, message, recipients } = data;
     const authorName = context.auth.token.name || context.auth.token.email || 'Team Member';
-    const subject = `💬 New Task Note: ${taskName} (${projectName})`;
+    const subject = `Vantage: 💬 New Task Note: ${taskName} (${projectName})`;
     const link = `https://vantageflow.vercel.app/project/${projectId}`;
     const html = (0, emailTemplates_1.getTaskFeedbackEmail)(taskName, projectName, authorName, message, link);
     const promises = (recipients || []).map(async (member) => {
@@ -784,7 +796,7 @@ exports.onAchievementAwarded = functions.firestore
         const userName = userRecord.displayName || (userEmail === null || userEmail === void 0 ? void 0 : userEmail.split('@')[0]) || 'User';
         // 1. Notify the User (Email) if significant achievement
         if (userEmail && (category === 'phase_complete' || category === 'milestone' || points >= 50)) {
-            const subject = `Congratulations! You earned ${points} points!`;
+            const subject = `Vantage: Congratulations! You earned ${points} points!`;
             const html = (0, emailTemplates_1.getAchievementEmail)(userName, points, description);
             await sendEmail(userEmail, subject, html);
         }
@@ -844,7 +856,7 @@ exports.onProjectArchiveStatusChange = functions.firestore
             console.warn(`Could not get user info for ${archivedBy}`);
         }
     }
-    const subject = `Project ${isNowArchived ? 'Archived' : 'Unarchived'}: ${projectName}`;
+    const subject = `Vantage: Project ${isNowArchived ? 'Archived' : 'Unarchived'}: ${projectName}`;
     const html = (0, emailTemplates_1.getProjectArchivedEmail)(projectName, actionByName, isNowArchived, link);
     const notifyPromises = teamMembers.map(async (member) => {
         // Send email

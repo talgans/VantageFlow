@@ -106,10 +106,23 @@ const createTransporter = () => {
   });
 };
 
+// --- Helper for ensuring email subject starts with "Vantage: " ---
+const ensureVantageSubject = (subject: string): string => {
+  const trimmed = (subject || '').trim();
+  if (trimmed.startsWith('Vantage: ')) {
+    return trimmed;
+  }
+  if (trimmed.startsWith('VantageFlow: ')) {
+    return `Vantage: ${trimmed.slice('VantageFlow: '.length).trim()}`;
+  }
+  return `Vantage: ${trimmed}`;
+};
+
 // --- Helper for sending emails via Gmail SMTP ---
 const sendEmail = async (to: string, subject: string, html: string): Promise<boolean> => {
+  const finalSubject = ensureVantageSubject(subject);
   console.log(`[sendEmail] Attempting to send email to: ${to}`);
-  console.log(`[sendEmail] Subject: ${subject}`);
+  console.log(`[sendEmail] Subject: ${finalSubject}`);
 
   const transporter = createTransporter();
   if (!transporter) {
@@ -121,9 +134,9 @@ const sendEmail = async (to: string, subject: string, html: string): Promise<boo
   try {
     console.log('[sendEmail] Sending email via Gmail SMTP...');
     const info = await transporter.sendMail({
-      from: `"VantageFlow" <${emailUser}>`,
+      from: `"Vantage" <${emailUser}>`,
       to,
-      subject,
+      subject: finalSubject,
       html,
     });
 
@@ -577,7 +590,7 @@ export const inviteUser = functions
 
       const html = getInvitationEmail(role, setupLink);
 
-      const emailSent = await sendEmail(email, 'VantageFlow: Your Account Setup Link', html);
+      const emailSent = await sendEmail(email, 'Vantage: Your Account Setup Link', html);
       if (!emailSent) {
         throw new functions.https.HttpsError(
           'internal',
@@ -646,7 +659,7 @@ export const sendReminderEmail = functions
 
       const html = getReminderEmail(role, setupLink);
 
-      const emailSent = await sendEmail(email, 'VantageFlow: Action Required - Complete Your Account Setup', html);
+      const emailSent = await sendEmail(email, 'Vantage: Action Required - Complete Your Account Setup', html);
       if (!emailSent) {
         throw new functions.https.HttpsError(
           'internal',
@@ -682,7 +695,7 @@ export const notifyProjectMemberAdded = functions
     const { projectId, projectName, newMemberEmail, newMemberName, teamEmails } = data;
     const inviterName = (context as any).auth.token.name || (context as any).auth.token.email;
 
-    const subject = `New Team Member: ${newMemberName || newMemberEmail}`;
+    const subject = `Vantage: New Team Member: ${newMemberName || newMemberEmail}`;
     const link = `https://vantageflow.vercel.app/project/${projectId}`;
     const html = getNewMemberEmail(newMemberName || newMemberEmail, projectName, inviterName, link);
 
@@ -722,7 +735,7 @@ export const notifyResponsibilityAssigned = functions
     // assignees: { uid: string, email: string, displayName: string }[]
     const assignerName = (context as any).auth.token.name || (context as any).auth.token.email;
 
-    const subject = `New Responsibility: ${itemName}`;
+    const subject = `Vantage: New Responsibility: ${itemName}`;
     const link = `https://vantageflow.vercel.app/project/${projectId}`;
     const html = getResponsibilityAssignedEmail(itemType, itemName, projectName, assignerName, link);
 
@@ -763,7 +776,7 @@ export const notifyTaskImpediment = functions
     const { projectId, projectName, taskName, category, description, recipients } = data;
     const reportedByName = (context as any).auth.token.name || (context as any).auth.token.email || 'Team Member';
 
-    const subject = `⚠️ Impediment Flagged: ${taskName} (${projectName})`;
+    const subject = `Vantage: ⚠️ Impediment Flagged: ${taskName} (${projectName})`;
     const link = `https://vantageflow.vercel.app/project/${projectId}`;
     const html = getTaskImpedimentEmail(taskName, projectName, reportedByName, category, description, link);
 
@@ -803,7 +816,7 @@ export const notifyTaskImpedimentResolved = functions
     const { projectId, projectName, taskName, resolutionNote, recipients } = data;
     const resolvedByName = (context as any).auth.token.name || (context as any).auth.token.email || 'Lead';
 
-    const subject = `✅ Impediment Cleared: ${taskName} (${projectName})`;
+    const subject = `Vantage: ✅ Impediment Cleared: ${taskName} (${projectName})`;
     const link = `https://vantageflow.vercel.app/project/${projectId}`;
     const html = getTaskImpedimentResolvedEmail(taskName, projectName, resolvedByName, resolutionNote || '', link);
 
@@ -843,7 +856,7 @@ export const notifyTaskCompleted = functions
     const { projectId, projectName, taskName, deliverablesSummary, recipients } = data;
     const completedByName = (context as any).auth.token.name || (context as any).auth.token.email || 'Assignee';
 
-    const subject = `🎉 Task Complete: ${taskName} (${projectName})`;
+    const subject = `Vantage: 🎉 Task Complete: ${taskName} (${projectName})`;
     const link = `https://vantageflow.vercel.app/project/${projectId}`;
     const html = getTaskCompletedEmail(taskName, projectName, completedByName, deliverablesSummary || '', link);
 
@@ -883,7 +896,7 @@ export const notifyTaskFeedback = functions
     const { projectId, projectName, taskName, message, recipients } = data;
     const authorName = (context as any).auth.token.name || (context as any).auth.token.email || 'Team Member';
 
-    const subject = `💬 New Task Note: ${taskName} (${projectName})`;
+    const subject = `Vantage: 💬 New Task Note: ${taskName} (${projectName})`;
     const link = `https://vantageflow.vercel.app/project/${projectId}`;
     const html = getTaskFeedbackEmail(taskName, projectName, authorName, message, link);
 
@@ -926,7 +939,7 @@ export const onAchievementAwarded = functions.firestore
 
       // 1. Notify the User (Email) if significant achievement
       if (userEmail && (category === 'phase_complete' || category === 'milestone' || points >= 50)) {
-        const subject = `Congratulations! You earned ${points} points!`;
+        const subject = `Vantage: Congratulations! You earned ${points} points!`;
         const html = getAchievementEmail(userName, points, description);
         await sendEmail(userEmail, subject, html);
       }
@@ -1001,7 +1014,7 @@ export const onProjectArchiveStatusChange = functions.firestore
       }
     }
 
-    const subject = `Project ${isNowArchived ? 'Archived' : 'Unarchived'}: ${projectName}`;
+    const subject = `Vantage: Project ${isNowArchived ? 'Archived' : 'Unarchived'}: ${projectName}`;
     const html = getProjectArchivedEmail(projectName, actionByName, isNowArchived, link);
 
     const notifyPromises = teamMembers.map(async (member: any) => {
