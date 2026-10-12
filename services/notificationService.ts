@@ -85,5 +85,160 @@ export const notificationService = {
             // Don't block UI flow if notification fails
             return false;
         }
+    },
+
+    /**
+     * Notify assigner / project owner of an impediment reported by an assignee
+     */
+    notifyTaskImpediment: async (
+        project: Project,
+        task: Task,
+        category: string,
+        description: string,
+        recipients: TeamMember[]
+    ) => {
+        console.log(`[NotificationService] Notifying impediment on task: ${task.name}`);
+        if (!recipients || recipients.length === 0) return false;
+
+        const currentUser = auth.currentUser;
+        if (!currentUser) return false;
+        await currentUser.getIdToken(true);
+
+        const functions = getFunctions(app, 'us-central1');
+        const notify = httpsCallable(functions, 'notifyTaskImpediment');
+
+        try {
+            await notify({
+                projectId: project.id,
+                projectName: project.name,
+                taskName: task.name,
+                category,
+                description,
+                recipients: recipients.map(r => ({
+                    uid: r.uid,
+                    email: r.email,
+                    displayName: r.displayName
+                }))
+            });
+            return true;
+        } catch (error) {
+            console.error('Failed to notify task impediment:', error);
+            return false;
+        }
+    },
+
+    /**
+     * Notify assignees/leads that an impediment has been resolved
+     */
+    notifyTaskImpedimentResolved: async (
+        project: Project,
+        task: Task,
+        resolutionNote: string,
+        recipients: TeamMember[]
+    ) => {
+        console.log(`[NotificationService] Notifying impediment resolved on task: ${task.name}`);
+        if (!recipients || recipients.length === 0) return false;
+
+        const currentUser = auth.currentUser;
+        if (!currentUser) return false;
+        await currentUser.getIdToken(true);
+
+        const functions = getFunctions(app, 'us-central1');
+        const notify = httpsCallable(functions, 'notifyTaskImpedimentResolved');
+
+        try {
+            await notify({
+                projectId: project.id,
+                projectName: project.name,
+                taskName: task.name,
+                resolutionNote,
+                recipients: recipients.map(r => ({
+                    uid: r.uid,
+                    email: r.email,
+                    displayName: r.displayName
+                }))
+            });
+            return true;
+        } catch (error) {
+            console.error('Failed to notify task impediment resolved:', error);
+            return false;
+        }
+    },
+
+    /**
+     * Notify assigner/owner that a task has reached 100% completion
+     */
+    notifyTaskCompleted: async (
+        project: Project,
+        task: Task,
+        deliverablesSummary: string,
+        recipients: TeamMember[]
+    ) => {
+        console.log(`[NotificationService] Notifying task completion: ${task.name}`);
+        if (!recipients || recipients.length === 0) return false;
+
+        const currentUser = auth.currentUser;
+        if (!currentUser) return false;
+        await currentUser.getIdToken(true);
+
+        const functions = getFunctions(app, 'us-central1');
+        const notify = httpsCallable(functions, 'notifyTaskCompleted');
+
+        try {
+            await notify({
+                projectId: project.id,
+                projectName: project.name,
+                taskName: task.name,
+                deliverablesSummary,
+                recipients: recipients.map(r => ({
+                    uid: r.uid,
+                    email: r.email,
+                    displayName: r.displayName
+                }))
+            });
+            return true;
+        } catch (error) {
+            console.error('Failed to notify task completion:', error);
+            return false;
+        }
+    },
+
+    /**
+     * Notify task collaborators of a new feedback note
+     */
+    notifyTaskFeedback: async (
+        project: Project,
+        task: Task,
+        message: string,
+        recipients: TeamMember[]
+    ) => {
+        console.log(`[NotificationService] Notifying task feedback on: ${task.name}`);
+        if (!recipients || recipients.length === 0) return false;
+
+        const currentUser = auth.currentUser;
+        if (!currentUser) return false;
+        await currentUser.getIdToken(true);
+
+        const functions = getFunctions(app, 'us-central1');
+        const notify = httpsCallable(functions, 'notifyTaskFeedback');
+
+        try {
+            await notify({
+                projectId: project.id,
+                projectName: project.name,
+                taskName: task.name,
+                message,
+                recipients: recipients.map(r => ({
+                    uid: r.uid,
+                    email: r.email,
+                    displayName: r.displayName
+                }))
+            });
+            return true;
+        } catch (error) {
+            console.error('Failed to notify task feedback:', error);
+            return false;
+        }
     }
 };
+

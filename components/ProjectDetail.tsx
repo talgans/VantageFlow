@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect, useMemo, useCallback } from 'react';
-import { Project, Task, TaskStatus, TaskPriority, Phase, DurationUnit, Currency, TeamMember } from '../types';
+import { Project, Task, TaskStatus, TaskPriority, Phase, DurationUnit, Currency, TeamMember, TaskImpediment, TaskFeedbackNote } from '../types';
 import StatusBadge from './StatusBadge';
 import CircularProgress from './CircularProgress';
 import ResponsibilitySelector from './ResponsibilitySelector';
@@ -7,7 +7,10 @@ import { notificationService } from '../services/notificationService';
 import { achievementService } from '../services/achievementService';
 import { getProjectInsights } from '../services/geminiService';
 import { uploadTaskImage } from '../services/storageService';
-import { ArrowLeftIcon, SparklesIcon, InfoIcon, TeamIcon, CalendarIcon, MoneyIcon, CheckCircleIcon, PlusCircleIcon, ChevronRightIcon, ChevronDownIcon, ListBulletIcon, ChartBarIcon, TrashIcon, ArrowUpIcon, ArrowDownIcon, GripVerticalIcon, StarIcon, UserIcon, WhatsAppIcon, PhotoIcon, XMarkIcon, FlagIcon, MagnifyingGlassIcon } from './icons';
+import { ArrowLeftIcon, SparklesIcon, InfoIcon, TeamIcon, CalendarIcon, MoneyIcon, CheckCircleIcon, PlusCircleIcon, ChevronRightIcon, ChevronDownIcon, ListBulletIcon, ChartBarIcon, TrashIcon, ArrowUpIcon, ArrowDownIcon, GripVerticalIcon, StarIcon, UserIcon, WhatsAppIcon, PhotoIcon, XMarkIcon, FlagIcon, MagnifyingGlassIcon, ChatBubbleBottomCenterTextIcon } from './icons';
+import { TaskImpedimentModal } from './TaskImpedimentModal';
+import { TaskCompletionModal } from './TaskCompletionModal';
+import { TaskFeedbackDrawer } from './TaskFeedbackDrawer';
 
 // --- Filter Icon (inline SVG, funnel) ---
 const FilterIcon = (props: React.SVGProps<SVGSVGElement>) => (
@@ -901,9 +904,12 @@ interface TaskRowProps {
   onImageUpload?: (taskId: string, file: File) => void;
   onRemoveImage?: (taskId: string, imageUrl: string) => void;
   onViewImage?: (imageUrl: string) => void;
+  onOpenFeedback?: (task: Task) => void;
+  onOpenImpediment?: (task: Task) => void;
+  onRequestComplete?: (task: Task) => void;
 }
 
-const TaskRow: React.FC<TaskRowProps> = ({ task, level, isExpanded, onToggleExpand, addingSubtaskTo, setAddingSubtaskTo, canEdit, handleSaveSubtask, editingField, setEditingField, handleUpdateTaskField, onRequestDelete, phaseId, parentId, onDragStart, onDragOver, onDrop, onDragEnd, onDragLeave, draggedItemId, dropTarget, checkPermission, onAssign, projectTeam, formerMembers, getUserDisplayName, getUserPhotoURL, onImageUpload, onRemoveImage, onViewImage }) => {
+const TaskRow: React.FC<TaskRowProps> = ({ task, level, isExpanded, onToggleExpand, addingSubtaskTo, setAddingSubtaskTo, canEdit, handleSaveSubtask, editingField, setEditingField, handleUpdateTaskField, onRequestDelete, phaseId, parentId, onDragStart, onDragOver, onDrop, onDragEnd, onDragLeave, draggedItemId, dropTarget, checkPermission, onAssign, projectTeam, formerMembers, getUserDisplayName, getUserPhotoURL, onImageUpload, onRemoveImage, onViewImage, onOpenFeedback, onOpenImpediment, onRequestComplete }) => {
   const effectivePriority = getEffectivePriority(task);
   const priorityColor = PRIORITY_COLORS[effectivePriority];
   const isPriorityUnset = task.priority === undefined || task.priority === null;
@@ -1009,6 +1015,23 @@ const TaskRow: React.FC<TaskRowProps> = ({ task, level, isExpanded, onToggleExpa
               <span className="w-full cursor-pointer whitespace-pre-wrap break-words" onClick={() => canEditTask && setEditingField({ taskId: task.id, field: 'name' })}>{task.name}</span>
             )}
             <TaskProgressBar progress={progress} status={task.status} useProgressColor={hasSubtasks} />
+            {/* Active Blocker Badge */}
+            {task.impediment && !task.impediment.resolved && (
+              <div className="mt-1.5 flex items-center gap-1.5 flex-wrap">
+                <button
+                  type="button"
+                  onClick={(e) => { e.stopPropagation(); onOpenImpediment?.(task); }}
+                  className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-md bg-red-500/15 hover:bg-red-500/25 text-red-300 border border-red-500/30 text-[11px] font-semibold transition-all text-left group/imp cursor-pointer"
+                  title="Click to view or resolve blocker"
+                >
+                  <span className="text-red-400">⚠️ Blocked ({task.impediment.category}):</span>
+                  <span className="truncate max-w-[220px]">{task.impediment.description}</span>
+                  <span className="ml-1 text-[10px] text-emerald-400 font-bold underline opacity-80 group-hover/imp:opacity-100">
+                    Resolve
+                  </span>
+                </button>
+              </div>
+            )}
             {/* Task Image Thumbnails */}
             {hasImages && (
               <div className="flex items-center gap-1.5 mt-1.5 flex-wrap">
@@ -1117,8 +1140,14 @@ const TaskRow: React.FC<TaskRowProps> = ({ task, level, isExpanded, onToggleExpa
           ) : isEditing('status') ? (
             <StatusEditButtons
               onSelect={(status) => {
-                handleUpdateTaskField(task.id, 'status', status);
                 setEditingField(null);
+                if (status === TaskStatus.AtRisk) {
+                  onOpenImpediment?.(task);
+                } else if (status === TaskStatus.Hundred) {
+                  onRequestComplete?.(task);
+                } else {
+                  handleUpdateTaskField(task.id, 'status', status);
+                }
               }}
               onClose={() => setEditingField(null)}
             />
@@ -1205,24 +1234,57 @@ const TaskRow: React.FC<TaskRowProps> = ({ task, level, isExpanded, onToggleExpa
               {task.deliverables?.map(d => <div key={d} className="flex items-center truncate"><CheckCircleIcon className="w-3 h-3 text-green-500 mr-1.5 flex-shrink-0" /> <span className="truncate">{d}</span></div>)}
             </div>
           </div>
-          {canEditTask && (
-            <div className="flex items-center space-x-1">
-              <button
-                onClick={() => onAssign?.(task)}
-                className={`text-slate-500 hover:text-brand-light transition-colors p-1 rounded-full ${(!task.assignees || task.assignees.length === 0) ? 'animate-pulse text-slate-600' : ''}`}
-                title="Assign Members"
-              >
-                <UserIcon className="w-5 h-5" />
-              </button>
+          <div className="flex items-center space-x-1">
+            {/* Task Feedback & Notes Button */}
+            <button
+              type="button"
+              onClick={(e) => { e.stopPropagation(); onOpenFeedback?.(task); }}
+              className={`relative text-slate-500 hover:text-brand-light transition-colors p-1 rounded-full ${
+                task.feedbackNotes && task.feedbackNotes.length > 0 ? 'text-blue-400' : ''
+              }`}
+              title={`Task Notes & Feedback (${task.feedbackNotes?.length || 0})`}
+            >
+              <ChatBubbleBottomCenterTextIcon className="w-5 h-5" />
+              {task.feedbackNotes && task.feedbackNotes.length > 0 && (
+                <span className="absolute -top-1 -right-1 min-w-[14px] h-[14px] px-0.5 bg-blue-500 text-[9px] font-bold text-white rounded-full flex items-center justify-center">
+                  {task.feedbackNotes.length}
+                </span>
+              )}
+            </button>
 
-              <button onClick={() => setAddingSubtaskTo(task.id)} className="text-slate-500 hover:text-brand-light transition-colors p-1 rounded-full" title="Add Subtask">
-                <PlusCircleIcon className="w-5 h-5" />
+            {/* Blocker Flag Button */}
+            {canEditTask && (
+              <button
+                type="button"
+                onClick={(e) => { e.stopPropagation(); onOpenImpediment?.(task); }}
+                className={`text-slate-500 hover:text-red-400 transition-colors p-1 rounded-full ${
+                  task.impediment && !task.impediment.resolved ? 'text-red-400' : ''
+                }`}
+                title={task.impediment && !task.impediment.resolved ? 'View / Resolve Blocker' : 'Report Blocker'}
+              >
+                <FlagIcon className="w-5 h-5" />
               </button>
-              <button onClick={() => onRequestDelete(task.id)} className="text-slate-500 hover:text-red-500 transition-colors p-1 rounded-full" title="Delete Task">
-                <TrashIcon className="w-5 h-5" />
-              </button>
-            </div>
-          )}
+            )}
+
+            {canEditTask && (
+              <>
+                <button
+                  onClick={() => onAssign?.(task)}
+                  className={`text-slate-500 hover:text-brand-light transition-colors p-1 rounded-full ${(!task.assignees || task.assignees.length === 0) ? 'animate-pulse text-slate-600' : ''}`}
+                  title="Assign Members"
+                >
+                  <UserIcon className="w-5 h-5" />
+                </button>
+
+                <button onClick={() => setAddingSubtaskTo(task.id)} className="text-slate-500 hover:text-brand-light transition-colors p-1 rounded-full" title="Add Subtask">
+                  <PlusCircleIcon className="w-5 h-5" />
+                </button>
+                <button onClick={() => onRequestDelete(task.id)} className="text-slate-500 hover:text-red-500 transition-colors p-1 rounded-full" title="Delete Task">
+                  <TrashIcon className="w-5 h-5" />
+                </button>
+              </>
+            )}
+          </div>
         </div>
       </li>
       {isDropTargetBelow && <li className="h-0.5 bg-brand-secondary list-none" style={{ marginLeft: `${level * 2}rem` }} />}
@@ -1273,6 +1335,9 @@ const TaskRow: React.FC<TaskRowProps> = ({ task, level, isExpanded, onToggleExpa
             onImageUpload={onImageUpload}
             onRemoveImage={onRemoveImage}
             onViewImage={onViewImage}
+            onOpenFeedback={onOpenFeedback}
+            onOpenImpediment={onOpenImpediment}
+            onRequestComplete={onRequestComplete}
           />
         ))
       )}
@@ -1329,6 +1394,9 @@ const ProjectDetail: React.FC<ProjectDetailProps> = ({ project, onBack, canEdit,
   const [viewMode, setViewMode] = useState<'list' | 'gantt'>('list');
   const [taskToDeleteId, setTaskToDeleteId] = useState<string | null>(null);
   const [sortConfig, setSortConfig] = useState<SortConfig>({ key: 'status', direction: 'ascending' });
+  const [impedimentModalTask, setImpedimentModalTask] = useState<Task | null>(null);
+  const [completionModalTask, setCompletionModalTask] = useState<Task | null>(null);
+  const [feedbackDrawerTask, setFeedbackDrawerTask] = useState<Task | null>(null);
 
   // --- Task Filter State ---
   const [filters, setFilters] = useState<TaskFilters>(EMPTY_FILTERS);
@@ -1562,6 +1630,198 @@ const ProjectDetail: React.FC<ProjectDetailProps> = ({ project, onBack, canEdit,
       return new Date(value);
     }
     return value;
+  };
+
+  const currentUserMember = useMemo<TeamMember>(() => {
+    const found = project.team?.members?.find(m => m.uid === currentUserId || (currentUserEmail && m.email?.toLowerCase() === currentUserEmail.toLowerCase()));
+    if (found) return found;
+    return {
+      uid: currentUserId || '',
+      email: currentUserEmail || '',
+      displayName: getUserDisplayName(currentUserId || '', currentUserEmail) || currentUserEmail?.split('@')[0] || 'User',
+      photoURL: getUserPhotoURL(currentUserId || '', currentUserEmail),
+    };
+  }, [project.team?.members, currentUserId, currentUserEmail, getUserDisplayName, getUserPhotoURL]);
+
+  const getTaskFeedbackRecipients = useCallback((targetTask: Task): TeamMember[] => {
+    const recipientsMap = new Map<string, TeamMember>();
+
+    // 1. Task Assigner
+    if (targetTask.assignedBy?.email && targetTask.assignedBy.uid !== currentUserId) {
+      recipientsMap.set(targetTask.assignedBy.uid || targetTask.assignedBy.email, targetTask.assignedBy);
+    }
+
+    // 2. Task Owner / Originator
+    if (targetTask.ownerId && targetTask.ownerId !== currentUserId) {
+      const ownerMember = project.team?.members?.find(m => m.uid === targetTask.ownerId);
+      if (ownerMember) {
+        recipientsMap.set(ownerMember.uid, ownerMember);
+      } else if (targetTask.ownerEmail) {
+        recipientsMap.set(targetTask.ownerEmail, {
+          uid: targetTask.ownerId,
+          email: targetTask.ownerEmail,
+          displayName: getUserDisplayName(targetTask.ownerId, targetTask.ownerEmail),
+        });
+      }
+    }
+
+    // 3. Project Owner
+    if (project.ownerId && project.ownerId !== currentUserId) {
+      const projOwner = project.team?.members?.find(m => m.uid === project.ownerId);
+      if (projOwner) {
+        recipientsMap.set(projOwner.uid, projOwner);
+      } else if (project.ownerEmail) {
+        recipientsMap.set(project.ownerEmail, {
+          uid: project.ownerId,
+          email: project.ownerEmail,
+          displayName: project.ownerName || getUserDisplayName(project.ownerId, project.ownerEmail),
+        });
+      }
+    }
+
+    // 4. Project Leads (primary or secondary)
+    (project.team?.members || []).forEach(m => {
+      if ((m.leadRole === 'primary' || m.leadRole === 'secondary') && m.uid !== currentUserId) {
+        recipientsMap.set(m.uid || m.email, m);
+      }
+    });
+
+    // 5. Also task assignees (for notes/updates), excluding current user
+    (targetTask.assignees || []).forEach(a => {
+      if (a.uid !== currentUserId && (a.email || a.uid)) {
+        recipientsMap.set(a.uid || a.email, a);
+      }
+    });
+
+    return Array.from(recipientsMap.values());
+  }, [currentUserId, project, getUserDisplayName]);
+
+  const handleSaveImpediment = async (taskToBlock: Task, impediment: TaskImpediment, notify: boolean) => {
+    const updatedProject = JSON.parse(JSON.stringify(project), reviveDates);
+    const updateInTasks = (tasks: Task[]): boolean => {
+      for (const t of tasks) {
+        if (t.id === taskToBlock.id) {
+          t.impediment = impediment;
+          t.status = TaskStatus.AtRisk;
+          return true;
+        }
+        if (t.subTasks && updateInTasks(t.subTasks)) return true;
+      }
+      return false;
+    };
+    updatedProject.phases.forEach((p: Phase) => updateInTasks(p.tasks));
+    onUpdateProject(updatedProject);
+    showToast('Task marked At Risk: blocker recorded');
+
+    if (notify) {
+      const recipients = getTaskFeedbackRecipients(taskToBlock);
+      if (recipients.length > 0) {
+        const sent = await notificationService.notifyTaskImpediment(
+          project,
+          taskToBlock,
+          impediment.category,
+          impediment.description,
+          recipients
+        );
+        if (sent) {
+          showToast('Blocker alert sent to assigner and project leads');
+        }
+      }
+    }
+  };
+
+  const handleResolveImpediment = async (taskToResolve: Task, resolutionNote: string, newStatus: TaskStatus, notify: boolean) => {
+    const updatedProject = JSON.parse(JSON.stringify(project), reviveDates);
+    const updateInTasks = (tasks: Task[]): boolean => {
+      for (const t of tasks) {
+        if (t.id === taskToResolve.id) {
+          if (t.impediment) {
+            t.impediment.resolved = true;
+            t.impediment.resolvedAt = new Date();
+            t.impediment.resolvedBy = currentUserMember;
+            t.impediment.resolutionNote = resolutionNote;
+          }
+          t.status = newStatus;
+          return true;
+        }
+        if (t.subTasks && updateInTasks(t.subTasks)) return true;
+      }
+      return false;
+    };
+    updatedProject.phases.forEach((p: Phase) => updateInTasks(p.tasks));
+    onUpdateProject(updatedProject);
+    showToast(`Blocker resolved! Status restored to ${newStatus}`);
+
+    if (notify) {
+      const recipients = getTaskFeedbackRecipients(taskToResolve);
+      if (recipients.length > 0) {
+        const sent = await notificationService.notifyTaskImpedimentResolved(
+          project,
+          taskToResolve,
+          resolutionNote,
+          recipients
+        );
+        if (sent) {
+          showToast('Impediment resolution notification sent');
+        }
+      }
+    }
+  };
+
+  const handleConfirmTaskComplete = async (taskToComplete: Task, notify: boolean) => {
+    handleUpdateTaskField(taskToComplete.id, 'status', TaskStatus.Hundred);
+
+    if (notify) {
+      const recipients = getTaskFeedbackRecipients(taskToComplete);
+      if (recipients.length === 0) {
+        showToast('Task marked 100% complete');
+        return;
+      }
+
+      const deliverablesSummary = taskToComplete.deliverables && taskToComplete.deliverables.length > 0
+        ? `${taskToComplete.deliverables.length} deliverables (${taskToComplete.deliverables.slice(0, 3).join(', ')}${taskToComplete.deliverables.length > 3 ? '...' : ''})`
+        : 'All deliverables and tasks completed';
+
+      const sent = await notificationService.notifyTaskCompleted(
+        project,
+        taskToComplete,
+        deliverablesSummary,
+        recipients
+      );
+      if (sent) {
+        showToast('Completion report sent to assigner and project leads');
+      } else {
+        showToast('Task marked 100% complete');
+      }
+    }
+  };
+
+  const handleAddTaskFeedbackNote = async (targetTask: Task, note: TaskFeedbackNote, notify: boolean) => {
+    const updatedProject = JSON.parse(JSON.stringify(project), reviveDates);
+    const updateInTasks = (tasks: Task[]): boolean => {
+      for (const t of tasks) {
+        if (t.id === targetTask.id) {
+          t.feedbackNotes = t.feedbackNotes ? [...t.feedbackNotes, note] : [note];
+          return true;
+        }
+        if (t.subTasks && updateInTasks(t.subTasks)) return true;
+      }
+      return false;
+    };
+    updatedProject.phases.forEach((p: Phase) => updateInTasks(p.tasks));
+    onUpdateProject(updatedProject);
+    showToast('Feedback note added');
+
+    if (notify) {
+      const recipients = getTaskFeedbackRecipients(targetTask);
+      await notificationService.notifyTaskFeedback(
+        project,
+        targetTask,
+        note.message,
+        recipients
+      );
+      showToast('Notification sent to task team');
+    }
   };
 
   // Compute effective canEdit - false if project is archived
@@ -2025,6 +2285,7 @@ const ProjectDetail: React.FC<ProjectDetailProps> = ({ project, onBack, canEdit,
         for (const task of tasks) {
           if (task.id === assigningTo.id) {
             task.assignees = members;
+            task.assignedBy = currentUserMember;
             // Propagate to subtasks if requested
             if (propagate && task.subTasks) {
               propagateAssignmentsToChildren(task.subTasks, members);
@@ -3048,6 +3309,9 @@ const ProjectDetail: React.FC<ProjectDetailProps> = ({ project, onBack, canEdit,
                           onImageUpload={handleTaskImageUpload}
                           onRemoveImage={handleRemoveTaskImage}
                           onViewImage={(url) => setViewingImage(url)}
+                          onOpenFeedback={(task) => setFeedbackDrawerTask(task)}
+                          onOpenImpediment={(task) => setImpedimentModalTask(task)}
+                          onRequestComplete={(task) => setCompletionModalTask(task)}
                         />
                       ))}
                     </ul>
@@ -3147,6 +3411,46 @@ const ProjectDetail: React.FC<ProjectDetailProps> = ({ project, onBack, canEdit,
             onClick={(e) => e.stopPropagation()}
           />
         </div>
+      )}
+
+      {/* Task Feedback & Notes Drawer */}
+      {feedbackDrawerTask && (
+        <TaskFeedbackDrawer
+          isOpen={Boolean(feedbackDrawerTask)}
+          onClose={() => setFeedbackDrawerTask(null)}
+          task={feedbackDrawerTask}
+          project={project}
+          currentUser={currentUserMember}
+          onAddNote={(note, notify) => handleAddTaskFeedbackNote(feedbackDrawerTask, note, notify)}
+          onOpenImpedimentModal={() => setImpedimentModalTask(feedbackDrawerTask)}
+          getUserDisplayName={getUserDisplayName}
+          getUserPhotoURL={getUserPhotoURL}
+        />
+      )}
+
+      {/* Task Impediment Modal */}
+      {impedimentModalTask && (
+        <TaskImpedimentModal
+          isOpen={Boolean(impedimentModalTask)}
+          onClose={() => setImpedimentModalTask(null)}
+          task={impedimentModalTask}
+          project={project}
+          currentUser={currentUserMember}
+          onSaveImpediment={(impediment, notify) => handleSaveImpediment(impedimentModalTask, impediment, notify)}
+          onResolveImpediment={(note, status, notify) => handleResolveImpediment(impedimentModalTask, note, status, notify)}
+        />
+      )}
+
+      {/* Task Completion Modal */}
+      {completionModalTask && (
+        <TaskCompletionModal
+          isOpen={Boolean(completionModalTask)}
+          onClose={() => setCompletionModalTask(null)}
+          task={completionModalTask}
+          project={project}
+          currentUser={currentUserMember}
+          onConfirmComplete={(notify) => handleConfirmTaskComplete(completionModalTask, notify)}
+        />
       )}
 
     </div>

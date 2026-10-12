@@ -1,6 +1,6 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.getProjectArchivedEmail = exports.getAchievementEmail = exports.getResponsibilityAssignedEmail = exports.getNewMemberEmail = exports.getReminderEmail = exports.getInvitationEmail = exports.footerStyle = exports.buttonStyle = exports.commonStyles = void 0;
+exports.getTaskFeedbackEmail = exports.getTaskCompletedEmail = exports.getTaskImpedimentResolvedEmail = exports.getTaskImpedimentEmail = exports.getProjectArchivedEmail = exports.getAchievementEmail = exports.getResponsibilityAssignedEmail = exports.getNewMemberEmail = exports.getReminderEmail = exports.getInvitationEmail = exports.footerStyle = exports.buttonStyle = exports.commonStyles = void 0;
 exports.commonStyles = `
   font-family: Arial, sans-serif;
   max-width: 600px;
@@ -129,4 +129,99 @@ const getProjectArchivedEmail = (projectName, actionBy, isArchived, link) => `
 </div>
 `;
 exports.getProjectArchivedEmail = getProjectArchivedEmail;
+const getTaskImpedimentEmail = (taskName, projectName, reportedByName, category, description, link) => `
+<div style="${exports.commonStyles}">
+  <div style="background-color: #fef2f2; border: 1px solid #ef4444; border-radius: 8px; padding: 16px; margin-bottom: 20px;">
+    <h2 style="color: #dc2626; margin-top: 0;">⚠️ Task Impediment Flagged</h2>
+    <p style="margin: 0; color: #991b1b; font-weight: bold;">
+      Action required: An impediment has been reported on a task.
+    </p>
+  </div>
+  <p><strong>${reportedByName}</strong> has flagged a blocker on <strong>${taskName}</strong> in project <strong>${projectName}</strong>.</p>
+  <div style="background-color: #f8fafc; border-left: 4px solid #ef4444; padding: 12px 16px; margin: 16px 0; border-radius: 4px;">
+    <p style="margin: 0 0 6px 0; font-size: 13px; color: #64748b; text-transform: uppercase; font-weight: bold;">
+      Category: <span style="color: #dc2626;">${category}</span>
+    </p>
+    <p style="margin: 0; color: #1e293b; font-size: 15px; line-height: 1.5;">
+      "${description}"
+    </p>
+  </div>
+  <div style="margin: 25px 0;">
+    <a href="${link}" style="${exports.buttonStyle}">
+      Review & Unblock Task
+    </a>
+  </div>
+  <div style="${exports.footerStyle}">
+    VantageFlow - Feedback & Task Management
+  </div>
+</div>
+`;
+exports.getTaskImpedimentEmail = getTaskImpedimentEmail;
+const getTaskImpedimentResolvedEmail = (taskName, projectName, resolvedByName, resolutionNote, link) => `
+<div style="${exports.commonStyles}">
+  <div style="background-color: #f0fdf4; border: 1px solid #22c55e; border-radius: 8px; padding: 16px; margin-bottom: 20px;">
+    <h2 style="color: #16a34a; margin-top: 0;">✅ Impediment Resolved</h2>
+    <p style="margin: 0; color: #15803d; font-weight: bold;">
+      The blocker on task has been cleared.
+    </p>
+  </div>
+  <p><strong>${resolvedByName}</strong> has marked the impediment resolved on <strong>${taskName}</strong> in project <strong>${projectName}</strong>.</p>
+  ${resolutionNote ? `
+  <div style="background-color: #f8fafc; border-left: 4px solid #22c55e; padding: 12px 16px; margin: 16px 0; border-radius: 4px;">
+    <p style="margin: 0; color: #1e293b; font-size: 14px;">"${resolutionNote}"</p>
+  </div>` : ''}
+  <div style="margin: 25px 0;">
+    <a href="${link}" style="${exports.buttonStyle}">
+      View Task Progress
+    </a>
+  </div>
+  <div style="${exports.footerStyle}">
+    VantageFlow - Feedback & Task Management
+  </div>
+</div>
+`;
+exports.getTaskImpedimentResolvedEmail = getTaskImpedimentResolvedEmail;
+const getTaskCompletedEmail = (taskName, projectName, completedByName, deliverablesSummary, link) => `
+<div style="${exports.commonStyles}">
+  <div style="background-color: #f0fdf4; border: 1px solid #22c55e; border-radius: 8px; padding: 16px; margin-bottom: 20px;">
+    <h2 style="color: #16a34a; margin-top: 0;">🎉 Task Marked 100% Complete</h2>
+    <p style="margin: 0; color: #15803d; font-weight: bold;">
+      Feedback & Completion Report
+    </p>
+  </div>
+  <p><strong>${completedByName}</strong> has finished working on <strong>${taskName}</strong> in project <strong>${projectName}</strong>.</p>
+  ${deliverablesSummary ? `
+  <div style="background-color: #f8fafc; border: 1px solid #e2e8f0; border-radius: 6px; padding: 14px; margin: 16px 0;">
+    <p style="margin: 0 0 6px 0; font-size: 13px; color: #64748b; font-weight: bold;">Deliverables / Scope:</p>
+    <p style="margin: 0; color: #334155; font-size: 14px;">${deliverablesSummary}</p>
+  </div>` : ''}
+  <div style="margin: 25px 0;">
+    <a href="${link}" style="${exports.buttonStyle}">
+      Review Completed Task
+    </a>
+  </div>
+  <div style="${exports.footerStyle}">
+    VantageFlow - Feedback & Task Management
+  </div>
+</div>
+`;
+exports.getTaskCompletedEmail = getTaskCompletedEmail;
+const getTaskFeedbackEmail = (taskName, projectName, authorName, message, link) => `
+<div style="${exports.commonStyles}">
+  <h2 style="color: #3b82f6;">💬 New Task Note / Feedback</h2>
+  <p><strong>${authorName}</strong> posted an update on <strong>${taskName}</strong> in project <strong>${projectName}</strong>:</p>
+  <div style="background-color: #f8fafc; border-left: 4px solid #3b82f6; padding: 12px 16px; margin: 16px 0; border-radius: 4px;">
+    <p style="margin: 0; color: #1e293b; font-size: 14px; line-height: 1.5;">"${message}"</p>
+  </div>
+  <div style="margin: 25px 0;">
+    <a href="${link}" style="${exports.buttonStyle}">
+      View Task & Reply
+    </a>
+  </div>
+  <div style="${exports.footerStyle}">
+    VantageFlow - Feedback & Task Management
+  </div>
+</div>
+`;
+exports.getTaskFeedbackEmail = getTaskFeedbackEmail;
 //# sourceMappingURL=emailTemplates.js.map

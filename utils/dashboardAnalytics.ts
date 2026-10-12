@@ -34,13 +34,16 @@ export const getTeamWorkload = (projects: Project[]) => {
             // Checking actual Task type structure might be needed. 
             // Based on previous files, Task has 'assignedTo' (string[] of user IDs)
 
-            if (t.assignedTo && t.assignedTo.length > 0) {
-                t.assignedTo.forEach(uid => {
-                    if (!workload[uid]) {
-                        // We need a way to look up names. We might need to pass in a map or just use ID for now.
-                        workload[uid] = { name: uid, count: 0 };
+            const assignees = t.assignees || [];
+            if (assignees && assignees.length > 0) {
+                assignees.forEach(member => {
+                    const uid = member.uid || member.email;
+                    if (uid) {
+                        if (!workload[uid]) {
+                            workload[uid] = { name: member.displayName || uid, count: 0 };
+                        }
+                        workload[uid].count++;
                     }
-                    workload[uid].count++;
                 });
             }
         });

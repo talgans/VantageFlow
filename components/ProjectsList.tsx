@@ -4,6 +4,8 @@ import CircularProgress from './CircularProgress';
 import StatusBadge from './StatusBadge';
 import { ChevronRightIcon, PlusCircleIcon, PencilIcon, TrashIcon } from './icons';
 import { useUserLookup } from '../hooks/useUserLookup';
+import { useAuth } from '../contexts/AuthContext';
+import { sortProjectsByRecentAccess } from '../services/projectAccessService';
 import MemberCountChart from './charts/MemberCountChart';
 
 interface ProjectsListProps {
@@ -34,6 +36,7 @@ const ProjectsList: React.FC<ProjectsListProps> = ({
     isProjectDeleteProtected
 }) => {
     const { getUserDisplayName, getUserPhotoURL } = useUserLookup();
+    const { user } = useAuth();
 
     // Get the project owner info
     const getOwnerInfo = (project: Project) => {
@@ -108,6 +111,7 @@ const ProjectsList: React.FC<ProjectsListProps> = ({
     const [lifecycleFilter, setLifecycleFilter] = React.useState<'active' | 'archived' | 'trash'>('active');
     const [timeFilter, setTimeFilter] = React.useState<'all' | 'today' | 'week' | 'month' | 'quarter' | 'year'>('all');
     const [typeFilter, setTypeFilter] = React.useState<string>('all');
+    const [sortBy, setSortBy] = React.useState<'recent' | 'name-asc' | 'name-desc' | 'progress-desc' | 'progress-asc' | 'created-desc'>('recent');
     const [searchQuery, setSearchQuery] = React.useState<string>('');
 
     const activeCount = React.useMemo(() => projects.filter(p => !p.isDeleted && !p.isArchived).length, [projects]);
@@ -121,7 +125,7 @@ const ProjectsList: React.FC<ProjectsListProps> = ({
     }, [projects]);
 
     const filteredProjects = React.useMemo(() => {
-        return projects.filter(project => {
+        const filtered = projects.filter(project => {
             // Filter by Lifecycle (Active vs Archived vs Trash)
             if (lifecycleFilter === 'active') {
                 if (project.isDeleted || project.isArchived) return false;
@@ -172,7 +176,28 @@ const ProjectsList: React.FC<ProjectsListProps> = ({
 
             return true;
         });
-    }, [projects, timeFilter, typeFilter, searchQuery]);
+
+        // Sort projects based on selected sort option (default: most recent)
+        if (sortBy === 'recent') {
+            return sortProjectsByRecentAccess(filtered, user?.uid);
+        } else if (sortBy === 'name-asc') {
+            return [...filtered].sort((a, b) => a.name.localeCompare(b.name));
+        } else if (sortBy === 'name-desc') {
+            return [...filtered].sort((a, b) => b.name.localeCompare(a.name));
+        } else if (sortBy === 'progress-desc') {
+            return [...filtered].sort((a, b) => getProjectCompletionPercentage(b) - getProjectCompletionPercentage(a));
+        } else if (sortBy === 'progress-asc') {
+            return [...filtered].sort((a, b) => getProjectCompletionPercentage(a) - getProjectCompletionPercentage(b));
+        } else if (sortBy === 'created-desc') {
+            return [...filtered].sort((a, b) => {
+                const aTime = a.createdAt ? new Date(a.createdAt).getTime() : 0;
+                const bTime = b.createdAt ? new Date(b.createdAt).getTime() : 0;
+                return bTime - aTime;
+            });
+        }
+
+        return filtered;
+    }, [projects, lifecycleFilter, timeFilter, typeFilter, searchQuery, sortBy, user]);
 
     return (
         <div className="space-y-6">
@@ -306,13 +331,30 @@ const ProjectsList: React.FC<ProjectsListProps> = ({
                         <select
                             value={typeFilter}
                             onChange={(e) => setTypeFilter(e.target.value)}
-                            className="bg-slate-900/50 border border-slate-700 text-slate-300 text-xs rounded-lg focus:ring-brand-secondary focus:border-brand-secondary block p-2.5 min-w-[150px] max-w-[200px] truncate"
+                            className="bg-slate-900/50 border border-slate-700 text-slate-300 text-xs rounded-lg focus:ring-brand-secondary focus:border-brand-secondary block p-2.5 min-w-[140px] max-w-[180px] truncate"
                         >
                             <option value="all">All Types</option>
                             {projectTypes.map(type => (
                                 <option key={type} value={type}>{type}</option>
                             ))}
                         </select>
+
+                        {/* Sort Selector */}
+                        <div className="flex items-center space-x-2">
+                            <span className="text-xs text-slate-400 hidden sm:inline">Sort:</span>
+                            <select
+                                value={sortBy}
+                                onChange={(e) => setSortBy(e.target.value as any)}
+                                className="bg-slate-900/50 border border-slate-700 text-slate-300 text-xs rounded-lg focus:ring-brand-secondary focus:border-brand-secondary block p-2.5 min-w-[140px] cursor-pointer"
+                            >
+                                <option value="recent">Most Recent</option>
+                                <option value="name-asc">Name (A-Z)</option>
+                                <option value="name-desc">Name (Z-A)</option>
+                                <option value="progress-desc">Highest Progress</option>
+                                <option value="progress-asc">Lowest Progress</option>
+                                <option value="created-desc">Recently Created</option>
+                            </select>
+                        </div>
                     </div>
                 </div>
 
@@ -340,7 +382,7 @@ const ProjectsList: React.FC<ProjectsListProps> = ({
                     </div>
                 ) : (
                     <ul className="divide-y divide-slate-700">
-                        {filteredProjects.map(project => (
+                        {filteredProjects.map((project, index) => (
                             <li
                                 key={project.id}
                                 className="p-6 hover:bg-slate-800 transition-colors flex justify-between items-center group"
@@ -353,6 +395,12 @@ const ProjectsList: React.FC<ProjectsListProps> = ({
                                     >
                                         <div className="flex items-center space-x-3 mb-1 flex-wrap gap-y-1">
                                             <p className="font-semibold text-white group-hover:text-brand-light">{project.name}</p>
+                                            {/* Most Recent indicator */}
+                                            {sortBy === 'recent' && index === 0 && !project.isDeleted && !project.isArchived && (
+                                                <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-emerald-500/15 text-emerald-400 border border-emerald-500/30">
+                                                    <span className="mr-1">⚡</span> Most Recent
+                                                </span>
+                                            )}
                                             {/* Privacy indicator */}
                                             {project.isPublic ? (
                                                 <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-blue-500/10 text-blue-400 border border-blue-500/30">

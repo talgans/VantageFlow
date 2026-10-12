@@ -126,6 +126,18 @@ export const TaskDetailModal: React.FC<TaskDetailModalProps> = ({
           </View>
 
           <ScrollView style={styles.content} showsVerticalScrollIndicator={false}>
+            {/* Blocker Alert */}
+            {currentTask.impediment && !currentTask.impediment.resolved && (
+              <View style={styles.impedimentBanner}>
+                <Text style={styles.impedimentTitle}>
+                  ⚠️ Blocker: {currentTask.impediment.category}
+                </Text>
+                <Text style={styles.impedimentDesc}>
+                  "{currentTask.impediment.description}"
+                </Text>
+              </View>
+            )}
+
             {/* Status Selector Bar */}
             <View style={styles.section}>
               <Text style={styles.sectionLabel}>Status</Text>
@@ -458,5 +470,24 @@ const styles = StyleSheet.create({
     fontSize: typography.sizes.sm,
     flex: 1,
     marginRight: 8,
+  },
+  impedimentBanner: {
+    backgroundColor: 'rgba(239, 68, 68, 0.15)',
+    borderWidth: 1,
+    borderColor: 'rgba(239, 68, 68, 0.4)',
+    borderRadius: borderRadius.md,
+    padding: spacing.md,
+    marginBottom: spacing.md,
+  },
+  impedimentTitle: {
+    color: '#f87171',
+    fontWeight: 'bold',
+    fontSize: typography.sizes.sm,
+    marginBottom: 4,
+  },
+  impedimentDesc: {
+    color: colors.text,
+    fontSize: typography.sizes.xs,
+    fontStyle: 'italic',
   },
 });

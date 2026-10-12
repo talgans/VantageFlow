@@ -37,6 +37,26 @@ export interface TeamMember {
   departedAt?: Date;
 }
 
+export interface TaskImpediment {
+  id: string;
+  category: 'dependency' | 'resources' | 'requirements' | 'technical' | 'other';
+  description: string;
+  reportedBy: TeamMember;
+  reportedAt: Date | string;
+  resolved?: boolean;
+  resolvedAt?: Date | string;
+  resolvedBy?: TeamMember;
+  resolutionNote?: string;
+}
+
+export interface TaskFeedbackNote {
+  id: string;
+  author: TeamMember;
+  message: string;
+  createdAt: Date | string;
+  type?: 'general' | 'deliverable_update' | 'impediment' | 'completion';
+}
+
 export interface Task {
   id: string;
   name: string;
@@ -45,11 +65,16 @@ export interface Task {
   startDate: Date;
   endDate: Date;
   assignees?: TeamMember[]; // Changed from single ownerId to multiple assignees
+  assignedBy?: TeamMember; // Track who assigned/delegated the task
   ownerId?: string;      // Legacy: kept for backward compatibility during migration
   ownerEmail?: string;   // Legacy
   deliverables?: string[];
   imageUrls?: string[]; // Up to 5 images per task
   subTasks?: Task[];
+  impediment?: TaskImpediment; // Current or latest impediment
+  feedbackNotes?: TaskFeedbackNote[]; // Lightweight updates/notes feed
+  completedAt?: Date;
+  completedBy?: TeamMember;
 }
 
 
@@ -63,10 +88,19 @@ export interface Phase {
   ownerEmail?: string;   // Legacy
 }
 
+export type NotificationType =
+  | 'project_added'
+  | 'responsibility_assigned'
+  | 'member_joined'
+  | 'task_impediment_reported'
+  | 'task_impediment_resolved'
+  | 'task_completed'
+  | 'task_feedback_added';
+
 export interface Notification {
   id: string;
   userId: string;
-  type: 'project_added' | 'responsibility_assigned' | 'member_joined';
+  type: NotificationType;
   projectId: string;
   projectName: string;
   message: string;

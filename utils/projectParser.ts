@@ -434,6 +434,8 @@ function parseStructure(lines: string[]): StructuralResult {
 
       const newTask: Task = {
         id: `task-${Date.now()}-${Math.random().toString(36).substr(2, 5)}`,
+        name: enrichedTask.name || content,
+        status: enrichedTask.status || TaskStatus.Zero,
         ...enrichedTask,
         startDate: new Date(),
         endDate: new Date(),
@@ -466,6 +468,8 @@ function parseStructure(lines: string[]): StructuralResult {
 
         const newTask: Task = {
           id: `task-${Date.now()}-${Math.random().toString(36).substr(2, 5)}`,
+          name: enrichedTask.name || trimmed,
+          status: enrichedTask.status || TaskStatus.Zero,
           ...enrichedTask,
           startDate: new Date(),
           endDate: new Date(),

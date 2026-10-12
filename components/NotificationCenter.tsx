@@ -224,18 +224,50 @@ const NotificationCenter: React.FC = () => {
                                             {/* Notification items within project group */}
                                             {!isCollapsed && (
                                                 <ul className="divide-y divide-slate-700/30">
-                                                    {group.notifications.map(notification => (
+                                                    {group.notifications.map(notification => {
+                                                        const isImpediment = notification.type === 'task_impediment_reported';
+                                                        const isResolved = notification.type === 'task_impediment_resolved';
+                                                        const isCompleted = notification.type === 'task_completed';
+                                                        const isFeedback = notification.type === 'task_feedback_added';
+
+                                                        return (
                                                         <li
                                                             key={notification.id}
                                                             className={`px-4 py-3 hover:bg-slate-700/30 transition-colors cursor-pointer ${!notification.read ? 'bg-slate-700/10' : ''}`}
                                                             onClick={() => !notification.read && markAsRead(notification.id)}
                                                         >
                                                             <div className="flex gap-3">
-                                                                <div className={`mt-1.5 flex-shrink-0 w-2 h-2 rounded-full ${!notification.read ? 'bg-brand-secondary' : 'bg-transparent'}`} />
+                                                                <div className={`mt-1.5 flex-shrink-0 w-2 h-2 rounded-full ${
+                                                                    !notification.read
+                                                                        ? isImpediment ? 'bg-red-500 ring-2 ring-red-500/30' : isCompleted ? 'bg-emerald-400 ring-2 ring-emerald-400/30' : 'bg-brand-secondary'
+                                                                        : 'bg-transparent'
+                                                                }`} />
                                                                 <div className="flex-1 space-y-1">
-                                                                    <p className="text-sm text-slate-300 leading-snug">
-                                                                        {notification.message}
-                                                                    </p>
+                                                                    <div className="flex items-center gap-1.5">
+                                                                        {isImpediment && (
+                                                                            <span className="px-1.5 py-0.5 rounded text-[10px] font-bold bg-red-500/20 text-red-400 border border-red-500/30 uppercase tracking-wider">
+                                                                                Blocker
+                                                                            </span>
+                                                                        )}
+                                                                        {isResolved && (
+                                                                            <span className="px-1.5 py-0.5 rounded text-[10px] font-bold bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 uppercase tracking-wider">
+                                                                                Resolved
+                                                                            </span>
+                                                                        )}
+                                                                        {isCompleted && (
+                                                                            <span className="px-1.5 py-0.5 rounded text-[10px] font-bold bg-green-500/20 text-green-400 border border-green-500/30 uppercase tracking-wider">
+                                                                                Done
+                                                                            </span>
+                                                                        )}
+                                                                        {isFeedback && (
+                                                                            <span className="px-1.5 py-0.5 rounded text-[10px] font-bold bg-blue-500/20 text-blue-400 border border-blue-500/30 uppercase tracking-wider">
+                                                                                Note
+                                                                            </span>
+                                                                        )}
+                                                                        <p className="text-sm text-slate-300 leading-snug">
+                                                                            {notification.message}
+                                                                        </p>
+                                                                    </div>
                                                                     <div className="flex justify-between items-center pt-0.5">
                                                                         <span className="text-xs text-slate-500">{formatDate(notification.createdAt)}</span>
                                                                         {notification.link && (
@@ -251,7 +283,8 @@ const NotificationCenter: React.FC = () => {
                                                                 </div>
                                                             </div>
                                                         </li>
-                                                    ))}
+                                                        );
+                                                    })}
                                                 </ul>
                                             )}
                                         </div>

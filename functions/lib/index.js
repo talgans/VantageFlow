@@ -33,7 +33,7 @@ var __importStar = (this && this.__importStar) || (function () {
     };
 })();
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.completeAccountSetup = exports.validateInviteToken = exports.onProjectArchiveStatusChange = exports.onAchievementAwarded = exports.notifyResponsibilityAssigned = exports.notifyProjectMemberAdded = exports.sendReminderEmail = exports.inviteUser = exports.configureCors = exports.updateUserProfile = exports.deleteUser = exports.setUserRole = exports.getPublicDirectory = exports.listUsers = void 0;
+exports.completeAccountSetup = exports.validateInviteToken = exports.onProjectArchiveStatusChange = exports.onAchievementAwarded = exports.notifyTaskFeedback = exports.notifyTaskCompleted = exports.notifyTaskImpedimentResolved = exports.notifyTaskImpediment = exports.notifyResponsibilityAssigned = exports.notifyProjectMemberAdded = exports.sendReminderEmail = exports.inviteUser = exports.configureCors = exports.updateUserProfile = exports.deleteUser = exports.setUserRole = exports.getPublicDirectory = exports.listUsers = void 0;
 const functions = __importStar(require("firebase-functions/v1"));
 const admin = __importStar(require("firebase-admin"));
 const nodemailer = __importStar(require("nodemailer"));
@@ -650,6 +650,118 @@ exports.notifyResponsibilityAssigned = functions
         }
         if (member.uid) {
             await createNotification(member.uid, 'responsibility_assigned', `Assigned to ${itemType}: ${itemName} in ${projectName}`, projectId, projectName, link);
+        }
+    });
+    await Promise.all(promises);
+    return { success: true };
+});
+/**
+ * Notify assigner/leads of an impediment reported by an assignee
+ */
+exports.notifyTaskImpediment = functions
+    .runWith({
+    timeoutSeconds: 60,
+    memory: '256MB'
+})
+    .https.onCall(async (data, context) => {
+    if (!context.auth) {
+        throw new functions.https.HttpsError('unauthenticated', 'Authenticated user required');
+    }
+    const { projectId, projectName, taskName, category, description, recipients } = data;
+    const reportedByName = context.auth.token.name || context.auth.token.email || 'Team Member';
+    const subject = `⚠️ Impediment Flagged: ${taskName} (${projectName})`;
+    const link = `https://vantageflow.vercel.app/project/${projectId}`;
+    const html = (0, emailTemplates_1.getTaskImpedimentEmail)(taskName, projectName, reportedByName, category, description, link);
+    const promises = (recipients || []).map(async (member) => {
+        if (member.email) {
+            await sendEmail(member.email, subject, html);
+        }
+        if (member.uid) {
+            await createNotification(member.uid, 'task_impediment_reported', `⚠️ ${reportedByName} flagged a blocker on "${taskName}": ${description}`, projectId, projectName, link);
+        }
+    });
+    await Promise.all(promises);
+    return { success: true };
+});
+/**
+ * Notify team/assignees that an impediment has been resolved
+ */
+exports.notifyTaskImpedimentResolved = functions
+    .runWith({
+    timeoutSeconds: 60,
+    memory: '256MB'
+})
+    .https.onCall(async (data, context) => {
+    if (!context.auth) {
+        throw new functions.https.HttpsError('unauthenticated', 'Authenticated user required');
+    }
+    const { projectId, projectName, taskName, resolutionNote, recipients } = data;
+    const resolvedByName = context.auth.token.name || context.auth.token.email || 'Lead';
+    const subject = `✅ Impediment Cleared: ${taskName} (${projectName})`;
+    const link = `https://vantageflow.vercel.app/project/${projectId}`;
+    const html = (0, emailTemplates_1.getTaskImpedimentResolvedEmail)(taskName, projectName, resolvedByName, resolutionNote || '', link);
+    const promises = (recipients || []).map(async (member) => {
+        if (member.email) {
+            await sendEmail(member.email, subject, html);
+        }
+        if (member.uid) {
+            await createNotification(member.uid, 'task_impediment_resolved', `✅ ${resolvedByName} resolved the blocker on "${taskName}"`, projectId, projectName, link);
+        }
+    });
+    await Promise.all(promises);
+    return { success: true };
+});
+/**
+ * Notify assigner/owner that a task has reached 100% completion
+ */
+exports.notifyTaskCompleted = functions
+    .runWith({
+    timeoutSeconds: 60,
+    memory: '256MB'
+})
+    .https.onCall(async (data, context) => {
+    if (!context.auth) {
+        throw new functions.https.HttpsError('unauthenticated', 'Authenticated user required');
+    }
+    const { projectId, projectName, taskName, deliverablesSummary, recipients } = data;
+    const completedByName = context.auth.token.name || context.auth.token.email || 'Assignee';
+    const subject = `🎉 Task Complete: ${taskName} (${projectName})`;
+    const link = `https://vantageflow.vercel.app/project/${projectId}`;
+    const html = (0, emailTemplates_1.getTaskCompletedEmail)(taskName, projectName, completedByName, deliverablesSummary || '', link);
+    const promises = (recipients || []).map(async (member) => {
+        if (member.email) {
+            await sendEmail(member.email, subject, html);
+        }
+        if (member.uid) {
+            await createNotification(member.uid, 'task_completed', `🎉 ${completedByName} completed task "${taskName}" in ${projectName}`, projectId, projectName, link);
+        }
+    });
+    await Promise.all(promises);
+    return { success: true };
+});
+/**
+ * Notify task collaborators of a new feedback note or comment
+ */
+exports.notifyTaskFeedback = functions
+    .runWith({
+    timeoutSeconds: 60,
+    memory: '256MB'
+})
+    .https.onCall(async (data, context) => {
+    if (!context.auth) {
+        throw new functions.https.HttpsError('unauthenticated', 'Authenticated user required');
+    }
+    const { projectId, projectName, taskName, message, recipients } = data;
+    const authorName = context.auth.token.name || context.auth.token.email || 'Team Member';
+    const subject = `💬 New Task Note: ${taskName} (${projectName})`;
+    const link = `https://vantageflow.vercel.app/project/${projectId}`;
+    const html = (0, emailTemplates_1.getTaskFeedbackEmail)(taskName, projectName, authorName, message, link);
+    const promises = (recipients || []).map(async (member) => {
+        if (member.email) {
+            await sendEmail(member.email, subject, html);
+        }
+        if (member.uid) {
+            await createNotification(member.uid, 'task_feedback_added', `💬 ${authorName} commented on "${taskName}": ${message}`, projectId, projectName, link);
         }
     });
     await Promise.all(promises);

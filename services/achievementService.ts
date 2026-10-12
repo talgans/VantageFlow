@@ -62,13 +62,14 @@ export const achievementService = {
             else if (totalPoints > 100) starRating = 2;
 
             return {
+                userId,
                 totalPoints,
                 starRating,
                 achievements
             };
         } catch (error) {
             console.error('Error getting user stats:', error);
-            return { totalPoints: 0, starRating: 1, achievements: [] };
+            return { userId, totalPoints: 0, starRating: 1, achievements: [] };
         }
     },
 

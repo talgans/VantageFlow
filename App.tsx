@@ -30,7 +30,7 @@ import {
     restoreProject,
     isFirestoreAvailable,
 } from './services/firestoreService';
-import { recordProjectAccess } from './services/projectAccessService';
+import { recordProjectAccess, sortProjectsByRecentAccess } from './services/projectAccessService';
 
 const App: React.FC = () => {
     const { user, loading: authLoading, signOut } = useAuth();
@@ -495,8 +495,21 @@ const App: React.FC = () => {
                 <SideNav
                     currentPage={currentPage}
                     onNavigate={(page) => {
-                        setCurrentPage(page);
-                        setSelectedProject(null); // Reset selected project when navigating
+                        if (page === 'projects') {
+                            const activeProjects = projects.filter(p => !p.isDeleted && !p.isArchived);
+                            const candidateList = activeProjects.length > 0 ? activeProjects : projects.filter(p => !p.isDeleted);
+                            const sorted = sortProjectsByRecentAccess(candidateList, user?.uid);
+                            const mostRecent = sorted[0];
+                            if (mostRecent) {
+                                handleSelectProject(mostRecent);
+                            } else {
+                                setCurrentPage('projects');
+                                setSelectedProject(null);
+                            }
+                        } else {
+                            setCurrentPage(page);
+                            setSelectedProject(null); // Reset selected project when navigating
+                        }
                         setIsSideNavOpen(false);
                     }}
                     isOpen={isSideNavOpen}
