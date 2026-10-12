@@ -108,7 +108,7 @@ const App: React.FC = () => {
             setSelectedProject(null);
         }
         setPrevUser(user);
-    }, [user, prevUser, pendingProjectId]);
+    }, [user, prevUser, activeDeepLink]);
 
     // Keep presence service informed of the actively viewed project
     useEffect(() => {
