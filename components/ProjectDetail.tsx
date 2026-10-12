@@ -578,6 +578,7 @@ const InlineTaskForm: React.FC<InlineTaskFormProps> = ({
         assignees: selectedAssignees,
       });
       setName('');
+      setSelectedAssignees([]);
     }
   };
 
@@ -602,21 +603,24 @@ const InlineTaskForm: React.FC<InlineTaskFormProps> = ({
   const priorityPills = [
     {
       value: TaskPriority.Critical,
-      label: 'Critical',
+      label: 'Crit',
+      fullName: 'Critical',
       dot: 'bg-red-500',
       activeClass: 'bg-red-500/20 text-red-300 border-red-500/60 ring-1 ring-red-500/40',
       inactiveClass: 'bg-slate-800/80 text-slate-400 border-slate-700 hover:text-slate-300 hover:border-slate-600',
     },
     {
       value: TaskPriority.Important,
-      label: 'Important',
+      label: 'Impt',
+      fullName: 'Important',
       dot: 'bg-amber-500',
       activeClass: 'bg-amber-500/20 text-amber-300 border-amber-500/60 ring-1 ring-amber-500/40',
       inactiveClass: 'bg-slate-800/80 text-slate-400 border-slate-700 hover:text-slate-300 hover:border-slate-600',
     },
     {
       value: TaskPriority.Enhancement,
-      label: 'Enhancement',
+      label: 'Enh',
+      fullName: 'Enhancement',
       dot: 'bg-blue-500',
       activeClass: 'bg-blue-500/20 text-blue-300 border-blue-500/60 ring-1 ring-blue-500/40',
       inactiveClass: 'bg-slate-800/80 text-slate-400 border-slate-700 hover:text-slate-300 hover:border-slate-600',
@@ -669,80 +673,20 @@ const InlineTaskForm: React.FC<InlineTaskFormProps> = ({
         />
       </div>
 
-      {/* Controls row: Assign Dropdown | Priority compact pill buttons | Timeline 24hr default */}
+      {/* Controls row: Assignment Bounding Box | Priority Bounding Box | Timeline Bounding Box */}
       <div className="flex flex-wrap items-center justify-between gap-2.5 pt-2 border-t border-slate-700/50 text-xs">
-        <div className="flex flex-wrap items-center gap-3">
-          {/* Assign Dropdown */}
-          <div className="relative" ref={dropdownRef}>
-            <button
-              type="button"
-              onClick={() => setIsAssignOpen(!isAssignOpen)}
-              className="flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium bg-slate-900/80 hover:bg-slate-900 border border-slate-700 text-slate-300 transition-colors"
-              title="Assign task"
-            >
-              {selectedAssignees.length === 0 ? (
-                <>
-                  <UserIcon className="w-3.5 h-3.5 text-slate-400" />
-                  <span>Assign</span>
-                  <ChevronDownIcon className="w-3 h-3 text-slate-500" />
-                </>
-              ) : (
-                <>
-                  <div className="flex -space-x-1 items-center">
-                    {selectedAssignees.slice(0, 2).map((m, i) => {
-                      const photo = getUserPhotoURL?.(m.uid, m.email) || m.photoURL;
-                      const dName = getUserDisplayName?.(m.uid, m.email) || m.displayName || m.email;
-                      return (
-                        <div key={i} className="w-4 h-4 rounded-full bg-slate-700 border border-slate-900 flex items-center justify-center text-[9px] overflow-hidden">
-                          {photo ? <img src={photo} alt="" className="w-full h-full object-cover" /> : (dName[0] || '?').toUpperCase()}
-                        </div>
-                      );
-                    })}
-                  </div>
-                  <span className="max-w-[110px] truncate text-slate-200">
-                    {selectedAssignees.length === 1
-                      ? (getUserDisplayName?.(selectedAssignees[0].uid, selectedAssignees[0].email) || selectedAssignees[0].displayName || selectedAssignees[0].email.split('@')[0])
-                      : `${selectedAssignees.length} assigned`}
-                  </span>
-                  <ChevronDownIcon className="w-3 h-3 text-slate-400" />
-                </>
-              )}
-            </button>
-
-            {isAssignOpen && (
-              <div className="absolute left-0 mt-1.5 w-60 max-h-60 overflow-y-auto bg-slate-900 border border-slate-700 rounded-xl shadow-2xl p-1.5 z-50 space-y-1">
-                {teamMembers.length > 4 && (
-                  <div className="px-1 pb-1">
-                    <input
-                      type="text"
-                      placeholder="Search members..."
-                      value={memberSearch}
-                      onChange={(e) => setMemberSearch(e.target.value)}
-                      className="w-full bg-slate-800 border border-slate-700 rounded-md px-2 py-1 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-brand-secondary"
-                      autoFocus
-                    />
-                  </div>
-                )}
-                <button
-                  type="button"
-                  onClick={() => {
-                    setSelectedAssignees([]);
-                    setIsAssignOpen(false);
-                  }}
-                  className={`w-full flex items-center gap-2 px-2 py-1.5 rounded-lg text-xs transition-colors text-left ${
-                    selectedAssignees.length === 0 ? 'bg-slate-800 text-brand-secondary font-medium' : 'text-slate-400 hover:bg-slate-800/60 hover:text-slate-200'
-                  }`}
-                >
-                  <div className="w-5 h-5 rounded-full bg-slate-800 border border-slate-700 flex items-center justify-center">
-                    <UserIcon className="w-3 h-3 text-slate-500" />
-                  </div>
-                  <span>Unassigned</span>
-                  {selectedAssignees.length === 0 && <CheckCircleIcon className="w-3.5 h-3.5 ml-auto text-brand-secondary" />}
-                </button>
-
-                {filteredMembers.map(member => {
-                  const isSelected = selectedAssignees.some(m => m.uid === member.uid);
-                  const dName = getUserDisplayName?.(member.uid, member.email) || member.displayName || member.email.split('@')[0];
+        <div className="flex flex-wrap items-center gap-2.5">
+          {/* Assignment Bounding Box (Shade 1: Deep Slate bg-slate-900/90) */}
+          <div className="flex items-center gap-1.5 flex-wrap bg-slate-900/90 border border-slate-700/80 px-2.5 py-1 rounded-lg shadow-sm">
+            <span className="text-slate-400 font-medium flex items-center gap-1 mr-0.5">
+              <UserIcon className="w-3.5 h-3.5 text-slate-400" />
+              <span>Assign:</span>
+            </span>
+            {teamMembers.length <= 5 ? (
+              teamMembers.length > 0 ? (
+                teamMembers.map((member) => {
+                  const isSelected = selectedAssignees.some((m) => m.uid === member.uid);
+                  const dName = getUserDisplayName?.(member.uid, member.email) || member.displayName || member.email?.split('@')[0] || 'Member';
                   const photo = getUserPhotoURL?.(member.uid, member.email) || member.photoURL;
 
                   return (
@@ -751,33 +695,146 @@ const InlineTaskForm: React.FC<InlineTaskFormProps> = ({
                       type="button"
                       onClick={() => {
                         if (isSelected) {
-                          setSelectedAssignees(selectedAssignees.filter(m => m.uid !== member.uid));
+                          setSelectedAssignees(selectedAssignees.filter((m) => m.uid !== member.uid));
                         } else {
-                          setSelectedAssignees([member]);
-                          setIsAssignOpen(false);
+                          setSelectedAssignees([...selectedAssignees, member]);
                         }
                       }}
-                      className={`w-full flex items-center gap-2 px-2 py-1.5 rounded-lg text-xs transition-colors text-left ${
-                        isSelected ? 'bg-brand-secondary/15 text-white font-medium' : 'text-slate-300 hover:bg-slate-800 hover:text-white'
+                      className={`px-2.5 py-0.5 rounded-full text-xs font-medium border flex items-center gap-1.5 transition-all cursor-pointer ${
+                        isSelected
+                          ? 'bg-blue-500/20 text-blue-300 border-blue-500/60 ring-1 ring-blue-500/40'
+                          : 'bg-slate-800/80 text-slate-400 border-slate-700 hover:text-slate-300 hover:border-slate-600'
                       }`}
+                      title={member.email ? `${dName} (${member.email})` : dName}
                     >
-                      <div className="w-5 h-5 rounded-full bg-slate-700 border border-slate-600 flex items-center justify-center text-[10px] overflow-hidden flex-shrink-0">
-                        {photo ? <img src={photo} alt="" className="w-full h-full object-cover" /> : (dName[0] || '?').toUpperCase()}
+                      <div
+                        className={`w-4 h-4 rounded-full flex items-center justify-center text-[9px] overflow-hidden flex-shrink-0 ${
+                          isSelected
+                            ? 'bg-blue-600/40 border border-blue-400/60 text-blue-200'
+                            : 'bg-slate-700 border border-slate-600 text-slate-300'
+                        }`}
+                      >
+                        {photo ? (
+                          <img src={photo} alt="" className="w-full h-full object-cover" />
+                        ) : (
+                          <span className="font-semibold leading-none">{(dName[0] || '?').toUpperCase()}</span>
+                        )}
                       </div>
-                      <div className="flex flex-col min-w-0 flex-grow">
-                        <span className="truncate">{dName}</span>
-                        <span className="text-[10px] text-slate-500 truncate">{member.email}</span>
-                      </div>
-                      {isSelected && <CheckCircleIcon className="w-3.5 h-3.5 ml-auto text-brand-secondary flex-shrink-0" />}
+                      <span className="truncate max-w-[110px]">{dName}</span>
                     </button>
                   );
-                })}
+                })
+              ) : (
+                <span className="text-slate-500 text-xs italic">No members</span>
+              )
+            ) : (
+              <div className="relative" ref={dropdownRef}>
+                <button
+                  type="button"
+                  onClick={() => setIsAssignOpen(!isAssignOpen)}
+                  className="flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-medium bg-slate-800/80 hover:bg-slate-800 border border-slate-700 text-slate-300 transition-colors"
+                  title="Assign task"
+                >
+                  {selectedAssignees.length === 0 ? (
+                    <>
+                      <UserIcon className="w-3.5 h-3.5 text-slate-400" />
+                      <span>Assign</span>
+                      <ChevronDownIcon className="w-3 h-3 text-slate-500" />
+                    </>
+                  ) : (
+                    <>
+                      <div className="flex -space-x-1 items-center">
+                        {selectedAssignees.slice(0, 2).map((m, i) => {
+                          const photo = getUserPhotoURL?.(m.uid, m.email) || m.photoURL;
+                          const dName = getUserDisplayName?.(m.uid, m.email) || m.displayName || m.email;
+                          return (
+                            <div key={i} className="w-4 h-4 rounded-full bg-slate-700 border border-slate-900 flex items-center justify-center text-[9px] overflow-hidden">
+                              {photo ? <img src={photo} alt="" className="w-full h-full object-cover" /> : (dName[0] || '?').toUpperCase()}
+                            </div>
+                          );
+                        })}
+                      </div>
+                      <span className="max-w-[110px] truncate text-slate-200">
+                        {selectedAssignees.length === 1
+                          ? (getUserDisplayName?.(selectedAssignees[0].uid, selectedAssignees[0].email) || selectedAssignees[0].displayName || selectedAssignees[0].email.split('@')[0])
+                          : `${selectedAssignees.length} assigned`}
+                      </span>
+                      <ChevronDownIcon className="w-3 h-3 text-slate-400" />
+                    </>
+                  )}
+                </button>
+
+                {isAssignOpen && (
+                  <div className="absolute left-0 mt-1.5 w-60 max-h-60 overflow-y-auto bg-slate-900 border border-slate-700 rounded-xl shadow-2xl p-1.5 z-50 space-y-1">
+                    {teamMembers.length > 4 && (
+                      <div className="px-1 pb-1">
+                        <input
+                          type="text"
+                          placeholder="Search members..."
+                          value={memberSearch}
+                          onChange={(e) => setMemberSearch(e.target.value)}
+                          className="w-full bg-slate-800 border border-slate-700 rounded-md px-2 py-1 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-brand-secondary"
+                          autoFocus
+                        />
+                      </div>
+                    )}
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setSelectedAssignees([]);
+                        setIsAssignOpen(false);
+                      }}
+                      className={`w-full flex items-center gap-2 px-2 py-1.5 rounded-lg text-xs transition-colors text-left ${
+                        selectedAssignees.length === 0 ? 'bg-slate-800 text-brand-secondary font-medium' : 'text-slate-400 hover:bg-slate-800/60 hover:text-slate-200'
+                      }`}
+                    >
+                      <div className="w-5 h-5 rounded-full bg-slate-800 border border-slate-700 flex items-center justify-center">
+                        <UserIcon className="w-3 h-3 text-slate-500" />
+                      </div>
+                      <span>Unassigned</span>
+                      {selectedAssignees.length === 0 && <CheckCircleIcon className="w-3.5 h-3.5 ml-auto text-brand-secondary" />}
+                    </button>
+
+                    {filteredMembers.map(member => {
+                      const isSelected = selectedAssignees.some(m => m.uid === member.uid);
+                      const dName = getUserDisplayName?.(member.uid, member.email) || member.displayName || member.email.split('@')[0];
+                      const photo = getUserPhotoURL?.(member.uid, member.email) || member.photoURL;
+
+                      return (
+                        <button
+                          key={member.uid}
+                          type="button"
+                          onClick={() => {
+                            if (isSelected) {
+                              setSelectedAssignees(selectedAssignees.filter(m => m.uid !== member.uid));
+                            } else {
+                              setSelectedAssignees([member]);
+                              setIsAssignOpen(false);
+                            }
+                          }}
+                          className={`w-full flex items-center gap-2 px-2 py-1.5 rounded-lg text-xs transition-colors text-left ${
+                            isSelected ? 'bg-brand-secondary/15 text-white font-medium' : 'text-slate-300 hover:bg-slate-800 hover:text-white'
+                          }`}
+                        >
+                          <div className="w-5 h-5 rounded-full bg-slate-700 border border-slate-600 flex items-center justify-center text-[10px] overflow-hidden flex-shrink-0">
+                            {photo ? <img src={photo} alt="" className="w-full h-full object-cover" /> : (dName[0] || '?').toUpperCase()}
+                          </div>
+                          <div className="flex flex-col min-w-0 flex-grow">
+                            <span className="truncate">{dName}</span>
+                            <span className="text-[10px] text-slate-500 truncate">{member.email}</span>
+                          </div>
+                          {isSelected && <CheckCircleIcon className="w-3.5 h-3.5 ml-auto text-brand-secondary flex-shrink-0" />}
+                        </button>
+                      );
+                    })}
+                  </div>
+                )}
               </div>
             )}
           </div>
 
-          {/* Priority Compact Pill Buttons (Default: Important) */}
-          <div className="flex items-center gap-1.5">
+          {/* Priority Bounding Box (Shade 2: Midnight Charcoal bg-slate-950/80) */}
+          <div className="flex items-center gap-1.5 bg-slate-950/80 border border-slate-800/90 px-2.5 py-1 rounded-lg shadow-sm">
             <span className="text-slate-400 font-medium flex items-center gap-1 mr-0.5">
               <FlagIcon className="w-3.5 h-3.5 text-slate-400" />
               <span>Priority:</span>
@@ -789,9 +846,10 @@ const InlineTaskForm: React.FC<InlineTaskFormProps> = ({
                   key={pill.value}
                   type="button"
                   onClick={() => setPriority(pill.value)}
-                  className={`px-2.5 py-0.5 rounded-full text-xs font-medium border flex items-center gap-1.5 transition-all cursor-pointer ${
+                  className={`w-[4.25rem] py-0.5 rounded-full text-xs font-medium border flex items-center justify-center gap-1.5 transition-all cursor-pointer ${
                     isSelected ? pill.activeClass : pill.inactiveClass
                   }`}
+                  title={`${pill.fullName} Priority`}
                 >
                   <span className={`w-2 h-2 rounded-full ${pill.dot} ${isSelected ? 'scale-110' : 'opacity-70'}`} />
                   <span>{pill.label}</span>
@@ -801,8 +859,8 @@ const InlineTaskForm: React.FC<InlineTaskFormProps> = ({
           </div>
         </div>
 
-        {/* Timeline (24hr default) */}
-        <div className="flex items-center gap-2 text-slate-300 bg-slate-900/80 border border-slate-700/80 px-2.5 py-1 rounded-lg">
+        {/* Timeline Bounding Box (Shade 3: Translucent Slate bg-slate-900/60) */}
+        <div className="flex items-center gap-2 text-slate-300 bg-slate-900/60 border border-slate-700/60 px-2.5 py-1 rounded-lg shadow-sm">
           <CalendarIcon className="w-3.5 h-3.5 text-slate-400" />
           <span className="text-slate-400 font-medium">Timeline:</span>
           <input
@@ -2239,9 +2297,54 @@ const ProjectDetail: React.FC<ProjectDetailProps> = ({ project, onBack, canEdit,
 
   const handleUpdateTaskField = (taskId: string, field: keyof Task, value: any) => {
     // Prevent saving if the name is empty
-    if (field === 'name' && !value.trim()) {
+    if (field === 'name' && (typeof value !== 'string' || !value.trim())) {
       setEditingField(null);
       return;
+    }
+
+    // Locate the current task in the project state to verify if value changed
+    const findTask = (tasks: Task[]): Task | undefined => {
+      for (const t of tasks) {
+        if (t.id === taskId) return t;
+        if (t.subTasks) {
+          const found = findTask(t.subTasks);
+          if (found) return found;
+        }
+      }
+      return undefined;
+    };
+
+    let existingTask: Task | undefined;
+    for (const phase of project.phases) {
+      existingTask = findTask(phase.tasks);
+      if (existingTask) break;
+    }
+
+    // Check if there are no changes — if values match, safely exit early without saving
+    if (existingTask) {
+      const isUnchanged = (): boolean => {
+        if (field === 'name') {
+          return (existingTask!.name || '').trim() === (typeof value === 'string' ? value.trim() : '');
+        }
+        if (field === 'startDate' || field === 'endDate') {
+          const toDateStr = (d: any) => {
+            if (!d) return '';
+            try {
+              const dateObj = d instanceof Date ? d : new Date(d);
+              return isNaN(dateObj.getTime()) ? '' : dateObj.toISOString().split('T')[0];
+            } catch {
+              return '';
+            }
+          };
+          return toDateStr(existingTask![field]) === toDateStr(value);
+        }
+        return (existingTask as any)[field] === value;
+      };
+
+      if (isUnchanged()) {
+        setEditingField(null);
+        return;
+      }
     }
 
     const updatedProject = JSON.parse(JSON.stringify(project), reviveDates);
