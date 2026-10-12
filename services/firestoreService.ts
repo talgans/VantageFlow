@@ -84,6 +84,20 @@ const convertFirestoreDocToProject = (docData: DocumentData): Project => {
     createdAt = new Date(docData.createdAt);
   }
 
+  let updatedAt: Date | undefined;
+  if (docData.updatedAt?.toDate && typeof docData.updatedAt.toDate === 'function') {
+    updatedAt = docData.updatedAt.toDate();
+  } else if (docData.updatedAt) {
+    updatedAt = new Date(docData.updatedAt);
+  }
+
+  let lastAccessedAt: Date | undefined;
+  if (docData.lastAccessedAt?.toDate && typeof docData.lastAccessedAt.toDate === 'function') {
+    lastAccessedAt = docData.lastAccessedAt.toDate();
+  } else if (docData.lastAccessedAt) {
+    lastAccessedAt = new Date(docData.lastAccessedAt);
+  }
+
   // Handle team - support both new format (members array) and legacy (name/size/manager)
   const team = docData.team || {};
   const normalizedTeam = {
@@ -104,6 +118,8 @@ const convertFirestoreDocToProject = (docData: DocumentData): Project => {
     cost: typeof docData.cost === 'number' ? docData.cost : Number(docData.cost) || 0,
     currency: docData.currency || Currency.NGN,
     createdAt: createdAt,
+    updatedAt: updatedAt,
+    lastAccessedAt: lastAccessedAt,
     phases: docData.phases?.map((phase: any) => ({
       ...phase,
       tasks: phase.tasks?.map(convertTaskDatesFromFirestore) || [],

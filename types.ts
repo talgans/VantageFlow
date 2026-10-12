@@ -117,6 +117,8 @@ export interface Project {
   ownerName?: string;
   ownerPhotoURL?: string;
   createdAt?: Date;
+  updatedAt?: Date;
+  lastAccessedAt?: Date;
   // RBAC: Array of member UIDs for efficient Firestore queries
   memberUids?: string[];
   // Project Lifecycle: Archive state

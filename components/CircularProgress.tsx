@@ -5,9 +5,10 @@ interface CircularProgressProps {
   size?: number;
   strokeWidth?: number;
   showText?: boolean;
+  className?: string;
 }
 
-const CircularProgress: React.FC<CircularProgressProps> = ({ percentage, size = 60, strokeWidth = 6, showText = true }) => {
+const CircularProgress: React.FC<CircularProgressProps> = ({ percentage, size = 60, strokeWidth = 6, showText = true, className = '' }) => {
   const radius = (size - strokeWidth) / 2;
   const circumference = 2 * Math.PI * radius;
   const offset = circumference - (percentage / 100) * circumference;
@@ -20,8 +21,10 @@ const CircularProgress: React.FC<CircularProgressProps> = ({ percentage, size = 
     return '#ef4444'; // red
   };
 
+  const fontSizeClass = size < 46 ? 'text-[10px]' : size < 54 ? 'text-[11px]' : 'text-xs';
+
   return (
-    <div className="relative inline-flex items-center justify-center">
+    <div className={`relative inline-flex items-center justify-center ${className}`}>
       <svg width={size} height={size} className="transform -rotate-90">
         {/* Background circle */}
         <circle
@@ -48,8 +51,8 @@ const CircularProgress: React.FC<CircularProgressProps> = ({ percentage, size = 
       </svg>
       {/* Percentage text */}
       {showText && (
-        <div className="absolute inset-0 flex items-center justify-center">
-          <span className="text-xs font-bold text-white">{Math.round(percentage)}%</span>
+        <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
+          <span className={`font-bold text-white leading-none ${fontSizeClass}`}>{Math.round(percentage)}%</span>
         </div>
       )}
     </div>

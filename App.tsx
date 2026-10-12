@@ -30,6 +30,7 @@ import {
     restoreProject,
     isFirestoreAvailable,
 } from './services/firestoreService';
+import { recordProjectAccess } from './services/projectAccessService';
 
 const App: React.FC = () => {
     const { user, loading: authLoading, signOut } = useAuth();
@@ -178,6 +179,8 @@ const App: React.FC = () => {
     }, [projects]);
 
     const handleSelectProject = (project: Project) => {
+        // Record recent project access
+        recordProjectAccess(project.id, user?.uid);
         // Ensure we are selecting the most up-to-date project from the state
         const currentProject = projects.find(p => p.id === project.id) || project;
         setSelectedProject(currentProject);

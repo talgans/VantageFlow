@@ -1,12 +1,13 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useRef } from 'react';
 import { useAuth } from '../contexts/AuthContext';
 import { Project } from '../types';
-import { UserIcon, PencilIcon, CameraIcon, XMarkIcon, CheckIcon } from './icons';
+import { UserIcon, PencilIcon, CameraIcon, XMarkIcon, CheckIcon, PhoneIcon } from './icons';
 import { updateUserProfile, getInitials } from '../services/userService';
 import { uploadProfilePhoto } from '../services/storageService';
 import UserAchievementBadge from './UserAchievementBadge';
 import UserAnalytics from './UserAnalytics';
-import { PhoneIcon } from './icons';
+import CircularProgress from './CircularProgress';
+import { recordProjectAccess, sortProjectsByRecentAccess } from '../services/projectAccessService';
 
 interface UserProfilePageProps {
     projects: Project[];
@@ -25,23 +26,26 @@ const UserProfilePage: React.FC<UserProfilePageProps> = ({
     const [editPhoneNumber, setEditPhoneNumber] = useState(user?.phoneNumber || '');
     const [saving, setSaving] = useState(false);
     const [uploadingPhoto, setUploadingPhoto] = useState(false);
-    const fileInputRef = React.useRef<HTMLInputElement>(null);
+    const fileInputRef = useRef<HTMLInputElement>(null);
 
-    // Filter projects owned by current user
+    // Filter and sort projects owned by current user (live projects by most recent accessed, archived at bottom)
     const ownedProjects = useMemo(() => {
         if (!user) return [];
-        return projects.filter(p => p.ownerId === user.uid);
+        const userOwned = projects.filter(p => p.ownerId === user.uid && !p.isDeleted);
+        return sortProjectsByRecentAccess(userOwned, user.uid);
     }, [projects, user]);
 
-    // Filter projects where user is a team member (but not owner)
+    // Filter and sort projects where user is a team member (but not owner)
     const memberProjects = useMemo(() => {
         if (!user) return [];
-        return projects.filter(p => {
+        const userMember = projects.filter(p => {
+            if (p.isDeleted) return false;
             // Exclude owned projects
             if (p.ownerId === user.uid) return false;
             // Check if user is a team member
             return p.team?.members?.some(m => m.uid === user.uid);
         });
+        return sortProjectsByRecentAccess(userMember, user.uid);
     }, [projects, user]);
 
     React.useEffect(() => {
@@ -131,47 +135,68 @@ const UserProfilePage: React.FC<UserProfilePageProps> = ({
     };
 
     const ProjectCard: React.FC<{ project: Project; isOwned?: boolean }> = ({ project, isOwned }) => {
-        const completedTasks = project.phases.flatMap(p => p.tasks).filter(t => t.status === '100%').length;
-        const totalTasks = project.phases.flatMap(p => p.tasks).length;
+        const isArchived = project.isArchived === true;
+        const allTasks = project.phases.flatMap(p => p.tasks.flatMap(t => (t as any).subTasks ? [t, ...(t as any).subTasks] : [t]));
+        const completedTasks = allTasks.filter(t => t.status === '100%' || (t.status as string) === 'Completed').length;
+        const totalTasks = allTasks.length;
         const progress = totalTasks > 0 ? Math.round((completedTasks / totalTasks) * 100) : 0;
 
         return (
             <div
-                onClick={() => onSelectProject(project)}
-                className="bg-slate-800/50 border border-slate-700 rounded-xl p-4 hover:bg-slate-800 hover:border-slate-600 transition-all cursor-pointer group"
+                onClick={() => {
+                    recordProjectAccess(project.id, user?.uid);
+                    onSelectProject(project);
+                }}
+                className={`border rounded-xl px-3.5 h-[64px] transition-all duration-200 cursor-pointer group flex items-center gap-3 select-none ${
+                    isArchived
+                        ? 'bg-slate-900/50 hover:bg-slate-900/80 border-slate-800 text-slate-500 opacity-60 hover:opacity-85 grayscale-[60%] hover:grayscale-0'
+                        : 'bg-slate-800/40 hover:bg-slate-800/80 border-slate-700/70 hover:border-slate-600 shadow-sm hover:shadow-md hover:scale-[1.01] active:scale-[0.99]'
+                }`}
             >
-                <div className="flex items-start justify-between mb-3">
-                    <div className="flex-grow min-w-0">
-                        <h4 className="text-white font-semibold truncate group-hover:text-brand-light transition-colors">
+                {/* Completion metric as a piechart */}
+                <div className="flex-shrink-0 flex items-center justify-center">
+                    <CircularProgress percentage={progress} size={44} strokeWidth={4} />
+                </div>
+
+                {/* Project details */}
+                <div className="flex-grow min-w-0">
+                    <div className="flex items-center justify-between gap-1.5 mb-1">
+                        <h4
+                            className={`text-sm font-semibold truncate transition-colors ${
+                                isArchived
+                                    ? 'text-slate-400 group-hover:text-slate-300'
+                                    : 'text-white group-hover:text-brand-light'
+                            }`}
+                            title={project.name}
+                        >
                             {project.name}
                         </h4>
-                        <p className="text-sm text-slate-400 truncate">{project.coreSystem}</p>
+                        <div className="flex items-center gap-1 flex-shrink-0">
+                            {isArchived && (
+                                <span className="text-[10px] font-medium uppercase tracking-wider bg-slate-700/60 text-slate-400 border border-slate-600/60 px-1.5 py-0.5 rounded">
+                                    Archived
+                                </span>
+                            )}
+                            {isOwned && (
+                                <span className="text-[10px] font-medium uppercase tracking-wider bg-blue-500/15 text-blue-300 border border-blue-500/30 px-1.5 py-0.5 rounded">
+                                    Owner
+                                </span>
+                            )}
+                        </div>
                     </div>
-                    {isOwned && (
-                        <span className="ml-2 text-xs bg-blue-500/20 text-blue-300 px-2 py-0.5 rounded flex-shrink-0">
-                            Owner
+
+                    <div className="flex items-center text-xs text-slate-400 gap-2">
+                        {project.coreSystem && (
+                            <span className="truncate max-w-[120px] font-medium text-slate-400">
+                                {project.coreSystem}
+                            </span>
+                        )}
+                        {project.coreSystem && <span className="text-slate-600">•</span>}
+                        <span className="flex items-center flex-shrink-0 text-slate-400">
+                            <UserIcon className="w-3.5 h-3.5 mr-1 text-slate-500" />
+                            {project.team?.members?.length || 0} {(project.team?.members?.length || 0) === 1 ? 'member' : 'members'}
                         </span>
-                    )}
-                </div>
-
-                {/* Progress bar */}
-                <div className="mt-3">
-                    <div className="flex items-center justify-between text-xs mb-1">
-                        <span className="text-slate-400">Progress</span>
-                        <span className="text-slate-300">{progress}%</span>
                     </div>
-                    <div className="h-1.5 bg-slate-700 rounded-full overflow-hidden">
-                        <div
-                            className="h-full bg-gradient-to-r from-brand-secondary to-blue-400 rounded-full transition-all duration-300"
-                            style={{ width: `${progress}%` }}
-                        />
-                    </div>
-                </div>
-
-                {/* Team size */}
-                <div className="mt-3 flex items-center text-xs text-slate-400">
-                    <UserIcon className="w-3.5 h-3.5 mr-1" />
-                    <span>{project.team?.members?.length || 0} member{(project.team?.members?.length || 0) !== 1 ? 's' : ''}</span>
                 </div>
             </div>
         );
@@ -306,10 +331,10 @@ const UserProfilePage: React.FC<UserProfilePageProps> = ({
 
             {/* Projects Owned */}
             <div>
-                <div className="flex items-center justify-between mb-4">
-                    <h3 className="text-xl font-bold text-white">
-                        Projects Owned
-                        <span className="ml-2 text-sm font-normal text-slate-400">({ownedProjects.length})</span>
+                <div className="flex items-center justify-between mb-3">
+                    <h3 className="text-xl font-bold text-white flex items-center gap-2">
+                        <span>Projects Owned</span>
+                        <span className="text-sm font-normal text-slate-400">({ownedProjects.length})</span>
                     </h3>
                 </div>
 
@@ -318,20 +343,22 @@ const UserProfilePage: React.FC<UserProfilePageProps> = ({
                         <p className="text-slate-400">You don't own any projects yet.</p>
                     </div>
                 ) : (
-                    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
-                        {ownedProjects.map(project => (
-                            <ProjectCard key={project.id} project={project} isOwned />
-                        ))}
+                    <div className="max-h-[142px] overflow-y-auto pr-1.5 custom-scrollbar">
+                        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+                            {ownedProjects.map(project => (
+                                <ProjectCard key={project.id} project={project} isOwned />
+                            ))}
+                        </div>
                     </div>
                 )}
             </div>
 
             {/* Projects as Team Member */}
             <div>
-                <div className="flex items-center justify-between mb-4">
-                    <h3 className="text-xl font-bold text-white">
-                        Team Member On
-                        <span className="ml-2 text-sm font-normal text-slate-400">({memberProjects.length})</span>
+                <div className="flex items-center justify-between mb-3">
+                    <h3 className="text-xl font-bold text-white flex items-center gap-2">
+                        <span>Team Member On</span>
+                        <span className="text-sm font-normal text-slate-400">({memberProjects.length})</span>
                     </h3>
                 </div>
 
@@ -340,10 +367,12 @@ const UserProfilePage: React.FC<UserProfilePageProps> = ({
                         <p className="text-slate-400">You're not a member of any other projects.</p>
                     </div>
                 ) : (
-                    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
-                        {memberProjects.map(project => (
-                            <ProjectCard key={project.id} project={project} />
-                        ))}
+                    <div className="max-h-[142px] overflow-y-auto pr-1.5 custom-scrollbar">
+                        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+                            {memberProjects.map(project => (
+                                <ProjectCard key={project.id} project={project} />
+                            ))}
+                        </div>
                     </div>
                 )}
             </div>
