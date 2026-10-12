@@ -83,6 +83,7 @@ export interface UserAchievement {
   category: 'task_complete' | 'phase_complete' | 'milestone' | 'collaboration' | 'quality';
   description: string;
   awardedAt: Date;
+  projectId?: string;
 }
 
 export interface UserStats {

@@ -352,7 +352,10 @@ const UserProfilePage: React.FC<UserProfilePageProps> = ({
             {/* Analytics Section */}
             <div>
                 <h3 className="text-xl font-bold text-white mb-4">Achievement Analytics</h3>
-                <UserAnalytics userId={user.uid} />
+                <UserAnalytics 
+                    userId={user.uid} 
+                    userProjects={[...ownedProjects, ...memberProjects].filter(p => !p.isDeleted)} 
+                />
             </div>
 
         </div >
