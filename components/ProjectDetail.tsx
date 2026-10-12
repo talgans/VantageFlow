@@ -3445,7 +3445,10 @@ const ProjectDetail: React.FC<ProjectDetailProps> = ({ project, onBack, canEdit,
           task={feedbackDrawerTask}
           project={project}
           currentUser={currentUserMember}
-          onAddNote={(note, notify) => handleAddTaskFeedbackNote(feedbackDrawerTask, note, notify)}
+          onAddNote={(note, notify) => {
+            handleAddTaskFeedbackNote(feedbackDrawerTask, note, notify);
+            setFeedbackDrawerTask(null);
+          }}
           onOpenImpedimentModal={() => setImpedimentModalTask(feedbackDrawerTask)}
           getUserDisplayName={getUserDisplayName}
           getUserPhotoURL={getUserPhotoURL}

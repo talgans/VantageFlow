@@ -31,7 +31,10 @@ export const TaskCompletionModal: React.FC<TaskCompletionModalProps> = ({
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/75 backdrop-blur-sm animate-fade-in">
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/75 backdrop-blur-sm animate-fade-in"
+      onClick={onClose}
+    >
       <div
         className="bg-slate-900 border border-slate-700/80 rounded-2xl w-full max-w-md shadow-2xl overflow-hidden flex flex-col text-slate-200"
         onClick={(e) => e.stopPropagation()}
