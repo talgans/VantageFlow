@@ -103,27 +103,43 @@ const Header: React.FC<HeaderProps> = ({ currentUserRole, onSignOut, onSignInCli
         )}
         {user ? (
           <div className="relative" ref={dropdownRef}>
-            <button
-              onClick={() => setIsUserMenuOpen(!isUserMenuOpen)}
-              className="flex items-center space-x-2 px-3 py-1.5 bg-slate-800 rounded-lg border border-slate-700 hover:bg-slate-700 transition-colors cursor-pointer"
-            >
-              {photoURL ? (
-                <img src={photoURL} alt="" className="w-8 h-8 rounded-md object-cover" />
-              ) : (
-                <div className="w-8 h-8 rounded-md bg-slate-700 flex items-center justify-center">
-                  <UsersIcon className="w-5 h-5 text-slate-400" />
+            <div className="flex items-center bg-slate-800 rounded-lg border border-slate-700 hover:border-slate-600 transition-colors">
+              <button
+                type="button"
+                onClick={() => {
+                  onNavigateToProfile?.();
+                  setIsUserMenuOpen(false);
+                }}
+                className="flex items-center space-x-2 pl-3 pr-2 py-1.5 hover:bg-slate-700/70 rounded-l-lg transition-colors cursor-pointer group text-left"
+                title="Go to My Profile"
+              >
+                {photoURL ? (
+                  <img src={photoURL} alt="" className="w-8 h-8 rounded-md object-cover group-hover:ring-1 group-hover:ring-brand-secondary transition-all" />
+                ) : (
+                  <div className="w-8 h-8 rounded-md bg-slate-700 flex items-center justify-center group-hover:bg-slate-600 transition-colors">
+                    <UsersIcon className="w-5 h-5 text-slate-400 group-hover:text-white" />
+                  </div>
+                )}
+                <div className="text-sm text-left">
+                  <p className="text-white font-medium group-hover:text-brand-light transition-colors">{displayName}</p>
+                  <div className="flex items-center gap-1">
+                    <p className="text-slate-400 text-xs">{currentUserRole}</p>
+                    <span className="text-slate-600">|</span>
+                    <UserAchievementBadge userId={user.uid} showPoints={false} />
+                  </div>
                 </div>
-              )}
-              <div className="text-sm text-left">
-                <p className="text-white font-medium">{displayName}</p>
-                <div className="flex items-center gap-1">
-                  <p className="text-slate-400 text-xs">{currentUserRole}</p>
-                  <span className="text-slate-600">|</span>
-                  <UserAchievementBadge userId={user.uid} showPoints={false} />
-                </div>
-              </div>
-              <ChevronDownIcon className={`w-4 h-4 text-slate-400 transition-transform ${isUserMenuOpen ? 'rotate-180' : ''}`} />
-            </button>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setIsUserMenuOpen(!isUserMenuOpen)}
+                className="px-2 py-3 hover:bg-slate-700/70 rounded-r-lg border-l border-slate-700/60 transition-colors cursor-pointer text-slate-400 hover:text-white"
+                title="Open user menu"
+                aria-label="Open user menu"
+              >
+                <ChevronDownIcon className={`w-4 h-4 transition-transform ${isUserMenuOpen ? 'rotate-180' : ''}`} />
+              </button>
+            </div>
 
             {isUserMenuOpen && (
               <div className="absolute right-0 mt-2 w-56 bg-slate-800 rounded-lg border border-slate-700 shadow-xl z-50 overflow-hidden">
