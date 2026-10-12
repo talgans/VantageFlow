@@ -50,7 +50,8 @@ export const notificationService = {
         assignees: TeamMember[],
         project: Project,
         itemType: 'phase' | 'task',
-        itemName: string
+        itemName: string,
+        itemId?: string
     ) => {
         console.log(`[NotificationService] Notifying assignees for ${itemType}: ${itemName}`);
 
@@ -66,6 +67,7 @@ export const notificationService = {
 
         const functions = getFunctions(app, 'us-central1');
         const notifyResponsibilityAssigned = httpsCallable(functions, 'notifyResponsibilityAssigned');
+        const origin = typeof window !== 'undefined' ? window.location.origin : undefined;
 
         try {
             await notifyResponsibilityAssigned({
@@ -73,6 +75,8 @@ export const notificationService = {
                 projectName: project.name,
                 itemType,
                 itemName,
+                itemId,
+                origin,
                 assignees: assignees.map(a => ({
                     uid: a.uid,
                     email: a.email,
@@ -106,12 +110,15 @@ export const notificationService = {
 
         const functions = getFunctions(app, 'us-central1');
         const notify = httpsCallable(functions, 'notifyTaskImpediment');
+        const origin = typeof window !== 'undefined' ? window.location.origin : undefined;
 
         try {
             await notify({
                 projectId: project.id,
                 projectName: project.name,
                 taskName: task.name,
+                taskId: task.id,
+                origin,
                 category,
                 description,
                 recipients: recipients.map(r => ({
@@ -145,12 +152,15 @@ export const notificationService = {
 
         const functions = getFunctions(app, 'us-central1');
         const notify = httpsCallable(functions, 'notifyTaskImpedimentResolved');
+        const origin = typeof window !== 'undefined' ? window.location.origin : undefined;
 
         try {
             await notify({
                 projectId: project.id,
                 projectName: project.name,
                 taskName: task.name,
+                taskId: task.id,
+                origin,
                 resolutionNote,
                 recipients: recipients.map(r => ({
                     uid: r.uid,
@@ -183,12 +193,15 @@ export const notificationService = {
 
         const functions = getFunctions(app, 'us-central1');
         const notify = httpsCallable(functions, 'notifyTaskCompleted');
+        const origin = typeof window !== 'undefined' ? window.location.origin : undefined;
 
         try {
             await notify({
                 projectId: project.id,
                 projectName: project.name,
                 taskName: task.name,
+                taskId: task.id,
+                origin,
                 deliverablesSummary,
                 recipients: recipients.map(r => ({
                     uid: r.uid,
@@ -221,12 +234,15 @@ export const notificationService = {
 
         const functions = getFunctions(app, 'us-central1');
         const notify = httpsCallable(functions, 'notifyTaskFeedback');
+        const origin = typeof window !== 'undefined' ? window.location.origin : undefined;
 
         try {
             await notify({
                 projectId: project.id,
                 projectName: project.name,
                 taskName: task.name,
+                taskId: task.id,
+                origin,
                 message,
                 recipients: recipients.map(r => ({
                     uid: r.uid,

@@ -649,11 +649,13 @@ exports.notifyResponsibilityAssigned = functions
     if (!context.auth) {
         throw new functions.https.HttpsError('unauthenticated', 'Authenticated user required');
     }
-    const { projectId, projectName, itemType, itemName, assignees } = data;
+    const { projectId, projectName, itemType, itemName, itemId, assignees, origin } = data;
     // assignees: { uid: string, email: string, displayName: string }[]
     const assignerName = context.auth.token.name || context.auth.token.email;
     const subject = `Vantage: New Responsibility: ${itemName}`;
-    const link = `https://vantageflow.vercel.app/project/${projectId}`;
+    const baseUrl = origin || APP_URL;
+    const itemParam = itemId ? (itemType === 'phase' ? `?phaseId=${encodeURIComponent(itemId)}` : `?taskId=${encodeURIComponent(itemId)}`) : '';
+    const link = `${baseUrl}/project/${projectId}${itemParam}`;
     const html = (0, emailTemplates_1.getResponsibilityAssignedEmail)(itemType, itemName, projectName, assignerName, link);
     // Send emails and create notifications
     const promises = assignees.map(async (member) => {
@@ -679,10 +681,11 @@ exports.notifyTaskImpediment = functions
     if (!context.auth) {
         throw new functions.https.HttpsError('unauthenticated', 'Authenticated user required');
     }
-    const { projectId, projectName, taskName, category, description, recipients } = data;
+    const { projectId, projectName, taskName, taskId, category, description, recipients, origin } = data;
     const reportedByName = context.auth.token.name || context.auth.token.email || 'Team Member';
     const subject = `Vantage: ⚠️ Impediment Flagged: ${taskName} (${projectName})`;
-    const link = `https://vantageflow.vercel.app/project/${projectId}`;
+    const baseUrl = origin || APP_URL;
+    const link = `${baseUrl}/project/${projectId}${taskId ? `?taskId=${encodeURIComponent(taskId)}&action=impediment` : ''}`;
     const html = (0, emailTemplates_1.getTaskImpedimentEmail)(taskName, projectName, reportedByName, category, description, link);
     const promises = (recipients || []).map(async (member) => {
         if (member.email) {
@@ -707,10 +710,11 @@ exports.notifyTaskImpedimentResolved = functions
     if (!context.auth) {
         throw new functions.https.HttpsError('unauthenticated', 'Authenticated user required');
     }
-    const { projectId, projectName, taskName, resolutionNote, recipients } = data;
+    const { projectId, projectName, taskName, taskId, resolutionNote, recipients, origin } = data;
     const resolvedByName = context.auth.token.name || context.auth.token.email || 'Lead';
     const subject = `Vantage: ✅ Impediment Cleared: ${taskName} (${projectName})`;
-    const link = `https://vantageflow.vercel.app/project/${projectId}`;
+    const baseUrl = origin || APP_URL;
+    const link = `${baseUrl}/project/${projectId}${taskId ? `?taskId=${encodeURIComponent(taskId)}` : ''}`;
     const html = (0, emailTemplates_1.getTaskImpedimentResolvedEmail)(taskName, projectName, resolvedByName, resolutionNote || '', link);
     const promises = (recipients || []).map(async (member) => {
         if (member.email) {
@@ -735,10 +739,11 @@ exports.notifyTaskCompleted = functions
     if (!context.auth) {
         throw new functions.https.HttpsError('unauthenticated', 'Authenticated user required');
     }
-    const { projectId, projectName, taskName, deliverablesSummary, recipients } = data;
+    const { projectId, projectName, taskName, taskId, deliverablesSummary, recipients, origin } = data;
     const completedByName = context.auth.token.name || context.auth.token.email || 'Assignee';
     const subject = `Vantage: 🎉 Task Complete: ${taskName} (${projectName})`;
-    const link = `https://vantageflow.vercel.app/project/${projectId}`;
+    const baseUrl = origin || APP_URL;
+    const link = `${baseUrl}/project/${projectId}${taskId ? `?taskId=${encodeURIComponent(taskId)}` : ''}`;
     const html = (0, emailTemplates_1.getTaskCompletedEmail)(taskName, projectName, completedByName, deliverablesSummary || '', link);
     const promises = (recipients || []).map(async (member) => {
         if (member.email) {
@@ -763,10 +768,11 @@ exports.notifyTaskFeedback = functions
     if (!context.auth) {
         throw new functions.https.HttpsError('unauthenticated', 'Authenticated user required');
     }
-    const { projectId, projectName, taskName, message, recipients } = data;
+    const { projectId, projectName, taskName, taskId, message, recipients, origin } = data;
     const authorName = context.auth.token.name || context.auth.token.email || 'Team Member';
     const subject = `Vantage: 💬 New Task Note: ${taskName} (${projectName})`;
-    const link = `https://vantageflow.vercel.app/project/${projectId}`;
+    const baseUrl = origin || APP_URL;
+    const link = `${baseUrl}/project/${projectId}${taskId ? `?taskId=${encodeURIComponent(taskId)}&action=feedback` : ''}`;
     const html = (0, emailTemplates_1.getTaskFeedbackEmail)(taskName, projectName, authorName, message, link);
     const promises = (recipients || []).map(async (member) => {
         if (member.email) {

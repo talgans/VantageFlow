@@ -358,6 +358,13 @@ const getSectionStatusBreakdown = (phase: Phase): { counts: Record<StatusStackKe
   return { counts, total: allTasks.length };
 };
 
+export interface InitialTargetItem {
+  projectId: string;
+  taskId?: string;
+  phaseId?: string;
+  action?: string;
+}
+
 interface ProjectDetailProps {
   project: Project;
   onBack: () => void;
@@ -368,6 +375,8 @@ interface ProjectDetailProps {
   currentUserEmail?: string; // Current user's email
   userRole?: 'admin' | 'manager' | 'member'; // Current user's role
   onEditProject?: () => void;
+  initialTarget?: InitialTargetItem;
+  onClearInitialTarget?: () => void;
 }
 
 type SortKey = 'name' | 'startDate' | 'status' | 'priority' | 'deliverables';
@@ -907,9 +916,11 @@ interface TaskRowProps {
   onOpenFeedback?: (task: Task) => void;
   onOpenImpediment?: (task: Task) => void;
   onRequestComplete?: (task: Task) => void;
+  expandedTasks?: Set<string>;
+  highlightedTaskId?: string | null;
 }
 
-const TaskRow: React.FC<TaskRowProps> = ({ task, level, isExpanded, onToggleExpand, addingSubtaskTo, setAddingSubtaskTo, canEdit, handleSaveSubtask, editingField, setEditingField, handleUpdateTaskField, onRequestDelete, phaseId, parentId, onDragStart, onDragOver, onDrop, onDragEnd, onDragLeave, draggedItemId, dropTarget, checkPermission, onAssign, projectTeam, formerMembers, getUserDisplayName, getUserPhotoURL, onImageUpload, onRemoveImage, onViewImage, onOpenFeedback, onOpenImpediment, onRequestComplete }) => {
+const TaskRow: React.FC<TaskRowProps> = ({ task, level, isExpanded, onToggleExpand, addingSubtaskTo, setAddingSubtaskTo, canEdit, handleSaveSubtask, editingField, setEditingField, handleUpdateTaskField, onRequestDelete, phaseId, parentId, onDragStart, onDragOver, onDrop, onDragEnd, onDragLeave, draggedItemId, dropTarget, checkPermission, onAssign, projectTeam, formerMembers, getUserDisplayName, getUserPhotoURL, onImageUpload, onRemoveImage, onViewImage, onOpenFeedback, onOpenImpediment, onRequestComplete, expandedTasks, highlightedTaskId }) => {
   const effectivePriority = getEffectivePriority(task);
   const priorityColor = PRIORITY_COLORS[effectivePriority];
   const isPriorityUnset = task.priority === undefined || task.priority === null;
@@ -958,7 +969,8 @@ const TaskRow: React.FC<TaskRowProps> = ({ task, level, isExpanded, onToggleExpa
     <>
       {isDropTargetAbove && <li className="h-0.5 bg-brand-secondary list-none" style={{ marginLeft: `${level * 2}rem` }} />}
       <li
-        className={`group/task bg-slate-800 rounded-lg p-2 grid grid-cols-10 gap-4 items-center transition-opacity outline-none focus:ring-1 focus:ring-brand-secondary/50 border-l-4 ${priorityColor.border} ${isPriorityUnset ? 'border-l-dashed' : ''} ${isBeingDragged ? 'opacity-30' : 'opacity-100'}`}
+        id={`task-${task.id}`}
+        className={`group/task bg-slate-800 rounded-lg p-2 grid grid-cols-10 gap-4 items-center transition-all duration-300 outline-none focus:ring-1 focus:ring-brand-secondary/50 border-l-4 ${priorityColor.border} ${isPriorityUnset ? 'border-l-dashed' : ''} ${isBeingDragged ? 'opacity-30' : 'opacity-100'} ${highlightedTaskId === task.id ? 'ring-2 ring-brand-secondary ring-offset-2 ring-offset-slate-900 bg-slate-750 shadow-lg shadow-brand-secondary/20' : ''}`}
         style={{ marginLeft: `${level * 2}rem` }}
         tabIndex={0}
         draggable={canEditTask}
@@ -1307,7 +1319,9 @@ const TaskRow: React.FC<TaskRowProps> = ({ task, level, isExpanded, onToggleExpa
             key={subTask.id}
             task={subTask}
             level={level + 1}
-            isExpanded={isExpanded}
+            isExpanded={expandedTasks?.has(subTask.id) ?? false}
+            expandedTasks={expandedTasks}
+            highlightedTaskId={highlightedTaskId}
             onToggleExpand={onToggleExpand}
             addingSubtaskTo={addingSubtaskTo}
             setAddingSubtaskTo={setAddingSubtaskTo}
@@ -1379,12 +1393,39 @@ const SortableHeaderCell: React.FC<SortableHeaderCellProps> = ({ label, sortKey,
 };
 
 
-const ProjectDetail: React.FC<ProjectDetailProps> = ({ project, onBack, canEdit, onUpdateProject, showToast, currentUserId, currentUserEmail, userRole, onEditProject }) => {
+const findTaskAndParentChain = (
+  phases: Phase[],
+  targetTaskId: string
+): { foundTask: Task; foundPhaseId: string; parentIds: string[] } | null => {
+  for (const phase of phases) {
+    const searchTasks = (
+      tasks: Task[],
+      ancestors: string[]
+    ): { foundTask: Task; foundPhaseId: string; parentIds: string[] } | null => {
+      for (const t of tasks) {
+        if (t.id === targetTaskId) {
+          return { foundTask: t, foundPhaseId: phase.id, parentIds: ancestors };
+        }
+        if (t.subTasks && t.subTasks.length > 0) {
+          const res = searchTasks(t.subTasks, [...ancestors, t.id]);
+          if (res) return res;
+        }
+      }
+      return null;
+    };
+    const found = searchTasks(phase.tasks || [], []);
+    if (found) return found;
+  }
+  return null;
+};
+
+const ProjectDetail: React.FC<ProjectDetailProps> = ({ project, onBack, canEdit, onUpdateProject, showToast, currentUserId, currentUserEmail, userRole, onEditProject, initialTarget, onClearInitialTarget }) => {
   const { getProjectOnlineUsers } = usePresence(project.id);
   const projectOnlineUsers = useMemo(() => getProjectOnlineUsers(project), [getProjectOnlineUsers, project]);
   const [aiInsight, setAiInsight] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [expandedTasks, setExpandedTasks] = useState<Set<string>>(new Set());
+  const [highlightedTaskId, setHighlightedTaskId] = useState<string | null>(null);
 
   // Only project owner or admin can archive/unarchive
   const canArchive = canEdit && (userRole === 'admin' || project.ownerId === currentUserId);
@@ -1592,6 +1633,69 @@ const ProjectDetail: React.FC<ProjectDetailProps> = ({ project, onBack, canEdit,
       }
     }, 50);
   };
+
+  // Handle deep-link initialTarget (scroll to item, expand parent phase/tasks, open action drawer/modal)
+  useEffect(() => {
+    if (!initialTarget) return;
+
+    const { taskId, phaseId, action } = initialTarget;
+
+    if (taskId) {
+      const match = findTaskAndParentChain(project.phases || [], taskId);
+      if (match) {
+        const { foundTask, foundPhaseId, parentIds } = match;
+
+        // Ensure parent phase is expanded
+        setCollapsedPhases(prev => {
+          if (prev.has(foundPhaseId)) {
+            const next = new Set(prev);
+            next.delete(foundPhaseId);
+            return next;
+          }
+          return prev;
+        });
+
+        // Ensure all parent tasks in hierarchy are expanded so the task is rendered
+        if (parentIds.length > 0) {
+          setExpandedTasks(prev => {
+            const next = new Set(prev);
+            parentIds.forEach(id => next.add(id));
+            return next;
+          });
+        }
+
+        // Switch to list view so task row is present
+        setViewMode('list');
+        setHighlightedTaskId(taskId);
+
+        // Open specific drawer / modal if requested
+        if (action === 'feedback') {
+          setFeedbackDrawerTask(foundTask);
+        } else if (action === 'impediment') {
+          setImpedimentModalTask(foundTask);
+        }
+
+        // Scroll to the task element smoothly
+        setTimeout(() => {
+          const el = document.getElementById(`task-${taskId}`);
+          if (el) {
+            el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+          }
+        }, 150);
+
+        // Clear highlight ring after 4 seconds
+        const timer = setTimeout(() => {
+          setHighlightedTaskId(null);
+        }, 4000);
+
+        onClearInitialTarget?.();
+        return () => clearTimeout(timer);
+      }
+    } else if (phaseId) {
+      handleScrollToSection(phaseId);
+      onClearInitialTarget?.();
+    }
+  }, [initialTarget, project.phases]);
 
   // --- User Lookup for displaying names and photos ---
   const { getUserDisplayName, getUserPhotoURL } = useUserLookup();
@@ -2326,7 +2430,7 @@ const ProjectDetail: React.FC<ProjectDetailProps> = ({ project, onBack, canEdit,
     onUpdateProject(updatedProject);
 
     if (notify) {
-      await notificationService.notifyResponsibilityAssigned(members, project, assigningTo.type, assigningTo.name);
+      await notificationService.notifyResponsibilityAssigned(members, project, assigningTo.type, assigningTo.name, assigningTo.id);
       showToast('Notifications sent');
     }
 
@@ -3298,6 +3402,8 @@ const ProjectDetail: React.FC<ProjectDetailProps> = ({ project, onBack, canEdit,
                           task={task}
                           level={0}
                           isExpanded={expandedTasks.has(task.id)}
+                          expandedTasks={expandedTasks}
+                          highlightedTaskId={highlightedTaskId}
                           onToggleExpand={handleToggleExpand}
                           addingSubtaskTo={addingSubtaskTo}
                           setAddingSubtaskTo={setAddingSubtaskTo}

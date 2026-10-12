@@ -41,7 +41,14 @@ const App: React.FC = () => {
     const [loading, setLoading] = useState(true);
     const [isLoginModalOpen, setIsLoginModalOpen] = useState(false);
     const [currentPage, setCurrentPage] = useState<string>('dashboard');
-    const [pendingProjectId, setPendingProjectId] = useState<string | null>(null);
+    interface DeepLinkTarget {
+        projectId: string;
+        taskId?: string;
+        phaseId?: string;
+        action?: string;
+    }
+
+    const [activeDeepLink, setActiveDeepLink] = useState<DeepLinkTarget | null>(null);
 
     // Track previous user to detect login vs token refresh
     const [prevUser, setPrevUser] = useState<typeof user>(null);
@@ -60,39 +67,43 @@ const App: React.FC = () => {
         return Boolean(params.get('setupToken'));
     });
 
-    // Handle deep links from notification emails (e.g., /project/:id)
+    // Handle deep links from notification emails (e.g., /project/:id?taskId=...&action=...)
     useEffect(() => {
         const match = location.pathname.match(/^\/project\/([^/]+)$/);
         if (match) {
             const projectId = match[1];
-            console.log('[DeepLink] Detected project deep link:', projectId);
-            setPendingProjectId(projectId);
-            // Clear the URL to prevent the match from triggering repeatedly
+            const searchParams = new URLSearchParams(location.search);
+            const taskId = searchParams.get('taskId') || undefined;
+            const phaseId = searchParams.get('phaseId') || undefined;
+            const action = searchParams.get('action') || undefined;
+            console.log('[DeepLink] Detected project deep link:', { projectId, taskId, phaseId, action });
+            setActiveDeepLink({ projectId, taskId, phaseId, action });
+            // Clear the URL path to avoid repeated triggers
             navigate('/', { replace: true });
         }
-    }, [location.pathname, navigate]);
+    }, [location.pathname, location.search, navigate]);
 
-    // Once projects are loaded and we have a pending project ID, navigate to it
+    // Once projects are loaded and we have an active deep link, navigate to it
     useEffect(() => {
-        if (pendingProjectId && projects.length > 0) {
-            const project = projects.find(p => p.id === pendingProjectId);
+        if (activeDeepLink && projects.length > 0) {
+            const project = projects.find(p => p.id === activeDeepLink.projectId);
             if (project) {
                 console.log('[DeepLink] Found project, navigating to:', project.name);
                 setSelectedProject(project);
                 setCurrentPage('projects');
                 showToast(`Opened project: ${project.name}`);
             } else {
-                console.warn('[DeepLink] Project not found:', pendingProjectId);
+                console.warn('[DeepLink] Project not found:', activeDeepLink.projectId);
                 showToast('Project not found or you do not have access');
+                setActiveDeepLink(null);
             }
-            setPendingProjectId(null);
         }
-    }, [pendingProjectId, projects]);
+    }, [activeDeepLink, projects]);
 
     // Reset to dashboard only when user logs in (null -> user), not on token refresh updates
     useEffect(() => {
-        // Only reset navigation when user transitions from null to logged-in (and no pending deep link)
-        if (user && !prevUser && !pendingProjectId) {
+        // Only reset navigation when user transitions from null to logged-in (and no active deep link)
+        if (user && !prevUser && !activeDeepLink) {
             setCurrentPage('dashboard');
             setSelectedProject(null);
         }
@@ -189,6 +200,7 @@ const App: React.FC = () => {
 
     const handleGoBack = () => {
         setSelectedProject(null);
+        setActiveDeepLink(null);
         setCurrentPage('projects'); // Ensure we're on the projects page when going back
     };
 
@@ -530,6 +542,8 @@ const App: React.FC = () => {
                             currentUserEmail={user?.email || undefined}
                             userRole={normalizedUserRole}
                             onEditProject={() => handleShowEditProjectModal(selectedProject)}
+                            initialTarget={activeDeepLink?.projectId === selectedProject.id ? activeDeepLink : undefined}
+                            onClearInitialTarget={() => setActiveDeepLink(null)}
                         />
                     ) : currentPage === 'users' ? (
                         <UserAdministrationPage
