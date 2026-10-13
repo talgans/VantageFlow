@@ -75,6 +75,9 @@ export interface Task {
   feedbackNotes?: TaskFeedbackNote[]; // Lightweight updates/notes feed
   completedAt?: Date;
   completedBy?: TeamMember;
+  updatedAt?: Date;
+  statusUpdatedAt?: Date;
+  lastUpdatedBy?: TeamMember;
 }
 
 

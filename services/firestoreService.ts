@@ -20,10 +20,20 @@ import { Project, Task, DurationUnit, Currency } from '../types';
  * Convert Firestore Timestamps to Date objects recursively for tasks
  */
 const convertTaskDatesFromFirestore = (task: any): Task => {
+  const parseOptionalDate = (val: any): Date | undefined => {
+    if (!val) return undefined;
+    if (val.toDate && typeof val.toDate === 'function') return val.toDate();
+    const d = new Date(val);
+    return isNaN(d.getTime()) ? undefined : d;
+  };
+
   return {
     ...task,
-    startDate: task.startDate?.toDate() || new Date(),
-    endDate: task.endDate?.toDate() || new Date(),
+    startDate: task.startDate?.toDate ? task.startDate.toDate() : (task.startDate ? new Date(task.startDate) : new Date()),
+    endDate: task.endDate?.toDate ? task.endDate.toDate() : (task.endDate ? new Date(task.endDate) : new Date()),
+    completedAt: parseOptionalDate(task.completedAt),
+    updatedAt: parseOptionalDate(task.updatedAt),
+    statusUpdatedAt: parseOptionalDate(task.statusUpdatedAt),
     subTasks: task.subTasks?.map(convertTaskDatesFromFirestore),
   };
 };
@@ -50,6 +60,16 @@ const convertTaskDatesToFirestore = (task: Task): any => {
     startDate: Timestamp.fromDate(ensureDate(task.startDate)),
     endDate: Timestamp.fromDate(ensureDate(task.endDate)),
   };
+
+  if (task.completedAt) {
+    converted.completedAt = Timestamp.fromDate(ensureDate(task.completedAt));
+  }
+  if (task.updatedAt) {
+    converted.updatedAt = Timestamp.fromDate(ensureDate(task.updatedAt));
+  }
+  if (task.statusUpdatedAt) {
+    converted.statusUpdatedAt = Timestamp.fromDate(ensureDate(task.statusUpdatedAt));
+  }
 
   // Only include subTasks if they exist
   if (task.subTasks && task.subTasks.length > 0) {

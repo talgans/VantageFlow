@@ -57,7 +57,32 @@ const countActiveFilters = (f: TaskFilters): number => {
 };
 
 /** Returns true if a task (leaf-level check) passes ALL active filters */
-const taskMatchesFilters = (task: Task, filters: TaskFilters): boolean => {
+export type QuickFilterPreset = 'all' | 'recent' | 'my-tasks' | 'blocked' | 'in-progress';
+
+const taskMatchesFilters = (
+  task: Task,
+  filters: TaskFilters,
+  quickPreset: QuickFilterPreset = 'all',
+  currentUserId?: string
+): boolean => {
+  // Quick Preset checks
+  if (quickPreset === 'blocked') {
+    const isBlocked = (task.impediment && !task.impediment.resolved) || task.status === TaskStatus.AtRisk;
+    if (!isBlocked) return false;
+  } else if (quickPreset === 'in-progress') {
+    const isInProgress = task.status === TaskStatus.TwentyFive || task.status === TaskStatus.Fifty || task.status === TaskStatus.SeventyFive;
+    if (!isInProgress) return false;
+  } else if (quickPreset === 'my-tasks') {
+    if (!currentUserId || !task.assignees?.some(a => a.uid === currentUserId)) {
+      return false;
+    }
+  } else if (quickPreset === 'recent') {
+    const ts = getTaskActivityTimestamp(task);
+    // within last 72 hours
+    const cutoff = Date.now() - 72 * 3600 * 1000;
+    if (ts < cutoff) return false;
+  }
+
   // Search
   if (filters.search) {
     const q = filters.search.toLowerCase();
@@ -96,11 +121,18 @@ const taskMatchesFilters = (task: Task, filters: TaskFilters): boolean => {
 };
 
 /** Recursively filter tasks: keep a parent if it matches OR any of its children match */
-const filterTasksRecursive = (tasks: Task[], filters: TaskFilters): Task[] => {
-  if (isFiltersEmpty(filters)) return tasks;
+const filterTasksRecursive = (
+  tasks: Task[],
+  filters: TaskFilters,
+  quickPreset: QuickFilterPreset = 'all',
+  currentUserId?: string
+): Task[] => {
+  if (isFiltersEmpty(filters) && quickPreset === 'all') return tasks;
   return tasks.reduce<Task[]>((acc, task) => {
-    const filteredSubTasks = task.subTasks ? filterTasksRecursive(task.subTasks, filters) : undefined;
-    const selfMatches = taskMatchesFilters(task, filters);
+    const filteredSubTasks = task.subTasks
+      ? filterTasksRecursive(task.subTasks, filters, quickPreset, currentUserId)
+      : undefined;
+    const selfMatches = taskMatchesFilters(task, filters, quickPreset, currentUserId);
     const hasMatchingChildren = filteredSubTasks && filteredSubTasks.length > 0;
     if (selfMatches || hasMatchingChildren) {
       acc.push({ ...task, subTasks: hasMatchingChildren ? filteredSubTasks : (selfMatches ? task.subTasks : undefined) });
@@ -379,7 +411,7 @@ interface ProjectDetailProps {
   onClearInitialTarget?: () => void;
 }
 
-type SortKey = 'name' | 'startDate' | 'status' | 'priority' | 'deliverables';
+type SortKey = 'name' | 'startDate' | 'status' | 'priority' | 'deliverables' | 'updatedAt';
 type SortDirection = 'ascending' | 'descending';
 
 interface SortConfig {
@@ -397,6 +429,47 @@ const PRIORITY_COLORS: Record<number, { border: string; bg: string; text: string
 const getEffectivePriority = (task: Task): number => {
   // Unset priority defaults to Important (2) for display/sort purposes
   return task.priority ?? TaskPriority.Important;
+};
+
+export const getTaskActivityTimestamp = (t: Task): number => {
+  const time = t.statusUpdatedAt || t.updatedAt || t.completedAt;
+  if (time) {
+    const d = new Date(time);
+    if (!isNaN(d.getTime())) return d.getTime();
+  }
+  if (t.feedbackNotes && t.feedbackNotes.length > 0) {
+    const d = new Date(t.feedbackNotes[t.feedbackNotes.length - 1].createdAt);
+    if (!isNaN(d.getTime())) return d.getTime();
+  }
+  if (t.impediment?.reportedAt) {
+    const d = new Date(t.impediment.reportedAt);
+    if (!isNaN(d.getTime())) return d.getTime();
+  }
+  if (t.startDate) {
+    const d = new Date(t.startDate);
+    if (!isNaN(d.getTime())) return d.getTime();
+  }
+  return 0;
+};
+
+const getStatusUrgencyTier = (task: Task): number => {
+  // Tier 0: Blocked / At Risk (highest urgency)
+  if ((task.impediment && !task.impediment.resolved) || task.status === TaskStatus.AtRisk) {
+    return 0;
+  }
+  // Tier 1: In progress (25%, 50%, 75%)
+  if (task.status === TaskStatus.TwentyFive || task.status === TaskStatus.Fifty || task.status === TaskStatus.SeventyFive) {
+    return 1;
+  }
+  // Tier 2: Not started (0%)
+  if (task.status === TaskStatus.Zero) {
+    return 2;
+  }
+  // Tier 3: Completed (100% or Completed)
+  if (task.status === TaskStatus.Hundred || (task.status as string) === 'Completed') {
+    return 3;
+  }
+  return 2;
 };
 
 const PriorityEditButtons: React.FC<{
@@ -454,24 +527,36 @@ const sortTasks = (tasks: Task[], config: SortConfig): Task[] => {
       case 'name':
         compareValue = a.name.localeCompare(b.name);
         break;
-      case 'startDate':
-        // revive dates since they might be strings from JSON.parse
+      case 'startDate': {
         const dateA = new Date(a.startDate);
         const dateB = new Date(b.startDate);
         compareValue = dateA.getTime() - dateB.getTime();
         break;
-      case 'status':
-        compareValue = calculateTaskProgress(a) - calculateTaskProgress(b);
+      }
+      case 'status': {
+        const tierA = getStatusUrgencyTier(a);
+        const tierB = getStatusUrgencyTier(b);
+        if (tierA !== tierB) {
+          compareValue = tierA - tierB;
+        } else {
+          // Within same tier, prioritize latest modified / activity first
+          compareValue = getTaskActivityTimestamp(b) - getTaskActivityTimestamp(a);
+        }
+        break;
+      }
+      case 'updatedAt':
+        compareValue = getTaskActivityTimestamp(a) - getTaskActivityTimestamp(b);
         break;
       case 'priority':
         // Lower number = higher priority (Critical=1 first)
         compareValue = getEffectivePriority(a) - getEffectivePriority(b);
         break;
-      case 'deliverables':
+      case 'deliverables': {
         const aLen = a.deliverables?.length || 0;
         const bLen = b.deliverables?.length || 0;
         compareValue = aLen - bLen;
         break;
+      }
     }
     return config.direction === 'ascending' ? compareValue : -compareValue;
   });
@@ -1521,6 +1606,65 @@ const findTaskAndParentChain = (
   return null;
 };
 
+const formatRelativeTime = (dateInput?: Date | string | null): string => {
+  if (!dateInput) return '';
+  const d = new Date(dateInput);
+  if (isNaN(d.getTime())) return '';
+  const diffSec = Math.floor((Date.now() - d.getTime()) / 1000);
+  if (diffSec < 60) return 'Just now';
+  const diffMin = Math.floor(diffSec / 60);
+  if (diffMin < 60) return `${diffMin}m ago`;
+  const diffHours = Math.floor(diffMin / 60);
+  if (diffHours < 24) return `${diffHours}h ago`;
+  const diffDays = Math.floor(diffHours / 24);
+  if (diffDays < 7) return `${diffDays}d ago`;
+  return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+};
+
+const findNextIncompleteTask = (
+  phases: Phase[],
+  currentTaskId: string
+): { nextTask: Task; phaseId: string } | null => {
+  for (let pIdx = 0; pIdx < phases.length; pIdx++) {
+    const phase = phases[pIdx];
+    const flattenIncomplete = (tasks: Task[]): Task[] => {
+      const res: Task[] = [];
+      tasks.forEach(t => {
+        if (t.status !== TaskStatus.Hundred && (t.status as string) !== 'Completed') {
+          res.push(t);
+        }
+        if (t.subTasks && t.subTasks.length > 0) {
+          res.push(...flattenIncomplete(t.subTasks));
+        }
+      });
+      return res;
+    };
+
+    const incomplete = flattenIncomplete(phase.tasks || []);
+    const idx = incomplete.findIndex(t => t.id === currentTaskId);
+    if (idx !== -1) {
+      if (idx + 1 < incomplete.length) {
+        return { nextTask: incomplete[idx + 1], phaseId: phase.id };
+      }
+      for (let nextP = pIdx + 1; nextP < phases.length; nextP++) {
+        const nextIncomplete = flattenIncomplete(phases[nextP].tasks || []);
+        if (nextIncomplete.length > 0) {
+          return { nextTask: nextIncomplete[0], phaseId: phases[nextP].id };
+        }
+      }
+    }
+  }
+
+  for (const ph of phases) {
+    for (const t of (ph.tasks || [])) {
+      if (t.id !== currentTaskId && t.status !== TaskStatus.Hundred && (t.status as string) !== 'Completed') {
+        return { nextTask: t, phaseId: ph.id };
+      }
+    }
+  }
+  return null;
+};
+
 const ProjectDetail: React.FC<ProjectDetailProps> = ({ project, onBack, canEdit, onUpdateProject, showToast, currentUserId, currentUserEmail, userRole, onEditProject, initialTarget, onClearInitialTarget }) => {
   const { getProjectOnlineUsers } = usePresence(project.id);
   const projectOnlineUsers = useMemo(() => getProjectOnlineUsers(project), [getProjectOnlineUsers, project]);
@@ -1528,6 +1672,11 @@ const ProjectDetail: React.FC<ProjectDetailProps> = ({ project, onBack, canEdit,
   const [isLoading, setIsLoading] = useState(false);
   const [expandedTasks, setExpandedTasks] = useState<Set<string>>(new Set());
   const [highlightedTaskId, setHighlightedTaskId] = useState<string | null>(null);
+
+  // --- Heads-Up & Quick Filters State ---
+  const [quickPreset, setQuickPreset] = useState<QuickFilterPreset>('all');
+  const [lastLocalActiveTaskId, setLastLocalActiveTaskId] = useState<string | null>(null);
+  const [isHeadsUpDismissed, setIsHeadsUpDismissed] = useState(false);
 
   // Only project owner or admin can archive/unarchive
   const canArchive = canEdit && (userRole === 'admin' || project.ownerId === currentUserId);
@@ -1736,6 +1885,51 @@ const ProjectDetail: React.FC<ProjectDetailProps> = ({ project, onBack, canEdit,
     }, 50);
   };
 
+  // Reusable Jump to Task helper (expands section/hierarchy, switches to list, smooth scrolls, highlights)
+  const jumpToTask = useCallback((taskId: string, phaseId?: string) => {
+    const match = findTaskAndParentChain(project.phases || [], taskId);
+    if (match) {
+      const { foundPhaseId, parentIds } = match;
+
+      // Ensure parent phase is expanded
+      setCollapsedPhases(prev => {
+        if (prev.has(foundPhaseId)) {
+          const next = new Set(prev);
+          next.delete(foundPhaseId);
+          return next;
+        }
+        return prev;
+      });
+
+      // Ensure all parent tasks in hierarchy are expanded
+      if (parentIds.length > 0) {
+        setExpandedTasks(prev => {
+          const next = new Set(prev);
+          parentIds.forEach(id => next.add(id));
+          return next;
+        });
+      }
+
+      setViewMode('list');
+      setHighlightedTaskId(taskId);
+
+      setTimeout(() => {
+        const el = document.getElementById(`task-${taskId}`);
+        if (el) {
+          el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        }
+      }, 100);
+
+      const timer = setTimeout(() => {
+        setHighlightedTaskId(prev => (prev === taskId ? null : prev));
+      }, 4500);
+
+      return () => clearTimeout(timer);
+    } else if (phaseId) {
+      handleScrollToSection(phaseId);
+    }
+  }, [project.phases]);
+
   // Handle deep-link initialTarget (scroll to item, expand parent phase/tasks, open action drawer/modal)
   useEffect(() => {
     if (!initialTarget) return;
@@ -1745,59 +1939,58 @@ const ProjectDetail: React.FC<ProjectDetailProps> = ({ project, onBack, canEdit,
     if (taskId) {
       const match = findTaskAndParentChain(project.phases || [], taskId);
       if (match) {
-        const { foundTask, foundPhaseId, parentIds } = match;
+        const { foundTask } = match;
+        jumpToTask(taskId, phaseId);
 
-        // Ensure parent phase is expanded
-        setCollapsedPhases(prev => {
-          if (prev.has(foundPhaseId)) {
-            const next = new Set(prev);
-            next.delete(foundPhaseId);
-            return next;
-          }
-          return prev;
-        });
-
-        // Ensure all parent tasks in hierarchy are expanded so the task is rendered
-        if (parentIds.length > 0) {
-          setExpandedTasks(prev => {
-            const next = new Set(prev);
-            parentIds.forEach(id => next.add(id));
-            return next;
-          });
-        }
-
-        // Switch to list view so task row is present
-        setViewMode('list');
-        setHighlightedTaskId(taskId);
-
-        // Open specific drawer / modal if requested
         if (action === 'feedback') {
           setFeedbackDrawerTask(foundTask);
         } else if (action === 'impediment') {
           setImpedimentModalTask(foundTask);
         }
 
-        // Scroll to the task element smoothly
-        setTimeout(() => {
-          const el = document.getElementById(`task-${taskId}`);
-          if (el) {
-            el.scrollIntoView({ behavior: 'smooth', block: 'center' });
-          }
-        }, 150);
-
-        // Clear highlight ring after 4 seconds
-        const timer = setTimeout(() => {
-          setHighlightedTaskId(null);
-        }, 4000);
-
         onClearInitialTarget?.();
-        return () => clearTimeout(timer);
       }
     } else if (phaseId) {
       handleScrollToSection(phaseId);
       onClearInitialTarget?.();
     }
-  }, [initialTarget, project.phases]);
+  }, [initialTarget, project.phases, jumpToTask, onClearInitialTarget]);
+
+  // Determine the most active / recently updated task in this project for the Timeline Heads-Up banner
+  const latestActiveTaskInfo = useMemo(() => {
+    let bestTask: Task | null = null;
+    let bestPhase: Phase | null = null;
+    let bestTime = -1;
+
+    (project.phases || []).forEach(phase => {
+      const inspect = (tasks: Task[]) => {
+        tasks.forEach(t => {
+          // If this is the task the user just locally edited/touched, prioritize it immediately
+          if (lastLocalActiveTaskId && t.id === lastLocalActiveTaskId) {
+            bestTask = t;
+            bestPhase = phase;
+            bestTime = Infinity;
+            return;
+          }
+          const ts = getTaskActivityTimestamp(t);
+          if (ts > bestTime) {
+            bestTime = ts;
+            bestTask = t;
+            bestPhase = phase;
+          }
+          if (t.subTasks) inspect(t.subTasks);
+        });
+      };
+      inspect(phase.tasks || []);
+    });
+
+    if (!bestTask || !bestPhase) return null;
+    return {
+      task: bestTask as Task,
+      phase: bestPhase as Phase,
+      timestamp: bestTime === Infinity ? new Date() : (bestTime > 0 ? new Date(bestTime) : null),
+    };
+  }, [project.phases, lastLocalActiveTaskId]);
 
   // --- User Lookup for displaying names and photos ---
   const { getUserDisplayName, getUserPhotoURL } = useUserLookup();
@@ -1811,8 +2004,8 @@ const ProjectDetail: React.FC<ProjectDetailProps> = ({ project, onBack, canEdit,
   const sortedProject = useMemo(() => {
     // Deep copy project to avoid mutating props, and revive dates which are lost in stringify
     const projectCopy = JSON.parse(JSON.stringify(project), (key, value) => {
-      if (key === 'startDate' || key === 'endDate') {
-        return new Date(value);
+      if (key === 'startDate' || key === 'endDate' || key === 'updatedAt' || key === 'statusUpdatedAt' || key === 'completedAt') {
+        return value ? new Date(value) : value;
       }
       return value;
     });
@@ -1823,17 +2016,17 @@ const ProjectDetail: React.FC<ProjectDetailProps> = ({ project, onBack, canEdit,
     }
 
     projectCopy.phases.forEach((phase: Phase) => {
-      // Apply filters first, then sort
+      // Apply filters first (including quick preset and current user scope), then sort
       let tasks = phase.tasks || [];
-      tasks = filterTasksRecursive(tasks, filters);
+      tasks = filterTasksRecursive(tasks, filters, quickPreset, currentUserId);
       phase.tasks = sortTasks(tasks, sortConfig);
     });
     return projectCopy;
-  }, [project, sortConfig, filters]);
+  }, [project, sortConfig, filters, quickPreset, currentUserId]);
 
   const reviveDates = (key: string, value: any) => {
-    if (key === 'startDate' || key === 'endDate') {
-      return new Date(value);
+    if (key === 'startDate' || key === 'endDate' || key === 'updatedAt' || key === 'statusUpdatedAt' || key === 'completedAt') {
+      return value ? new Date(value) : value;
     }
     return value;
   };
@@ -1946,16 +2139,19 @@ const ProjectDetail: React.FC<ProjectDetailProps> = ({ project, onBack, canEdit,
     if (notify) {
       const recipients = getTaskFeedbackRecipients(taskToBlock);
       if (recipients.length > 0) {
-        const sent = await notificationService.notifyTaskImpediment(
+        notificationService.notifyTaskImpediment(
           project,
           taskToBlock,
           impediment.category,
           impediment.description,
           recipients
-        );
-        if (sent) {
-          showToast('Blocker alert sent to assigner and project leads');
-        }
+        ).then(sent => {
+          if (sent) {
+            showToast('Blocker alert sent to assigner and project leads');
+          }
+        }).catch(err => {
+          console.error('Failed to notify task impediment:', err);
+        });
       }
     }
   };
@@ -1985,15 +2181,18 @@ const ProjectDetail: React.FC<ProjectDetailProps> = ({ project, onBack, canEdit,
     if (notify) {
       const recipients = getTaskFeedbackRecipients(taskToResolve);
       if (recipients.length > 0) {
-        const sent = await notificationService.notifyTaskImpedimentResolved(
+        notificationService.notifyTaskImpedimentResolved(
           project,
           taskToResolve,
           resolutionNote,
           recipients
-        );
-        if (sent) {
-          showToast('Impediment resolution notification sent');
-        }
+        ).then(sent => {
+          if (sent) {
+            showToast('Impediment resolution notification sent');
+          }
+        }).catch(err => {
+          console.error('Failed to notify task impediment resolved:', err);
+        });
       }
     }
   };
@@ -2012,17 +2211,21 @@ const ProjectDetail: React.FC<ProjectDetailProps> = ({ project, onBack, canEdit,
         ? `${taskToComplete.deliverables.length} deliverables (${taskToComplete.deliverables.slice(0, 3).join(', ')}${taskToComplete.deliverables.length > 3 ? '...' : ''})`
         : 'All deliverables and tasks completed';
 
-      const sent = await notificationService.notifyTaskCompleted(
+      showToast('Task marked 100% complete');
+      notificationService.notifyTaskCompleted(
         project,
         taskToComplete,
         deliverablesSummary,
         recipients
-      );
-      if (sent) {
-        showToast('Completion report sent to assigner and project leads');
-      } else {
-        showToast('Task marked 100% complete');
-      }
+      ).then(sent => {
+        if (sent) {
+          showToast('Completion report sent to assigner and project leads');
+        }
+      }).catch(err => {
+        console.error('Failed to notify task completion:', err);
+      });
+    } else {
+      showToast('Task marked 100% complete');
     }
   };
 
@@ -2044,13 +2247,18 @@ const ProjectDetail: React.FC<ProjectDetailProps> = ({ project, onBack, canEdit,
 
     if (notify) {
       const recipients = getTaskFeedbackRecipients(targetTask);
-      await notificationService.notifyTaskFeedback(
+      notificationService.notifyTaskFeedback(
         project,
         targetTask,
         note.message,
         recipients
-      );
-      showToast('Notification sent to task team');
+      ).then(sent => {
+        if (sent) {
+          showToast('Notification sent to task team');
+        }
+      }).catch(err => {
+        console.error('Failed to notify task feedback:', err);
+      });
     }
   };
 
@@ -2393,10 +2601,20 @@ const ProjectDetail: React.FC<ProjectDetailProps> = ({ project, onBack, canEdit,
 
     const updatedProject = JSON.parse(JSON.stringify(project), reviveDates);
 
+    const now = new Date();
     const findAndUpdate = (tasks: Task[]): boolean => {
       for (const task of tasks) {
         if (task.id === taskId) {
           (task as any)[field] = value;
+          task.updatedAt = now;
+          task.lastUpdatedBy = currentUserMember;
+          if (field === 'status') {
+            task.statusUpdatedAt = now;
+            if (value === TaskStatus.Hundred || value === 'Completed') {
+              task.completedAt = now;
+              task.completedBy = currentUserMember;
+            }
+          }
           return true;
         }
         if (task.subTasks && findAndUpdate(task.subTasks)) {
@@ -2414,6 +2632,18 @@ const ProjectDetail: React.FC<ProjectDetailProps> = ({ project, onBack, canEdit,
 
     onUpdateProject(updatedProject);
     setEditingField(null);
+
+    // Keep visual anchor on the task so user doesn't lose context after re-sorting
+    setHighlightedTaskId(taskId);
+    setLastLocalActiveTaskId(taskId);
+    setIsHeadsUpDismissed(false);
+    setTimeout(() => {
+      setHighlightedTaskId(prev => (prev === taskId ? null : prev));
+    }, 4500);
+
+    if (field === 'status') {
+      showToast(`Status updated to "${value}". Follow-up available in Heads-Up.`);
+    }
 
     // Check phase completion and award points
     if (field === 'status' && (value === TaskStatus.Hundred || value === 'Completed')) {
@@ -2574,14 +2804,21 @@ const ProjectDetail: React.FC<ProjectDetailProps> = ({ project, onBack, canEdit,
       updatedProject.phases.forEach((p: Phase) => findAndUpdateTask(p.tasks));
     }
 
+    const targetInfo = { ...assigningTo };
     onUpdateProject(updatedProject);
+    setAssigningTo(null);
 
     if (notify) {
-      await notificationService.notifyResponsibilityAssigned(members, project, assigningTo.type, assigningTo.name, assigningTo.id);
-      showToast('Notifications sent');
+      notificationService.notifyResponsibilityAssigned(members, project, targetInfo.type, targetInfo.name, targetInfo.id)
+        .then(sent => {
+          if (sent) {
+            showToast('Notifications sent');
+          }
+        })
+        .catch(err => {
+          console.error('Failed to notify responsibility assigned:', err);
+        });
     }
-
-    setAssigningTo(null);
   };
 
   // --- Task Image Handlers ---
@@ -3204,6 +3441,133 @@ const ProjectDetail: React.FC<ProjectDetailProps> = ({ project, onBack, canEdit,
             </div>
           </div>
         </div>
+
+        {/* ======== EMBEDDED TIMELINE HEADS-UP BANNER ======== */}
+        {latestActiveTaskInfo && !isHeadsUpDismissed && viewMode === 'list' && (
+          <div className="mx-4 mt-3 mb-2 p-3 rounded-xl bg-gradient-to-r from-slate-900/90 via-slate-800/85 to-slate-900/90 border border-brand-secondary/35 shadow-lg shadow-brand-secondary/5 flex flex-wrap items-center justify-between gap-3 animate-fade-in">
+            <div className="flex items-center gap-3 min-w-0">
+              <div className="w-8 h-8 rounded-lg bg-brand-secondary/20 border border-brand-secondary/40 flex items-center justify-center flex-shrink-0 text-brand-light shadow-xs">
+                <SparklesIcon className="w-4 h-4 animate-pulse" />
+              </div>
+              <div className="min-w-0">
+                <div className="flex items-center gap-2 flex-wrap">
+                  <span className="text-[11px] font-bold uppercase tracking-wider text-brand-light flex items-center gap-1">
+                    <span>⚡ Heads-Up: Recent Activity</span>
+                  </span>
+                  <span className="text-xs text-slate-500">•</span>
+                  <span className="text-xs font-semibold text-slate-400 truncate max-w-[150px]">
+                    {latestActiveTaskInfo.phase.name}
+                  </span>
+                  <StatusBadge status={latestActiveTaskInfo.task.status} />
+                  {latestActiveTaskInfo.task.impediment && !latestActiveTaskInfo.task.impediment.resolved && (
+                    <span className="px-1.5 py-0.5 rounded text-[10px] font-bold bg-red-500/20 text-red-300 border border-red-500/30">
+                      ⚠️ Blocked
+                    </span>
+                  )}
+                  {latestActiveTaskInfo.timestamp && (
+                    <span className="text-[11px] text-slate-400 font-mono">
+                      ({formatRelativeTime(latestActiveTaskInfo.timestamp)})
+                    </span>
+                  )}
+                </div>
+                <div className="text-sm font-semibold text-white truncate max-w-[420px] sm:max-w-[550px] mt-0.5">
+                  {latestActiveTaskInfo.task.name}
+                </div>
+              </div>
+            </div>
+
+            {/* Continuation Quick Action Buttons */}
+            <div className="flex items-center gap-2 flex-wrap ml-auto">
+              <button
+                type="button"
+                onClick={() => jumpToTask(latestActiveTaskInfo.task.id, latestActiveTaskInfo.phase.id)}
+                className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold bg-brand-secondary hover:bg-brand-secondary/80 text-white shadow-xs transition-all active:scale-95"
+                title="Scroll to task, expand hierarchy and highlight"
+              >
+                <span>🎯 Jump to Task</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setFeedbackDrawerTask(latestActiveTaskInfo.task)}
+                className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-medium bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 transition-colors active:scale-95"
+                title="Add follow-up notes and team feedback"
+              >
+                <ChatBubbleBottomCenterTextIcon className="w-3.5 h-3.5 text-blue-400" />
+                <span>Follow-up Note</span>
+              </button>
+
+              {(() => {
+                const next = findNextIncompleteTask(project.phases || [], latestActiveTaskInfo.task.id);
+                if (!next) return null;
+                return (
+                  <button
+                    type="button"
+                    onClick={() => jumpToTask(next.nextTask.id, next.phaseId)}
+                    className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-medium bg-emerald-500/15 hover:bg-emerald-500/25 text-emerald-300 border border-emerald-500/30 transition-colors active:scale-95"
+                    title={`Jump to next incomplete task: ${next.nextTask.name}`}
+                  >
+                    <span>Next Task ➔</span>
+                  </button>
+                );
+              })()}
+
+              <button
+                type="button"
+                onClick={() => setIsHeadsUpDismissed(true)}
+                className="p-1 rounded-md text-slate-500 hover:text-slate-300 hover:bg-slate-800 transition-colors"
+                title="Dismiss Heads-Up banner"
+              >
+                <XMarkIcon className="w-4 h-4" />
+              </button>
+            </div>
+          </div>
+        )}
+
+        {/* ======== QUICK FILTER PRESET CHIPS ======== */}
+        {viewMode === 'list' && (
+          <div className="px-4 py-2 border-b border-slate-700/60 bg-slate-900/40 flex items-center justify-between gap-2 flex-wrap">
+            <div className="flex items-center gap-1.5 flex-wrap">
+              <span className="text-[11px] font-semibold text-slate-400 uppercase tracking-wider mr-1">
+                Quick Filter:
+              </span>
+              {[
+                { id: 'all', label: 'All Tasks' },
+                { id: 'recent', label: '⚡ Recent' },
+                { id: 'my-tasks', label: '👤 My Tasks' },
+                { id: 'in-progress', label: '⏳ In Progress' },
+                { id: 'blocked', label: '⚠️ Blocked' },
+              ].map(preset => {
+                const isActive = quickPreset === preset.id;
+                return (
+                  <button
+                    key={preset.id}
+                    type="button"
+                    onClick={() => setQuickPreset(preset.id as QuickFilterPreset)}
+                    className={`px-2.5 py-1 rounded-lg text-xs font-medium transition-all border ${
+                      isActive
+                        ? 'bg-brand-secondary text-white border-brand-secondary shadow-sm shadow-brand-secondary/20'
+                        : 'bg-slate-800/80 text-slate-400 border-slate-700/80 hover:bg-slate-700/60 hover:text-slate-200'
+                    }`}
+                  >
+                    {preset.label}
+                  </button>
+                );
+              })}
+            </div>
+
+            {isHeadsUpDismissed && latestActiveTaskInfo && (
+              <button
+                type="button"
+                onClick={() => setIsHeadsUpDismissed(false)}
+                className="text-xs text-brand-light hover:underline flex items-center gap-1 font-medium transition-colors"
+                title="Restore Heads-Up banner"
+              >
+                <span>⚡ Show Heads-Up</span>
+              </button>
+            )}
+          </div>
+        )}
 
         {/* ======== FILTER BAR ======== */}
         {showFilters && viewMode === 'list' && (

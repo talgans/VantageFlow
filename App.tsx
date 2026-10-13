@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { Project, UserRole, Phase, Task } from './types';
 import { MOCK_PROJECTS } from './constants';
@@ -126,12 +126,17 @@ const App: React.FC = () => {
     const [projectToDelete, setProjectToDelete] = useState<Project | null>(null);
     const [deleteModalMode, setDeleteModalMode] = useState<'soft' | 'permanent'>('soft');
     const [toast, setToast] = useState<string | null>(null);
+    const toastTimerRef = useRef<any>(null);
 
     const showToast = (message: string) => {
+        if (toastTimerRef.current) {
+            clearTimeout(toastTimerRef.current);
+        }
         setToast(message);
-        setTimeout(() => {
+        toastTimerRef.current = setTimeout(() => {
             setToast(null);
-        }, 3000);
+            toastTimerRef.current = null;
+        }, 2200);
     };
 
     /**
@@ -529,6 +534,15 @@ const App: React.FC = () => {
                     userRole={currentUserRole}
                     isCollapsed={isSideNavCollapsed}
                     onToggleCollapse={() => setIsSideNavCollapsed(!isSideNavCollapsed)}
+                    projects={projects}
+                    currentUserId={user?.uid}
+                    onSelectTask={(projectId, taskId) => {
+                        const targetProject = projects.find(p => p.id === projectId);
+                        if (targetProject) {
+                            handleSelectProject(targetProject);
+                            setActiveDeepLink({ projectId, taskId });
+                        }
+                    }}
                 />
                 <main className="flex-1 min-w-0 overflow-y-auto p-4 sm:p-6 lg:p-8">
                     {selectedProject ? (
@@ -632,7 +646,7 @@ const App: React.FC = () => {
                     canPermanentDelete={canDeleteProject(projectToDelete)}
                 />
             )}
-            {toast && <Toast message={toast} />}
+            {toast && <Toast message={toast} onClose={() => setToast(null)} />}
             <RoleChangeNotification />
         </div>
     );

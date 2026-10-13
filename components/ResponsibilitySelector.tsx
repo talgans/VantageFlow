@@ -1,7 +1,6 @@
 import React, { useState, useMemo } from 'react';
 import { TeamMember } from '../types';
 import { UserIcon, MagnifyingGlassIcon } from './icons';
-import ConfirmationModal from './ConfirmationModal';
 import UserAchievementBadge from './UserAchievementBadge';
 import { useUserLookup } from '../hooks/useUserLookup';
 
@@ -30,7 +29,6 @@ const ResponsibilitySelector: React.FC<ResponsibilitySelectorProps> = ({
     const [searchQuery, setSearchQuery] = useState('');
     const [notify, setNotify] = useState(true);
     const [propagate, setPropagate] = useState(false);
-    const [showConfirmation, setShowConfirmation] = useState(false);
 
     // Use the user lookup hook for dynamic data
     const { getUserById, hasUserLoggedIn, loading: usersLoading } = useUserLookup();
@@ -68,12 +66,7 @@ const ResponsibilitySelector: React.FC<ResponsibilitySelectorProps> = ({
     };
 
     const handleSaveClick = () => {
-        // If notify is checked, ask for confirmation
-        if (notify && selectedIds.size > 0) {
-            setShowConfirmation(true);
-        } else {
-            finalizeSave();
-        }
+        finalizeSave();
     };
 
     const finalizeSave = () => {
@@ -299,22 +292,6 @@ const ResponsibilitySelector: React.FC<ResponsibilitySelectorProps> = ({
                     </button>
                 </div>
             </div>
-
-            {/* Confirmation Modal */}
-            <ConfirmationModal
-                isOpen={showConfirmation}
-                onClose={() => setShowConfirmation(false)}
-                onConfirm={finalizeSave}
-                title="Confirm Notification"
-                message={
-                    <p>
-                        You are about to send email notifications to
-                        <span className="font-bold text-white mx-1">{selectedIds.size}</span>
-                        assignee{selectedIds.size !== 1 ? 's' : ''}.
-                        Continue?
-                    </p>
-                }
-            />
         </div>
     );
 };
