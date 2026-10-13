@@ -235,6 +235,7 @@ const GanttChart: React.FC<{ project: Project }> = ({ project }) => {
 
     const renderTaskRow = (task: Task, level: number): React.ReactNode => {
         const hasSubtasks = task.subTasks && task.subTasks.length > 0;
+        const isSubtask = level > 0;
         const isExpanded = expandedTasks.has(task.id);
         const { left, width } = getBarPosition(task.startDate, task.endDate, startDate, unit, totalUnits);
         const statusColor = STATUS_COLORS[task.status as string] || STATUS_COLORS[TaskStatus.Zero];
@@ -243,17 +244,35 @@ const GanttChart: React.FC<{ project: Project }> = ({ project }) => {
 
         return (
             <React.Fragment key={task.id}>
-                <div className="flex border-b border-slate-700">
+                <div className={`flex border-b border-slate-700/80 ${
+                    hasSubtasks
+                        ? 'bg-slate-900/90 font-medium'
+                        : isSubtask
+                        ? 'bg-slate-900/30'
+                        : 'bg-slate-800/30'
+                }`}>
                     {/* Task Name Column */}
                     <div
-                        className="flex items-center py-1 px-2 border-r border-slate-700 text-xs text-white bg-slate-800/30 flex-shrink-0"
+                        className={`flex items-center py-1 px-2 border-r border-slate-700 text-xs flex-shrink-0 ${
+                            hasSubtasks
+                                ? 'text-white bg-slate-900/90 font-semibold'
+                                : isSubtask
+                                ? 'text-slate-300 bg-slate-900/40'
+                                : 'text-slate-100 bg-slate-800/40 font-medium'
+                        }`}
                         style={{ width: TASK_COLUMN_WIDTH, paddingLeft: `${level * 1 + 0.5}rem` }}
                     >
                         {hasSubtasks ? (
-                            <button onClick={() => handleToggleExpand(task.id)} className="mr-2 text-slate-400 hover:text-white">
-                                {isExpanded ? <ChevronDownIcon className="w-4 h-4" /> : <ChevronRightIcon className="w-4 h-4" />}
+                            <button
+                                onClick={() => handleToggleExpand(task.id)}
+                                className="mr-1.5 p-0.5 rounded bg-slate-800 hover:bg-slate-700 border border-slate-700 text-slate-300 hover:text-white flex-shrink-0 transition-colors shadow-xs"
+                                title={isExpanded ? "Collapse subtasks" : "Expand subtasks"}
+                            >
+                                {isExpanded ? <ChevronDownIcon className="w-3.5 h-3.5 text-brand-secondary" /> : <ChevronRightIcon className="w-3.5 h-3.5 text-slate-400" />}
                             </button>
-                        ) : <div className="w-3 h-3 mr-1" />}
+                        ) : isSubtask ? (
+                            <span className="text-slate-500 font-mono text-xs mr-1.5 select-none flex-shrink-0" title="Subtask">↳</span>
+                        ) : <div className="w-3 h-3 mr-1 flex-shrink-0" />}
                         {/* Priority dot indicator */}
                         <span className={`w-2 h-2 rounded-full ${priorityDotColor} mr-1.5 flex-shrink-0`} title={`Priority: ${TaskPriority[effectivePriority]}`}></span>
                         <span className="truncate text-xs">{task.name}</span>
@@ -262,7 +281,9 @@ const GanttChart: React.FC<{ project: Project }> = ({ project }) => {
                     {/* Timeline Column with Bar */}
                     <div className="relative flex-shrink-0" style={{ width: timelineWidth, height: 20 }}>
                         <div
-                            className={`absolute top-1 h-3 rounded border ${statusColor.bg} ${statusColor.border}`}
+                            className={`absolute rounded border ${statusColor.bg} ${statusColor.border} ${
+                                isSubtask ? 'top-1.5 h-2 rounded-sm opacity-90' : 'top-1 h-3'
+                            }`}
                             style={{ left, width: Math.max(width, 6) }}
                             title={`${task.name}: ${new Date(task.startDate).toLocaleDateString()} - ${new Date(task.endDate).toLocaleDateString()}`}
                         />

@@ -7,7 +7,7 @@ import { notificationService } from '../services/notificationService';
 import { achievementService } from '../services/achievementService';
 import { getProjectInsights } from '../services/geminiService';
 import { uploadTaskImage } from '../services/storageService';
-import { ArrowLeftIcon, SparklesIcon, InfoIcon, TeamIcon, CalendarIcon, MoneyIcon, CheckCircleIcon, PlusCircleIcon, ChevronRightIcon, ChevronDownIcon, ListBulletIcon, ChartBarIcon, TrashIcon, ArrowUpIcon, ArrowDownIcon, GripVerticalIcon, StarIcon, UserIcon, WhatsAppIcon, PhotoIcon, XMarkIcon, FlagIcon, MagnifyingGlassIcon, ChatBubbleBottomCenterTextIcon } from './icons';
+import { ArrowLeftIcon, SparklesIcon, InfoIcon, TeamIcon, CalendarIcon, MoneyIcon, CheckCircleIcon, PlusCircleIcon, ChevronRightIcon, ChevronDownIcon, ListBulletIcon, ChartBarIcon, TrashIcon, ArrowUpIcon, ArrowDownIcon, GripVerticalIcon, StarIcon, UserIcon, WhatsAppIcon, PhotoIcon, XMarkIcon, FlagIcon, MagnifyingGlassIcon, ChatBubbleBottomCenterTextIcon, CornerDownRightIcon } from './icons';
 import { TaskImpedimentModal } from './TaskImpedimentModal';
 import { TaskCompletionModal } from './TaskCompletionModal';
 import { TaskFeedbackDrawer } from './TaskFeedbackDrawer';
@@ -976,13 +976,16 @@ interface TaskRowProps {
   onRequestComplete?: (task: Task) => void;
   expandedTasks?: Set<string>;
   highlightedTaskId?: string | null;
+  isLastChild?: boolean;
 }
 
-const TaskRow: React.FC<TaskRowProps> = ({ task, level, isExpanded, onToggleExpand, addingSubtaskTo, setAddingSubtaskTo, canEdit, handleSaveSubtask, editingField, setEditingField, handleUpdateTaskField, onRequestDelete, phaseId, parentId, onDragStart, onDragOver, onDrop, onDragEnd, onDragLeave, draggedItemId, dropTarget, checkPermission, onAssign, projectTeam, formerMembers, getUserDisplayName, getUserPhotoURL, onImageUpload, onRemoveImage, onViewImage, onOpenFeedback, onOpenImpediment, onRequestComplete, expandedTasks, highlightedTaskId }) => {
+const TaskRow: React.FC<TaskRowProps> = ({ task, level, isExpanded, onToggleExpand, addingSubtaskTo, setAddingSubtaskTo, canEdit, handleSaveSubtask, editingField, setEditingField, handleUpdateTaskField, onRequestDelete, phaseId, parentId, onDragStart, onDragOver, onDrop, onDragEnd, onDragLeave, draggedItemId, dropTarget, checkPermission, onAssign, projectTeam, formerMembers, getUserDisplayName, getUserPhotoURL, onImageUpload, onRemoveImage, onViewImage, onOpenFeedback, onOpenImpediment, onRequestComplete, expandedTasks, highlightedTaskId, isLastChild }) => {
+  const isSubtask = level > 0;
   const effectivePriority = getEffectivePriority(task);
   const priorityColor = PRIORITY_COLORS[effectivePriority];
   const isPriorityUnset = task.priority === undefined || task.priority === null;
   const hasSubtasks = task.subTasks && task.subTasks.length > 0;
+  const completedSubtasksCount = task.subTasks?.filter(st => st.status === TaskStatus.Hundred).length || 0;
   const formatDate = (date: Date) => new Date(date).toLocaleString('en-US', { month: 'short', day: 'numeric' });
   const isEditing = (field: string) => editingField?.taskId === task.id && editingField?.field === field;
   const progress = calculateTaskProgress(task);
@@ -1028,7 +1031,13 @@ const TaskRow: React.FC<TaskRowProps> = ({ task, level, isExpanded, onToggleExpa
       {isDropTargetAbove && <li className="h-0.5 bg-brand-secondary list-none" style={{ marginLeft: `${level * 2}rem` }} />}
       <li
         id={`task-${task.id}`}
-        className={`group/task bg-slate-800 rounded-lg p-2 grid grid-cols-10 gap-4 items-center transition-all duration-300 outline-none focus:ring-1 focus:ring-brand-secondary/50 border-l-4 ${priorityColor.border} ${isPriorityUnset ? 'border-l-dashed' : ''} ${isBeingDragged ? 'opacity-30' : 'opacity-100'} ${highlightedTaskId === task.id ? 'ring-2 ring-brand-secondary ring-offset-2 ring-offset-slate-900 bg-slate-750 shadow-lg shadow-brand-secondary/20' : ''}`}
+        className={`group/task relative rounded-lg p-2 grid grid-cols-10 gap-4 items-center transition-all duration-300 outline-none focus:ring-1 focus:ring-brand-secondary/50 ${
+          isSubtask
+            ? `bg-slate-800/40 hover:bg-slate-800/60 border border-slate-700/50 text-slate-200 border-l-2 ${priorityColor.border}`
+            : hasSubtasks
+            ? `bg-slate-900/90 hover:bg-slate-900 border border-slate-700/80 shadow-md shadow-black/25 text-white border-l-4 ${priorityColor.border} ring-1 ring-slate-700/40`
+            : `bg-slate-800 hover:bg-slate-800/90 border border-slate-700/40 text-slate-100 border-l-4 ${priorityColor.border}`
+        } ${isPriorityUnset ? 'border-l-dashed' : ''} ${isBeingDragged ? 'opacity-30' : 'opacity-100'} ${highlightedTaskId === task.id ? 'ring-2 ring-brand-secondary ring-offset-2 ring-offset-slate-900 bg-slate-750 shadow-lg shadow-brand-secondary/20' : ''}`}
         style={{ marginLeft: `${level * 2}rem` }}
         tabIndex={0}
         draggable={canEditTask}
@@ -1039,22 +1048,32 @@ const TaskRow: React.FC<TaskRowProps> = ({ task, level, isExpanded, onToggleExpa
         onDragLeave={onDragLeave}
         onPaste={handlePaste}
       >
+        {/* Tree Branch Connector for Subtasks */}
+        {isSubtask && (
+          <div className="absolute -left-5 top-0 w-5 h-full pointer-events-none select-none" aria-hidden="true">
+            {/* Vertical stem from parent */}
+            <div className={`w-0.5 bg-slate-600/70 absolute left-0 top-0 ${isLastChild ? 'h-1/2' : 'h-full'}`} />
+            {/* Horizontal elbow connecting into the card */}
+            <div className="h-0.5 bg-slate-600/70 absolute left-0 top-1/2 w-4 rounded-bl-sm" />
+          </div>
+        )}
+
         <div className="col-span-4 text-white font-medium flex items-center min-w-0">
           {canEditTask && <GripVerticalIcon className="w-5 h-5 mr-2 text-slate-500 cursor-grab flex-shrink-0" />}
           {hasSubtasks ? (
-            <button onClick={() => onToggleExpand(task.id)} className="mr-2 text-slate-400 hover:text-white flex-shrink-0" title="Has subtasks">
+            <button
+              onClick={() => onToggleExpand(task.id)}
+              className="mr-2.5 p-1 rounded-md bg-slate-800 hover:bg-slate-750 border border-slate-700/80 text-slate-300 hover:text-white flex-shrink-0 transition-all shadow-xs"
+              title={isExpanded ? "Collapse subtasks" : "Expand subtasks"}
+            >
               {isExpanded ? (
-                <span className="flex flex-col -space-y-2">
-                  <ChevronDownIcon className="w-4 h-4" />
-                  <ChevronDownIcon className="w-4 h-4" />
-                </span>
+                <ChevronDownIcon className="w-4 h-4 text-brand-secondary" />
               ) : (
-                <span className="flex -space-x-2">
-                  <ChevronRightIcon className="w-4 h-4" />
-                  <ChevronRightIcon className="w-4 h-4" />
-                </span>
+                <ChevronRightIcon className="w-4 h-4 text-slate-400 group-hover/task:text-slate-200" />
               )}
             </button>
+          ) : isSubtask ? (
+            <CornerDownRightIcon className="w-4 h-4 mr-2 text-slate-500/90 flex-shrink-0" title="Subtask" />
           ) : <div className="w-4 h-4 mr-2 flex-shrink-0" style={!canEditTask ? { marginLeft: '1.75rem' } : {}} />}
 
           {/* Task Originator Icon (Square to differentiate from circular Assignee icons) */}
@@ -1072,18 +1091,42 @@ const TaskRow: React.FC<TaskRowProps> = ({ task, level, isExpanded, onToggleExpa
           </div>
 
           <div className="w-full min-w-0">
-            {isEditing('name') ? (
-              <textarea
-                defaultValue={task.name}
-                rows={3}
-                onBlur={(e) => handleUpdateTaskField(task.id, 'name', e.target.value)}
-                onKeyDown={handleKeyDown}
-                className="bg-slate-700 border border-slate-600 text-white text-sm rounded-md block w-full p-1.5 resize-none overflow-y-auto leading-relaxed focus:ring-1 focus:ring-brand-secondary outline-none"
-                autoFocus
-              />
-            ) : (
-              <span className="w-full cursor-pointer whitespace-pre-wrap break-words" onClick={() => canEditTask && setEditingField({ taskId: task.id, field: 'name' })}>{task.name}</span>
-            )}
+            <div className="flex items-center gap-1.5 flex-wrap">
+              {isEditing('name') ? (
+                <textarea
+                  defaultValue={task.name}
+                  rows={3}
+                  onBlur={(e) => handleUpdateTaskField(task.id, 'name', e.target.value)}
+                  onKeyDown={handleKeyDown}
+                  className="bg-slate-700 border border-slate-600 text-white text-sm rounded-md block w-full p-1.5 resize-none overflow-y-auto leading-relaxed focus:ring-1 focus:ring-brand-secondary outline-none"
+                  autoFocus
+                />
+              ) : (
+                <>
+                  <span
+                    className={`cursor-pointer whitespace-pre-wrap break-words ${
+                      isSubtask
+                        ? 'text-slate-200 text-sm font-normal'
+                        : hasSubtasks
+                        ? 'text-white font-semibold text-sm sm:text-base tracking-wide'
+                        : 'text-slate-100 font-medium text-sm'
+                    }`}
+                    onClick={() => canEditTask && setEditingField({ taskId: task.id, field: 'name' })}
+                  >
+                    {task.name}
+                  </span>
+                  {hasSubtasks && (
+                    <span
+                      className="inline-flex items-center gap-1 text-[11px] px-2 py-0.5 rounded-full bg-slate-800 text-slate-300 font-normal flex-shrink-0 border border-slate-700 shadow-xs"
+                      title={`${completedSubtasksCount} of ${task.subTasks!.length} subtasks completed`}
+                    >
+                      <CheckCircleIcon className="w-3 h-3 text-emerald-400" />
+                      <span>{completedSubtasksCount}/{task.subTasks!.length} done</span>
+                    </span>
+                  )}
+                </>
+              )}
+            </div>
             <TaskProgressBar progress={progress} status={task.status} useProgressColor={hasSubtasks} />
             {/* Active Blocker Badge */}
             {task.impediment && !task.impediment.resolved && (
@@ -1372,11 +1415,12 @@ const TaskRow: React.FC<TaskRowProps> = ({ task, level, isExpanded, onToggleExpa
         />
       )}
       {isExpanded && hasSubtasks && (
-        task.subTasks?.map(subTask => (
+        task.subTasks?.map((subTask, subIndex) => (
           <TaskRow
             key={subTask.id}
             task={subTask}
             level={level + 1}
+            isLastChild={subIndex === (task.subTasks?.length ?? 1) - 1}
             isExpanded={expandedTasks?.has(subTask.id) ?? false}
             expandedTasks={expandedTasks}
             highlightedTaskId={highlightedTaskId}
