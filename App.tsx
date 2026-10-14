@@ -507,6 +507,14 @@ const App: React.FC = () => {
                     setSelectedProject(null);
                 }}
                 projects={projects}
+                selectedProject={selectedProject}
+                onSelectTask={(projectId, taskId) => {
+                    const targetProject = projects.find(p => p.id === projectId);
+                    if (targetProject) {
+                        handleSelectProject(targetProject);
+                        setActiveDeepLink({ projectId, taskId });
+                    }
+                }}
             />
             <div className="flex flex-1 min-h-0 overflow-hidden">
                 <SideNav

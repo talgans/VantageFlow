@@ -10,7 +10,6 @@ import {
   ArrowPathIcon,
   ChevronDownIcon
 } from './icons';
-import NotificationCenter from './NotificationCenter';
 import { useUserLookup } from '../hooks/useUserLookup';
 import DashboardStatsCards from './dashboard/DashboardStatsCards';
 import ProjectAnalysis from './dashboard/ProjectAnalysis';
@@ -226,7 +225,6 @@ const MasterDashboard: React.FC<MasterDashboardProps> = ({
             Overview of all projects, performance, and recommendations.
           </p>
         </div>
-        <NotificationCenter projects={projects} onSelectTask={onSelectTask} />
       </div>
 
       {/* Stats Cards */}

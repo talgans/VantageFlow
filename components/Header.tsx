@@ -6,7 +6,8 @@ import { useAuth } from '../contexts/AuthContext';
 import { useUserLookup } from '../hooks/useUserLookup';
 import { usePresence } from '../hooks/usePresence';
 import UserAchievementBadge from './UserAchievementBadge';
-import OnlineUsersPanel from './OnlineUsersPanel';
+import OnlineUsersAccordion from './OnlineUsersAccordion';
+import NotificationCenter from './NotificationCenter';
 
 interface HeaderProps {
   currentUserRole: UserRole;
@@ -15,9 +16,20 @@ interface HeaderProps {
   onMenuClick: () => void;
   onNavigateToProfile?: () => void;
   projects?: Project[];
+  selectedProject?: Project | null;
+  onSelectTask?: (projectId: string, taskId: string) => void;
 }
 
-const Header: React.FC<HeaderProps> = ({ currentUserRole, onSignOut, onSignInClick, onMenuClick, onNavigateToProfile, projects = [] }) => {
+const Header: React.FC<HeaderProps> = ({
+  currentUserRole,
+  onSignOut,
+  onSignInClick,
+  onMenuClick,
+  onNavigateToProfile,
+  projects = [],
+  selectedProject,
+  onSelectTask,
+}) => {
   const { user } = useAuth();
   const { getUserById } = useUserLookup();
   const { onlineUsers } = usePresence();
@@ -79,26 +91,119 @@ const Header: React.FC<HeaderProps> = ({ currentUserRole, onSignOut, onSignInCli
     return { total: userProjects.length, completed, running };
   }, [projects, user]);
 
+  // Helper to check if current user is an owner or member of a project
+  const isMemberOfProject = (project: Project, uid?: string, email?: string): boolean => {
+    if (!uid && !email) return false;
+    const normalizedEmail = email?.toLowerCase();
+
+    // Owner check
+    if (uid && project.ownerId === uid) return true;
+    if (normalizedEmail && project.ownerEmail && project.ownerEmail.toLowerCase() === normalizedEmail) return true;
+
+    // memberUids array
+    if (uid && project.memberUids && project.memberUids.includes(uid)) return true;
+
+    // team.members array
+    if (project.team?.members) {
+      return project.team.members.some(m =>
+        (uid && m.uid === uid) ||
+        (normalizedEmail && m.email && m.email.toLowerCase() === normalizedEmail)
+      );
+    }
+
+    return false;
+  };
+
+  // Determine all projects where current user is an owner or member
+  const memberProjects = useMemo(() => {
+    if (!user) return [];
+    return projects.filter(p => isMemberOfProject(p, user.uid, user.email || undefined));
+  }, [projects, user]);
+
+  // Scope: if viewing a specific project, verify membership in that project;
+  // otherwise, use all projects where the user is a member.
+  const activeProjectScope = useMemo(() => {
+    if (!user) return { isEligible: false, relevantProjects: [] as Project[] };
+
+    if (selectedProject) {
+      const isMember = isMemberOfProject(selectedProject, user.uid, user.email || undefined);
+      // Only show for projects user is a member
+      if (!isMember) {
+        return { isEligible: false, relevantProjects: [] as Project[] };
+      }
+      return { isEligible: true, relevantProjects: [selectedProject] };
+    }
+
+    // On dashboard / global views, only show if user is a member of at least one project
+    if (memberProjects.length === 0) {
+      return { isEligible: false, relevantProjects: [] as Project[] };
+    }
+
+    return { isEligible: true, relevantProjects: memberProjects };
+  }, [selectedProject, memberProjects, user]);
+
+  // Collect teammate UIDs and emails from the relevant projects
+  const teammateKeys = useMemo(() => {
+    const uids = new Set<string>();
+    const emails = new Set<string>();
+
+    if (user?.uid) uids.add(user.uid);
+    if (user?.email) emails.add(user.email.toLowerCase());
+
+    activeProjectScope.relevantProjects.forEach(p => {
+      if (p.ownerId) uids.add(p.ownerId);
+      if (p.ownerEmail) emails.add(p.ownerEmail.toLowerCase());
+      if (p.memberUids) {
+        p.memberUids.forEach(uid => uids.add(uid));
+      }
+      if (p.team?.members) {
+        p.team.members.forEach(m => {
+          if (m.uid) uids.add(m.uid);
+          if (m.email) emails.add(m.email.toLowerCase());
+        });
+      }
+    });
+
+    return { uids, emails };
+  }, [activeProjectScope.relevantProjects, user]);
+
+  // Filter online users: only show users from projects where user is a member
+  const scopedOnlineUsers = useMemo(() => {
+    if (!activeProjectScope.isEligible || !user) return [];
+
+    return onlineUsers.filter(u => {
+      if (u.uid === user.uid) return true;
+      if (teammateKeys.uids.has(u.uid)) return true;
+      if (u.email && teammateKeys.emails.has(u.email.toLowerCase())) return true;
+      return false;
+    });
+  }, [onlineUsers, user, activeProjectScope.isEligible, teammateKeys]);
+
   return (
-    <header className="flex-shrink-0 bg-slate-900/70 backdrop-blur-sm sticky top-0 z-10 p-4 border-b border-slate-700 flex justify-between items-center">
-      <div className="flex items-center space-x-4">
+    <header className="flex-shrink-0 bg-slate-900/70 backdrop-blur-sm sticky top-0 z-10 p-4 border-b border-slate-700 flex justify-between items-center gap-4">
+      <div className="flex items-center space-x-3 sm:space-x-5 min-w-0">
         <button
           onClick={onMenuClick}
-          className="lg:hidden text-slate-400 hover:text-white transition-colors p-2"
+          className="lg:hidden text-slate-400 hover:text-white transition-colors p-2 flex-shrink-0"
         >
           <Bars3Icon className="w-6 h-6" />
         </button>
-        <h1 className="text-xl sm:text-2xl font-bold text-white tracking-tight">
+        <h1 className="text-xl sm:text-2xl font-bold text-white tracking-tight flex-shrink-0">
           VantageFlow
         </h1>
-      </div>
-      <div className="flex items-center space-x-3 sm:space-x-4">
-        {user && (
-          <OnlineUsersPanel
-            users={onlineUsers}
+        {user && activeProjectScope.isEligible && scopedOnlineUsers.length > 0 && (
+          <OnlineUsersAccordion
+            users={scopedOnlineUsers}
             currentUserId={user.uid}
-            title="Online Teammates"
-            alignPopover="right"
+            projects={activeProjectScope.relevantProjects}
+          />
+        )}
+      </div>
+      <div className="flex items-center space-x-3 sm:space-x-4 flex-shrink-0">
+        {user && (
+          <NotificationCenter
+            projects={projects}
+            onSelectTask={onSelectTask}
           />
         )}
         {user ? (
