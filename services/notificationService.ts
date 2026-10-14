@@ -2,6 +2,22 @@ import { getFunctions, httpsCallable } from 'firebase/functions';
 import { app, auth } from './firebaseConfig';
 import { Project, TeamMember, Task, Phase } from '../types';
 
+const LIVE_APP_URL = 'https://vantageflow.vercel.app';
+
+/**
+ * Returns the web app's live origin for links included in notification emails and in-app alerts.
+ * If running on localhost or 127.0.0.1, always defaults to the live production URL.
+ */
+const getNotificationOrigin = (): string => {
+    if (typeof window !== 'undefined') {
+        const hostname = window.location.hostname;
+        if (hostname && !hostname.includes('localhost') && !hostname.includes('127.0.0.1') && hostname !== '') {
+            return window.location.origin;
+        }
+    }
+    return LIVE_APP_URL;
+};
+
 export const notificationService = {
     /**
      * Show confirmation dialog before sending emails
@@ -33,7 +49,8 @@ export const notificationService = {
                 projectName: project.name,
                 newMemberEmail: newMember.email,
                 newMemberName: newMember.displayName,
-                teamEmails: project.team.members.map(m => m.email)
+                teamEmails: project.team.members.map(m => m.email),
+                origin: getNotificationOrigin()
             });
             return true;
         } catch (error) {
@@ -67,7 +84,7 @@ export const notificationService = {
 
         const functions = getFunctions(app, 'us-central1');
         const notifyResponsibilityAssigned = httpsCallable(functions, 'notifyResponsibilityAssigned');
-        const origin = typeof window !== 'undefined' ? window.location.origin : undefined;
+        const origin = getNotificationOrigin();
 
         try {
             await notifyResponsibilityAssigned({
@@ -110,7 +127,7 @@ export const notificationService = {
 
         const functions = getFunctions(app, 'us-central1');
         const notify = httpsCallable(functions, 'notifyTaskImpediment');
-        const origin = typeof window !== 'undefined' ? window.location.origin : undefined;
+        const origin = getNotificationOrigin();
 
         try {
             await notify({
@@ -152,7 +169,7 @@ export const notificationService = {
 
         const functions = getFunctions(app, 'us-central1');
         const notify = httpsCallable(functions, 'notifyTaskImpedimentResolved');
-        const origin = typeof window !== 'undefined' ? window.location.origin : undefined;
+        const origin = getNotificationOrigin();
 
         try {
             await notify({
@@ -193,7 +210,7 @@ export const notificationService = {
 
         const functions = getFunctions(app, 'us-central1');
         const notify = httpsCallable(functions, 'notifyTaskCompleted');
-        const origin = typeof window !== 'undefined' ? window.location.origin : undefined;
+        const origin = getNotificationOrigin();
 
         try {
             await notify({
@@ -235,7 +252,7 @@ export const notificationService = {
 
         const functions = getFunctions(app, 'us-central1');
         const notify = httpsCallable(functions, 'notifyTaskFeedback');
-        const origin = typeof window !== 'undefined' ? window.location.origin : undefined;
+        const origin = getNotificationOrigin();
 
         try {
             await notify({

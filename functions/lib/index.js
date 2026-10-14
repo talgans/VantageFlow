@@ -41,6 +41,22 @@ const crypto = __importStar(require("crypto"));
 const emailTemplates_1 = require("./emailTemplates");
 // Base web app URL
 const APP_URL = process.env.APP_URL || 'https://vantageflow.vercel.app';
+/**
+ * Resolves the base URL for notifications and emails.
+ * Never allows localhost/127.0.0.1 so external email recipients always land on the live app.
+ */
+const resolveBaseUrl = (origin) => {
+    if (origin && typeof origin === 'string') {
+        const trimmed = origin.trim().replace(/\/+$/, '');
+        if (trimmed &&
+            !trimmed.includes('localhost') &&
+            !trimmed.includes('127.0.0.1') &&
+            !trimmed.startsWith('file://')) {
+            return trimmed;
+        }
+    }
+    return APP_URL.replace(/\/+$/, '');
+};
 // Prevent double initialization
 if (admin.apps.length === 0) {
     admin.initializeApp();
@@ -613,10 +629,10 @@ exports.notifyProjectMemberAdded = functions
     if (!context.auth) {
         throw new functions.https.HttpsError('unauthenticated', 'Authenticated user required');
     }
-    const { projectId, projectName, newMemberEmail, newMemberName, teamEmails } = data;
+    const { projectId, projectName, newMemberEmail, newMemberName, teamEmails, origin } = data;
     const inviterName = context.auth.token.name || context.auth.token.email;
     const subject = `Vantage: New Team Member: ${newMemberName || newMemberEmail}`;
-    const link = `https://vantageflow.vercel.app/project/${projectId}`;
+    const link = `${resolveBaseUrl(origin)}/project/${projectId}`;
     const html = (0, emailTemplates_1.getNewMemberEmail)(newMemberName || newMemberEmail, projectName, inviterName, link);
     const validEmails = (teamEmails || []).filter(e => e && e.includes('@'));
     // Note: For large teams, consider individual sending or BCC to avoid exposing all emails if privacy is concern
@@ -648,7 +664,7 @@ exports.notifyResponsibilityAssigned = functions
     // assignees: { uid: string, email: string, displayName: string }[]
     const assignerName = context.auth.token.name || context.auth.token.email;
     const subject = `Vantage: New Responsibility: ${itemName}`;
-    const baseUrl = origin || APP_URL;
+    const baseUrl = resolveBaseUrl(origin);
     const itemParam = itemId ? (itemType === 'phase' ? `?phaseId=${encodeURIComponent(itemId)}` : `?taskId=${encodeURIComponent(itemId)}`) : '';
     const link = `${baseUrl}/project/${projectId}${itemParam}`;
     const html = (0, emailTemplates_1.getResponsibilityAssignedEmail)(itemType, itemName, projectName, assignerName, link);
@@ -679,7 +695,7 @@ exports.notifyTaskImpediment = functions
     const { projectId, projectName, taskName, taskId, category, description, recipients, origin } = data;
     const reportedByName = context.auth.token.name || context.auth.token.email || 'Team Member';
     const subject = `Vantage: ⚠️ Impediment Flagged: ${taskName} (${projectName})`;
-    const baseUrl = origin || APP_URL;
+    const baseUrl = resolveBaseUrl(origin);
     const link = `${baseUrl}/project/${projectId}${taskId ? `?taskId=${encodeURIComponent(taskId)}&action=impediment` : ''}`;
     const html = (0, emailTemplates_1.getTaskImpedimentEmail)(taskName, projectName, reportedByName, category, description, link);
     const promises = (recipients || []).map(async (member) => {
@@ -708,7 +724,7 @@ exports.notifyTaskImpedimentResolved = functions
     const { projectId, projectName, taskName, taskId, resolutionNote, recipients, origin } = data;
     const resolvedByName = context.auth.token.name || context.auth.token.email || 'Lead';
     const subject = `Vantage: ✅ Impediment Cleared: ${taskName} (${projectName})`;
-    const baseUrl = origin || APP_URL;
+    const baseUrl = resolveBaseUrl(origin);
     const link = `${baseUrl}/project/${projectId}${taskId ? `?taskId=${encodeURIComponent(taskId)}` : ''}`;
     const html = (0, emailTemplates_1.getTaskImpedimentResolvedEmail)(taskName, projectName, resolvedByName, resolutionNote || '', link);
     const promises = (recipients || []).map(async (member) => {
@@ -737,7 +753,7 @@ exports.notifyTaskCompleted = functions
     const { projectId, projectName, taskName, taskId, deliverablesSummary, recipients, origin } = data;
     const completedByName = context.auth.token.name || context.auth.token.email || 'Assignee';
     const subject = `Vantage: 🎉 Task Complete: ${taskName} (${projectName})`;
-    const baseUrl = origin || APP_URL;
+    const baseUrl = resolveBaseUrl(origin);
     const link = `${baseUrl}/project/${projectId}${taskId ? `?taskId=${encodeURIComponent(taskId)}` : ''}`;
     const html = (0, emailTemplates_1.getTaskCompletedEmail)(taskName, projectName, completedByName, deliverablesSummary || '', link);
     const promises = (recipients || []).map(async (member) => {
@@ -765,7 +781,7 @@ exports.notifyTaskFeedback = functions
     }
     const { projectId, projectName, taskName, taskId, message, recipients, origin, mentionedUids } = data;
     const authorName = context.auth.token.name || context.auth.token.email || 'Team Member';
-    const baseUrl = origin || APP_URL;
+    const baseUrl = resolveBaseUrl(origin);
     const link = `${baseUrl}/project/${projectId}${taskId ? `?taskId=${encodeURIComponent(taskId)}&action=feedback` : ''}`;
     const promises = (recipients || []).map(async (member) => {
         const isMentioned = Boolean(mentionedUids && Array.isArray(mentionedUids) && member.uid && mentionedUids.includes(member.uid));
@@ -852,7 +868,7 @@ exports.onProjectArchiveStatusChange = functions.firestore
     const projectName = after.name || 'Unknown Project';
     const archivedBy = after.archivedBy;
     const teamMembers = ((_a = after.team) === null || _a === void 0 ? void 0 : _a.members) || [];
-    const link = `https://vantageflow.vercel.app/project/${projectId}`;
+    const link = `${resolveBaseUrl()}/project/${projectId}`;
     // Get the name of who archived
     let actionByName = 'an administrator';
     if (archivedBy) {
