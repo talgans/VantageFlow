@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useRef, useEffect, useMemo } from 'react';
 import { Task, Project, TeamMember, TaskFeedbackNote } from '../types';
 import { XMarkIcon, UserIcon } from './icons';
 import StatusBadge from './StatusBadge';
@@ -9,7 +9,7 @@ interface TaskFeedbackDrawerProps {
   task: Task;
   project: Project;
   currentUser: TeamMember;
-  onAddNote: (note: TaskFeedbackNote, notify: boolean) => void;
+  onAddNote: (note: TaskFeedbackNote, notify: boolean, mentionedMembers?: TeamMember[]) => void;
   onOpenImpedimentModal?: () => void;
   getUserDisplayName?: (uid: string, email?: string) => string | undefined;
   getUserPhotoURL?: (uid: string, email?: string) => string | undefined;
@@ -30,26 +30,142 @@ export const TaskFeedbackDrawer: React.FC<TaskFeedbackDrawerProps> = ({
   const [notifyRecipients, setNotifyRecipients] = useState(true);
   const [submitting, setSubmitting] = useState(false);
 
+  // Mention State
+  const [mentionQuery, setMentionQuery] = useState<string | null>(null);
+  const [mentionIndex, setMentionIndex] = useState(0);
+  const [mentionPosition, setMentionPosition] = useState<number | null>(null);
+  const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const mentionMenuRef = useRef<HTMLDivElement>(null);
+
   if (!isOpen) return null;
 
   const notes = task.feedbackNotes || [];
   const activeImpediment = task.impediment && !task.impediment.resolved ? task.impediment : null;
+
+  // Filter available team members for mention suggestions
+  const eligibleMembers = useMemo(() => {
+    const list = (project.team?.members || []).filter(
+      m => !m.isFormerMember && m.uid !== currentUser.uid
+    );
+    if (!mentionQuery) return list;
+    const q = mentionQuery.toLowerCase();
+    return list.filter(m => {
+      const name = getUserDisplayName?.(m.uid, m.email) || m.displayName || m.email?.split('@')[0] || '';
+      return name.toLowerCase().includes(q) || m.email?.toLowerCase().includes(q);
+    });
+  }, [project.team?.members, currentUser.uid, mentionQuery, getUserDisplayName]);
+
+  // Handle textarea text change and detect @ symbol
+  const handleTextChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
+    const text = e.target.value;
+    const cursorPos = e.target.selectionStart;
+    setNewNote(text);
+
+    // Look back from cursor to find if we are in an @mention
+    const textBeforeCursor = text.slice(0, cursorPos);
+    const mentionMatch = textBeforeCursor.match(/(?:^|\s)@([a-zA-Z0-9_\.\s]{0,25})$/);
+
+    if (mentionMatch) {
+      setMentionQuery(mentionMatch[1]);
+      setMentionPosition(cursorPos - mentionMatch[1].length - 1);
+      setMentionIndex(0);
+    } else {
+      setMentionQuery(null);
+      setMentionPosition(null);
+    }
+  };
+
+  // Insert selected mention into textarea
+  const insertMention = (member: TeamMember) => {
+    if (!textareaRef.current) return;
+    const name = getUserDisplayName?.(member.uid, member.email) || member.displayName || member.email.split('@')[0];
+    const mentionTag = `@${name} `;
+
+    let updatedText = newNote;
+    let newCursorPos = 0;
+
+    if (mentionPosition !== null) {
+      const cursorPos = textareaRef.current.selectionStart;
+      const before = newNote.slice(0, mentionPosition);
+      const after = newNote.slice(cursorPos);
+      updatedText = `${before}${mentionTag}${after}`;
+      newCursorPos = before.length + mentionTag.length;
+    } else {
+      updatedText = `${newNote}${mentionTag}`;
+      newCursorPos = updatedText.length;
+    }
+
+    setNewNote(updatedText);
+    setMentionQuery(null);
+    setMentionPosition(null);
+
+    // Refocus textarea and set cursor position
+    setTimeout(() => {
+      if (textareaRef.current) {
+        textareaRef.current.focus();
+        textareaRef.current.setSelectionRange(newCursorPos, newCursorPos);
+      }
+    }, 10);
+  };
+
+  // Keyboard navigation for mention suggestions
+  const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
+    if (mentionQuery !== null && eligibleMembers.length > 0) {
+      if (e.key === 'ArrowDown') {
+        e.preventDefault();
+        setMentionIndex(prev => (prev + 1) % eligibleMembers.length);
+        return;
+      }
+      if (e.key === 'ArrowUp') {
+        e.preventDefault();
+        setMentionIndex(prev => (prev - 1 + eligibleMembers.length) % eligibleMembers.length);
+        return;
+      }
+      if (e.key === 'Enter' || e.key === 'Tab') {
+        e.preventDefault();
+        insertMention(eligibleMembers[mentionIndex]);
+        return;
+      }
+      if (e.key === 'Escape') {
+        e.preventDefault();
+        setMentionQuery(null);
+        return;
+      }
+    }
+  };
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     if (!newNote.trim() || submitting) return;
 
     setSubmitting(true);
+
+    // Identify mentioned members
+    const mentionedMembers = (project.team?.members || []).filter(m => {
+      if (m.uid === currentUser.uid) return false;
+      const name = getUserDisplayName?.(m.uid, m.email) || m.displayName || m.email?.split('@')[0];
+      if (!name) return false;
+      return (
+        newNote.toLowerCase().includes(`@${name.toLowerCase()}`) ||
+        (m.email && newNote.toLowerCase().includes(`@${m.email.toLowerCase()}`))
+      );
+    });
+
     const note: TaskFeedbackNote = {
       id: `fn_${Date.now()}`,
       author: currentUser,
       message: newNote.trim(),
       createdAt: new Date(),
-      type: 'general',
+      type: mentionedMembers.length > 0 ? 'mention' : 'general',
+      mentionedUids: mentionedMembers.map(m => m.uid),
+      mentionedNames: mentionedMembers.map(
+        m => getUserDisplayName?.(m.uid, m.email) || m.displayName || m.email.split('@')[0]
+      ),
     };
 
-    onAddNote(note, notifyRecipients);
+    onAddNote(note, notifyRecipients, mentionedMembers);
     setNewNote('');
+    setMentionQuery(null);
     setSubmitting(false);
     onClose();
   };
@@ -62,6 +178,24 @@ export const TaskFeedbackDrawer: React.FC<TaskFeedbackDrawerProps> = ({
       day: 'numeric',
       hour: '2-digit',
       minute: '2-digit',
+    });
+  };
+
+  // Helper to render message with styled @mentions
+  const renderMessageWithMentions = (message: string) => {
+    const parts = message.split(/(@[A-Za-z0-9_\.\-\s]+?(?=\s@|\s[,\.\!\?]|\s*$|[,\.\!\?]))/g);
+    return parts.map((part, i) => {
+      if (part.startsWith('@')) {
+        return (
+          <span
+            key={i}
+            className="inline-flex items-center px-1.5 py-0.5 rounded text-brand-light bg-brand-secondary/25 font-semibold border border-brand-secondary/40 text-[11px] shadow-xs"
+          >
+            {part}
+          </span>
+        );
+      }
+      return <React.Fragment key={i}>{part}</React.Fragment>;
     });
   };
 
@@ -138,7 +272,7 @@ export const TaskFeedbackDrawer: React.FC<TaskFeedbackDrawerProps> = ({
               </div>
               <p className="text-sm font-semibold text-slate-300">No notes or feedback yet</p>
               <p className="text-xs text-slate-500 max-w-xs mx-auto">
-                Assignees and leads can post questions, progress notes, and feedback here.
+                Assignees and leads can post questions, progress notes, and feedback here. Use <span className="text-brand-light font-semibold">@</span> to mention a teammate.
               </p>
             </div>
           ) : (
@@ -167,15 +301,22 @@ export const TaskFeedbackDrawer: React.FC<TaskFeedbackDrawerProps> = ({
                   {/* Bubble */}
                   <div className="flex-1 space-y-1">
                     <div className="flex items-center justify-between">
-                      <span className={`text-xs font-bold ${isCurrentUser ? 'text-brand-light' : 'text-slate-200'}`}>
-                        {authorName} {isCurrentUser && '(You)'}
-                      </span>
+                      <div className="flex items-center gap-1.5">
+                        <span className={`text-xs font-bold ${isCurrentUser ? 'text-brand-light' : 'text-slate-200'}`}>
+                          {authorName} {isCurrentUser && '(You)'}
+                        </span>
+                        {note.type === 'mention' && (
+                          <span className="text-[9px] px-1.5 py-0.2 rounded-full bg-indigo-500/20 text-indigo-300 border border-indigo-500/30 font-medium">
+                            Direct @Mention
+                          </span>
+                        )}
+                      </div>
                       <span className="text-[10px] text-slate-500">
                         {formatTime(note.createdAt)}
                       </span>
                     </div>
                     <div className="bg-slate-800/80 border border-slate-700/60 rounded-xl p-2.5 text-xs text-slate-200 leading-relaxed whitespace-pre-wrap">
-                      {note.message}
+                      {renderMessageWithMentions(note.message)}
                     </div>
                   </div>
                 </div>
@@ -185,24 +326,98 @@ export const TaskFeedbackDrawer: React.FC<TaskFeedbackDrawerProps> = ({
         </div>
 
         {/* New Note Form */}
-        <form onSubmit={handleSubmit} className="p-3.5 bg-slate-800/50 border-t border-slate-800 space-y-2">
-          <textarea
-            value={newNote}
-            onChange={(e) => setNewNote(e.target.value)}
-            placeholder="Write a note, question, or progress update..."
-            rows={2}
-            className="w-full bg-slate-900 border border-slate-700 rounded-xl p-2.5 text-xs text-white focus:outline-none focus:ring-1 focus:ring-brand-secondary resize-none"
-          />
+        <form onSubmit={handleSubmit} className="p-3.5 bg-slate-800/50 border-t border-slate-800 space-y-2 relative">
+          {/* @ Mention Autocomplete Popover */}
+          {mentionQuery !== null && eligibleMembers.length > 0 && (
+            <div
+              ref={mentionMenuRef}
+              className="absolute bottom-full left-3 right-3 mb-2 bg-slate-800 border border-slate-700 rounded-xl shadow-2xl overflow-hidden z-20 max-h-48 overflow-y-auto"
+            >
+              <div className="px-3 py-1.5 border-b border-slate-700/70 bg-slate-900/60 flex items-center justify-between text-[11px] text-slate-400 font-semibold uppercase tracking-wider">
+                <span>👥 Mention Team Member</span>
+                <span className="text-[10px] lowercase text-slate-500 font-normal">↑↓ to navigate • enter to select</span>
+              </div>
+              <ul className="divide-y divide-slate-700/40">
+                {eligibleMembers.map((member, idx) => {
+                  const mName = getUserDisplayName?.(member.uid, member.email) || member.displayName || member.email.split('@')[0];
+                  const mPhoto = getUserPhotoURL?.(member.uid, member.email) || member.photoURL;
+                  const isSelected = idx === mentionIndex;
+
+                  return (
+                    <li
+                      key={member.uid || member.email}
+                      onClick={() => insertMention(member)}
+                      onMouseEnter={() => setMentionIndex(idx)}
+                      className={`px-3 py-2 flex items-center gap-2.5 cursor-pointer transition-colors ${
+                        isSelected ? 'bg-brand-secondary/30 text-white' : 'hover:bg-slate-700/40 text-slate-300'
+                      }`}
+                    >
+                      <div className="w-6 h-6 rounded-full bg-slate-700 border border-slate-600 flex items-center justify-center text-[10px] font-bold overflow-hidden flex-shrink-0">
+                        {mPhoto ? (
+                          <img src={mPhoto} className="w-full h-full object-cover" alt="" />
+                        ) : (
+                          (mName[0] || 'U').toUpperCase()
+                        )}
+                      </div>
+                      <div className="min-w-0 flex-1">
+                        <div className="flex items-center gap-1.5">
+                          <span className="text-xs font-bold text-white truncate">{mName}</span>
+                          {member.leadRole && (
+                            <span className="text-[9px] px-1 py-0.2 rounded bg-amber-500/20 text-amber-300 border border-amber-500/30 uppercase font-semibold">
+                              {member.leadRole}
+                            </span>
+                          )}
+                        </div>
+                        <p className="text-[10px] text-slate-400 truncate">{member.email}</p>
+                      </div>
+                    </li>
+                  );
+                })}
+              </ul>
+            </div>
+          )}
+
+          <div className="relative">
+            <textarea
+              ref={textareaRef}
+              value={newNote}
+              onChange={handleTextChange}
+              onKeyDown={handleKeyDown}
+              placeholder="Write a note, question, or type @ to mention a team member..."
+              rows={2}
+              className="w-full bg-slate-900 border border-slate-700 rounded-xl p-2.5 text-xs text-white focus:outline-none focus:ring-1 focus:ring-brand-secondary resize-none"
+            />
+          </div>
+
           <div className="flex items-center justify-between gap-2">
-            <label className="flex items-center gap-1.5 cursor-pointer text-[11px] text-slate-400 select-none">
-              <input
-                type="checkbox"
-                checked={notifyRecipients}
-                onChange={(e) => setNotifyRecipients(e.target.checked)}
-                className="w-3.5 h-3.5 rounded text-brand-secondary bg-slate-800 border-slate-700 focus:ring-0 focus:ring-offset-0"
-              />
-              <span>Notify team</span>
-            </label>
+            <div className="flex items-center gap-2">
+              <label className="flex items-center gap-1.5 cursor-pointer text-[11px] text-slate-400 select-none">
+                <input
+                  type="checkbox"
+                  checked={notifyRecipients}
+                  onChange={(e) => setNotifyRecipients(e.target.checked)}
+                  className="w-3.5 h-3.5 rounded text-brand-secondary bg-slate-800 border-slate-700 focus:ring-0 focus:ring-offset-0"
+                />
+                <span>Notify team</span>
+              </label>
+
+              {/* Quick @ trigger button */}
+              <button
+                type="button"
+                onClick={() => {
+                  setMentionQuery('');
+                  setMentionPosition(newNote.length);
+                  setNewNote(prev => (prev.endsWith(' ') || prev.length === 0 ? `${prev}@` : `${prev} @`));
+                  textareaRef.current?.focus();
+                }}
+                className="px-2 py-0.5 rounded text-[11px] font-medium bg-slate-800 hover:bg-slate-700 text-brand-light border border-slate-700 transition-colors flex items-center gap-1"
+                title="Mention a team member"
+              >
+                <span>@</span>
+                <span>Mention</span>
+              </button>
+            </div>
+
             <div className="flex items-center gap-2">
               <button
                 type="button"
@@ -225,3 +440,4 @@ export const TaskFeedbackDrawer: React.FC<TaskFeedbackDrawerProps> = ({
     </div>
   );
 };
+

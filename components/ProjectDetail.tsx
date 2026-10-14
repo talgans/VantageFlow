@@ -2151,13 +2151,15 @@ const ProjectDetail: React.FC<ProjectDetailProps> = ({ project, onBack, canEdit,
       addMember(a);
     });
 
-    // Fallback: If map is still empty, include current user so notifications never fail silently
-    if (recipientsMap.size === 0 && currentUserMember) {
-      addMember(currentUserMember);
-    }
+    // Exclude current user so they never receive notifications for actions they perform themselves
+    const recipients = Array.from(recipientsMap.values()).filter(m => {
+      if (currentUserId && m.uid === currentUserId) return false;
+      if (currentUserEmail && m.email && m.email.toLowerCase() === currentUserEmail.toLowerCase()) return false;
+      return true;
+    });
 
-    return Array.from(recipientsMap.values());
-  }, [project, getUserDisplayName, getUserPhotoURL, currentUserMember]);
+    return recipients;
+  }, [project, getUserDisplayName, getUserPhotoURL, currentUserId, currentUserEmail]);
 
   const handleSaveImpediment = async (taskToBlock: Task, impediment: TaskImpediment, notify: boolean) => {
     const updatedProject = JSON.parse(JSON.stringify(project), reviveDates);
@@ -2269,7 +2271,12 @@ const ProjectDetail: React.FC<ProjectDetailProps> = ({ project, onBack, canEdit,
     }
   };
 
-  const handleAddTaskFeedbackNote = async (targetTask: Task, note: TaskFeedbackNote, notify: boolean) => {
+  const handleAddTaskFeedbackNote = async (
+    targetTask: Task,
+    note: TaskFeedbackNote,
+    notify: boolean,
+    mentionedMembers?: TeamMember[]
+  ) => {
     const updatedProject = JSON.parse(JSON.stringify(project), reviveDates);
     const updateInTasks = (tasks: Task[]): boolean => {
       for (const t of tasks) {
@@ -2283,22 +2290,53 @@ const ProjectDetail: React.FC<ProjectDetailProps> = ({ project, onBack, canEdit,
     };
     updatedProject.phases.forEach((p: Phase) => updateInTasks(p.tasks));
     onUpdateProject(updatedProject);
-    showToast('Feedback note added');
+    showToast(
+      mentionedMembers && mentionedMembers.length > 0
+        ? `Feedback note posted (${mentionedMembers.length} member${mentionedMembers.length > 1 ? 's' : ''} mentioned)`
+        : 'Feedback note added'
+    );
 
-    if (notify) {
-      const recipients = getTaskFeedbackRecipients(targetTask);
-      notificationService.notifyTaskFeedback(
-        project,
-        targetTask,
-        note.message,
-        recipients
-      ).then(sent => {
-        if (sent) {
-          showToast('Notification sent to task team');
-        }
-      }).catch(err => {
-        console.error('Failed to notify task feedback:', err);
+    // If notify is checked OR if there are explicitly @mentioned members, send notification
+    if (notify || (mentionedMembers && mentionedMembers.length > 0)) {
+      const baseRecipients = notify ? getTaskFeedbackRecipients(targetTask) : [];
+      const recipientMap = new Map<string, TeamMember>();
+
+      baseRecipients.forEach(r => {
+        const k = (r.uid || r.email || '').toLowerCase();
+        if (k) recipientMap.set(k, r);
       });
+
+      // Always include mentioned members as recipients (even if notify checkbox was unchecked)
+      (mentionedMembers || []).forEach(m => {
+        if (m.uid === currentUserId || (currentUserEmail && m.email?.toLowerCase() === currentUserEmail.toLowerCase())) return;
+        const k = (m.uid || m.email || '').toLowerCase();
+        if (k && !recipientMap.has(k)) {
+          recipientMap.set(k, m);
+        }
+      });
+
+      const finalRecipients = Array.from(recipientMap.values());
+      const mentionedUids = (mentionedMembers || []).map(m => m.uid).filter(Boolean);
+
+      if (finalRecipients.length > 0) {
+        notificationService.notifyTaskFeedback(
+          project,
+          targetTask,
+          note.message,
+          finalRecipients,
+          mentionedUids
+        ).then(sent => {
+          if (sent) {
+            showToast(
+              mentionedUids.length > 0
+                ? 'Direct notification sent to mentioned teammate(s)'
+                : 'Notification sent to task team'
+            );
+          }
+        }).catch(err => {
+          console.error('Failed to notify task feedback:', err);
+        });
+      }
     }
   };
 
@@ -4116,8 +4154,8 @@ const ProjectDetail: React.FC<ProjectDetailProps> = ({ project, onBack, canEdit,
           task={feedbackDrawerTask}
           project={project}
           currentUser={currentUserMember}
-          onAddNote={(note, notify) => {
-            handleAddTaskFeedbackNote(feedbackDrawerTask, note, notify);
+          onAddNote={(note, notify, mentionedMembers) => {
+            handleAddTaskFeedbackNote(feedbackDrawerTask, note, notify, mentionedMembers);
             setFeedbackDrawerTask(null);
           }}
           onOpenImpedimentModal={() => setImpedimentModalTask(feedbackDrawerTask)}

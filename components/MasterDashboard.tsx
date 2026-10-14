@@ -28,6 +28,7 @@ interface MasterDashboardProps {
   canModify: boolean;
   canDeleteProject?: (project: Project) => boolean;
   isProjectDeleteProtected?: (project: Project) => boolean;
+  onSelectTask?: (projectId: string, taskId: string) => void;
 }
 
 const MasterDashboard: React.FC<MasterDashboardProps> = ({
@@ -39,7 +40,8 @@ const MasterDashboard: React.FC<MasterDashboardProps> = ({
   onDeleteProject,
   canModify,
   canDeleteProject,
-  isProjectDeleteProtected
+  isProjectDeleteProtected,
+  onSelectTask,
 }) => {
   const { getUserDisplayName } = useUserLookup();
 
@@ -224,7 +226,7 @@ const MasterDashboard: React.FC<MasterDashboardProps> = ({
             Overview of all projects, performance, and recommendations.
           </p>
         </div>
-        <NotificationCenter />
+        <NotificationCenter projects={projects} onSelectTask={onSelectTask} />
       </div>
 
       {/* Stats Cards */}

@@ -54,7 +54,9 @@ export interface TaskFeedbackNote {
   author: TeamMember;
   message: string;
   createdAt: Date | string;
-  type?: 'general' | 'deliverable_update' | 'impediment' | 'completion';
+  type?: 'general' | 'deliverable_update' | 'impediment' | 'completion' | 'mention';
+  mentionedUids?: string[];
+  mentionedNames?: string[];
 }
 
 export interface Task {
@@ -98,7 +100,8 @@ export type NotificationType =
   | 'task_impediment_reported'
   | 'task_impediment_resolved'
   | 'task_completed'
-  | 'task_feedback_added';
+  | 'task_feedback_added'
+  | 'task_feedback_mention';
 
 export interface Notification {
   id: string;
@@ -106,6 +109,13 @@ export interface Notification {
   type: NotificationType;
   projectId: string;
   projectName: string;
+  taskId?: string;
+  taskName?: string;
+  phaseName?: string;
+  status?: TaskStatus;
+  hasBlocker?: boolean;
+  authorName?: string;
+  authorPhotoURL?: string;
   message: string;
   read: boolean;
   emailSent: boolean;

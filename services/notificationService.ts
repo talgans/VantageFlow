@@ -217,13 +217,14 @@ export const notificationService = {
     },
 
     /**
-     * Notify task collaborators of a new feedback note
+     * Notify task collaborators of a new feedback note or direct mention
      */
     notifyTaskFeedback: async (
         project: Project,
         task: Task,
         message: string,
-        recipients: TeamMember[]
+        recipients: TeamMember[],
+        mentionedUids?: string[]
     ) => {
         console.log(`[NotificationService] Notifying task feedback on: ${task.name}`);
         if (!recipients || recipients.length === 0) return false;
@@ -244,6 +245,7 @@ export const notificationService = {
                 taskId: task.id,
                 origin,
                 message,
+                mentionedUids: mentionedUids || [],
                 recipients: recipients.map(r => ({
                     uid: r.uid,
                     email: r.email,

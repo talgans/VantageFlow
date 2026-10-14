@@ -597,6 +597,13 @@ const App: React.FC = () => {
                             canModify={canModify(currentUserRole)}
                             canDeleteProject={canDeleteProject}
                             isProjectDeleteProtected={isProjectDeleteProtected}
+                            onSelectTask={(projectId, taskId) => {
+                                const targetProject = projects.find(p => p.id === projectId);
+                                if (targetProject) {
+                                    handleSelectProject(targetProject);
+                                    setActiveDeepLink({ projectId, taskId });
+                                }
+                            }}
                         />
                     )}
                 </main>

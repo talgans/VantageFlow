@@ -147,18 +147,13 @@ const sendEmail = async (to, subject, html) => {
     }
 };
 // --- Helper for creating in-app notification ---
-const createNotification = async (userId, type, message, projectId, projectName, link) => {
-    await admin.firestore().collection('notifications').add({
-        userId,
+const createNotification = async (userId, type, message, projectId, projectName, link, extra) => {
+    await admin.firestore().collection('notifications').add(Object.assign({ userId,
         type,
         message,
         projectId,
         projectName,
-        link,
-        read: false,
-        emailSent: true, // We assume email is attempted if we are here
-        createdAt: admin.firestore.FieldValue.serverTimestamp(),
-    });
+        link, read: false, emailSent: true, createdAt: admin.firestore.FieldValue.serverTimestamp() }, (extra || {})));
 };
 /**
  * List all users (Admin and Manager)
@@ -768,18 +763,25 @@ exports.notifyTaskFeedback = functions
     if (!context.auth) {
         throw new functions.https.HttpsError('unauthenticated', 'Authenticated user required');
     }
-    const { projectId, projectName, taskName, taskId, message, recipients, origin } = data;
+    const { projectId, projectName, taskName, taskId, message, recipients, origin, mentionedUids } = data;
     const authorName = context.auth.token.name || context.auth.token.email || 'Team Member';
-    const subject = `Vantage: 💬 New Task Note: ${taskName} (${projectName})`;
     const baseUrl = origin || APP_URL;
     const link = `${baseUrl}/project/${projectId}${taskId ? `?taskId=${encodeURIComponent(taskId)}&action=feedback` : ''}`;
-    const html = (0, emailTemplates_1.getTaskFeedbackEmail)(taskName, projectName, authorName, message, link);
     const promises = (recipients || []).map(async (member) => {
+        const isMentioned = Boolean(mentionedUids && Array.isArray(mentionedUids) && member.uid && mentionedUids.includes(member.uid));
+        const notifType = isMentioned ? 'task_feedback_mention' : 'task_feedback_added';
+        const notifMessage = isMentioned
+            ? `💬 ${authorName} mentioned you on "${taskName}": ${message}`
+            : `💬 ${authorName} commented on "${taskName}": ${message}`;
+        const subject = isMentioned
+            ? `Vantage: 💬 ${authorName} mentioned you on: ${taskName} (${projectName})`
+            : `Vantage: 💬 New Task Note: ${taskName} (${projectName})`;
+        const html = (0, emailTemplates_1.getTaskFeedbackEmail)(taskName, projectName, authorName, message, link);
         if (member.email) {
             await sendEmail(member.email, subject, html);
         }
         if (member.uid) {
-            await createNotification(member.uid, 'task_feedback_added', `💬 ${authorName} commented on "${taskName}": ${message}`, projectId, projectName, link);
+            await createNotification(member.uid, notifType, notifMessage, projectId, projectName, link, { taskId, taskName, authorName });
         }
     });
     await Promise.all(promises);
