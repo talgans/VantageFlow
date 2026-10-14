@@ -7,7 +7,7 @@ import { notificationService } from '../services/notificationService';
 import { achievementService } from '../services/achievementService';
 import { getProjectInsights } from '../services/geminiService';
 import { uploadTaskImage } from '../services/storageService';
-import { ArrowLeftIcon, SparklesIcon, InfoIcon, TeamIcon, CalendarIcon, MoneyIcon, CheckCircleIcon, PlusCircleIcon, ChevronRightIcon, ChevronDownIcon, ListBulletIcon, ChartBarIcon, TrashIcon, ArrowUpIcon, ArrowDownIcon, GripVerticalIcon, StarIcon, UserIcon, WhatsAppIcon, PhotoIcon, XMarkIcon, FlagIcon, MagnifyingGlassIcon, ChatBubbleBottomCenterTextIcon, CornerDownRightIcon } from './icons';
+import { ArrowLeftIcon, SparklesIcon, InfoIcon, TeamIcon, CalendarIcon, MoneyIcon, CheckCircleIcon, PlusCircleIcon, ChevronRightIcon, ChevronLeftIcon, ChevronDownIcon, ListBulletIcon, ChartBarIcon, TrashIcon, ArrowUpIcon, ArrowDownIcon, GripVerticalIcon, StarIcon, UserIcon, WhatsAppIcon, PhotoIcon, XMarkIcon, FlagIcon, MagnifyingGlassIcon, ChatBubbleBottomCenterTextIcon, CornerDownRightIcon } from './icons';
 import { TaskImpedimentModal } from './TaskImpedimentModal';
 import { TaskCompletionModal } from './TaskCompletionModal';
 import { TaskFeedbackDrawer } from './TaskFeedbackDrawer';
@@ -1956,41 +1956,68 @@ const ProjectDetail: React.FC<ProjectDetailProps> = ({ project, onBack, canEdit,
     }
   }, [initialTarget, project.phases, jumpToTask, onClearInitialTarget]);
 
-  // Determine the most active / recently updated task in this project for the Timeline Heads-Up banner
-  const latestActiveTaskInfo = useMemo(() => {
-    let bestTask: Task | null = null;
-    let bestPhase: Phase | null = null;
-    let bestTime = -1;
+  // --- Heads-Up Timeline Banner: Multi-Item Presentation State ---
+  const [headsUpIndex, setHeadsUpIndex] = useState(0);
+
+  // Extract all active / recently updated tasks in this project for the Timeline Heads-Up banner
+  const headsUpTasks = useMemo(() => {
+    const list: Array<{ task: Task; phase: Phase; timestamp: Date | null; hasBlocker: boolean; sortTime: number }> = [];
 
     (project.phases || []).forEach(phase => {
       const inspect = (tasks: Task[]) => {
         tasks.forEach(t => {
-          // If this is the task the user just locally edited/touched, prioritize it immediately
+          const hasBlocker = Boolean(t.impediment && !t.impediment.resolved);
+          let ts = getTaskActivityTimestamp(t);
           if (lastLocalActiveTaskId && t.id === lastLocalActiveTaskId) {
-            bestTask = t;
-            bestPhase = phase;
-            bestTime = Infinity;
-            return;
+            ts = Infinity;
           }
-          const ts = getTaskActivityTimestamp(t);
-          if (ts > bestTime) {
-            bestTime = ts;
-            bestTask = t;
-            bestPhase = phase;
-          }
+          list.push({
+            task: t,
+            phase,
+            timestamp: ts === Infinity ? new Date() : (ts > 0 ? new Date(ts) : null),
+            hasBlocker,
+            sortTime: ts,
+          });
           if (t.subTasks) inspect(t.subTasks);
         });
       };
       inspect(phase.tasks || []);
     });
 
-    if (!bestTask || !bestPhase) return null;
-    return {
-      task: bestTask as Task,
-      phase: bestPhase as Phase,
-      timestamp: bestTime === Infinity ? new Date() : (bestTime > 0 ? new Date(bestTime) : null),
-    };
+    // Prioritize touched task first, then active blockers, then latest activity timestamp descending
+    list.sort((a, b) => {
+      if (a.sortTime === Infinity) return -1;
+      if (b.sortTime === Infinity) return 1;
+      if (a.hasBlocker && !b.hasBlocker) return -1;
+      if (!a.hasBlocker && b.hasBlocker) return 1;
+      return b.sortTime - a.sortTime;
+    });
+
+    // Prioritize items with activity or blockers; fallback to all if none have timestamps
+    const withActivity = list.filter(item => item.hasBlocker || item.sortTime > 0);
+    return withActivity.length > 0 ? withActivity : list;
   }, [project.phases, lastLocalActiveTaskId]);
+
+  // Reset to first item if local active task changes
+  useEffect(() => {
+    if (lastLocalActiveTaskId) {
+      setHeadsUpIndex(0);
+    }
+  }, [lastLocalActiveTaskId]);
+
+  // Synchronize banner when an initial deep-link target is passed (e.g. from sidebar Heads-Up click)
+  useEffect(() => {
+    if (initialTarget?.taskId && headsUpTasks.length > 0) {
+      const targetIdx = headsUpTasks.findIndex(h => h.task.id === initialTarget.taskId);
+      if (targetIdx !== -1) {
+        setHeadsUpIndex(targetIdx);
+      }
+    }
+  }, [initialTarget?.taskId, headsUpTasks]);
+
+  // Safe current index and active item for banner display
+  const safeHeadsUpIndex = headsUpTasks.length > 0 ? headsUpIndex % headsUpTasks.length : 0;
+  const latestActiveTaskInfo = headsUpTasks[safeHeadsUpIndex] || null;
 
   // --- User Lookup for displaying names and photos ---
   const { getUserDisplayName, getUserPhotoURL } = useUserLookup();
@@ -3451,8 +3478,13 @@ const ProjectDetail: React.FC<ProjectDetailProps> = ({ project, onBack, canEdit,
               </div>
               <div className="min-w-0">
                 <div className="flex items-center gap-2 flex-wrap">
-                  <span className="text-[11px] font-bold uppercase tracking-wider text-brand-light flex items-center gap-1">
+                  <span className="text-[11px] font-bold uppercase tracking-wider text-brand-light flex items-center gap-1.5">
                     <span>⚡ Heads-Up: Recent Activity</span>
+                    {headsUpTasks.length > 1 && (
+                      <span className="text-[10px] font-mono px-1.5 py-0.5 rounded-full bg-brand-secondary/25 text-brand-light border border-brand-secondary/40 font-semibold">
+                        {safeHeadsUpIndex + 1} of {headsUpTasks.length}
+                      </span>
+                    )}
                   </span>
                   <span className="text-xs text-slate-500">•</span>
                   <span className="text-xs font-semibold text-slate-400 truncate max-w-[150px]">
@@ -3497,20 +3529,26 @@ const ProjectDetail: React.FC<ProjectDetailProps> = ({ project, onBack, canEdit,
                 <span>Follow-up Note</span>
               </button>
 
-              {(() => {
-                const next = findNextIncompleteTask(project.phases || [], latestActiveTaskInfo.task.id);
-                if (!next) return null;
-                return (
+              {headsUpTasks.length > 1 && (
+                <div className="flex items-center gap-1">
                   <button
                     type="button"
-                    onClick={() => jumpToTask(next.nextTask.id, next.phaseId)}
+                    onClick={() => setHeadsUpIndex((safeHeadsUpIndex - 1 + headsUpTasks.length) % headsUpTasks.length)}
+                    className="p-1.5 rounded-lg text-xs font-medium text-slate-400 hover:text-white hover:bg-slate-800 border border-slate-700/60 transition-colors active:scale-95"
+                    title={`Previous Heads-Up item (${((safeHeadsUpIndex - 1 + headsUpTasks.length) % headsUpTasks.length) + 1} of ${headsUpTasks.length})`}
+                  >
+                    <ChevronLeftIcon className="w-3.5 h-3.5" />
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setHeadsUpIndex((safeHeadsUpIndex + 1) % headsUpTasks.length)}
                     className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-medium bg-emerald-500/15 hover:bg-emerald-500/25 text-emerald-300 border border-emerald-500/30 transition-colors active:scale-95"
-                    title={`Jump to next incomplete task: ${next.nextTask.name}`}
+                    title={`Present next item on Heads-Up (${((safeHeadsUpIndex + 1) % headsUpTasks.length) + 1} of ${headsUpTasks.length})`}
                   >
                     <span>Next Task ➔</span>
                   </button>
-                );
-              })()}
+                </div>
+              )}
 
               <button
                 type="button"
