@@ -1,4 +1,5 @@
 import { Project, Phase, Task, TaskStatus, DurationUnit, Currency, TeamMember } from '../types';
+import { syncProjectTaskDates } from './taskUtils';
 
 export interface ParserMetadata {
   sourceType: 'word_document' | 'meeting_notes' | 'text' | 'unknown';
@@ -137,8 +138,10 @@ export const parseProjectText = (text: string): ParseResult => {
     warnings.push("No specific dates found, using default timeline");
   }
 
+  const syncedProject = syncProjectTaskDates(project as Project);
+
   return {
-    project,
+    project: syncedProject,
     metadata: {
       sourceType: text.includes('Meeting') ? 'meeting_notes' : 'text',
       parseDate: new Date().toISOString(),

@@ -1,6 +1,7 @@
 import React, { useState, useMemo } from 'react';
 import { Project, Task, TaskStatus, TaskPriority, DurationUnit } from '../types';
 import { ChevronRightIcon, ChevronDownIcon } from './icons';
+import { getRolledUpTaskDates } from '../utils/taskUtils';
 
 const COLUMN_WIDTH = 40;
 const TASK_COLUMN_WIDTH = 300;
@@ -237,7 +238,8 @@ const GanttChart: React.FC<{ project: Project }> = ({ project }) => {
         const hasSubtasks = task.subTasks && task.subTasks.length > 0;
         const isSubtask = level > 0;
         const isExpanded = expandedTasks.has(task.id);
-        const { left, width } = getBarPosition(task.startDate, task.endDate, startDate, unit, totalUnits);
+        const { startDate: effectiveStartDate, endDate: effectiveEndDate } = getRolledUpTaskDates(task);
+        const { left, width } = getBarPosition(effectiveStartDate, effectiveEndDate, startDate, unit, totalUnits);
         const statusColor = STATUS_COLORS[task.status as string] || STATUS_COLORS[TaskStatus.Zero];
         const effectivePriority = task.priority ?? TaskPriority.Important;
         const priorityDotColor = PRIORITY_DOT_COLORS[effectivePriority] || 'bg-amber-500';
@@ -285,7 +287,7 @@ const GanttChart: React.FC<{ project: Project }> = ({ project }) => {
                                 isSubtask ? 'top-1.5 h-2 rounded-sm opacity-90' : 'top-1 h-3'
                             }`}
                             style={{ left, width: Math.max(width, 6) }}
-                            title={`${task.name}: ${new Date(task.startDate).toLocaleDateString()} - ${new Date(task.endDate).toLocaleDateString()}`}
+                            title={`${task.name}: ${new Date(effectiveStartDate).toLocaleDateString()} - ${new Date(effectiveEndDate).toLocaleDateString()}`}
                         />
                     </div>
                 </div>

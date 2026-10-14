@@ -148,6 +148,7 @@ import PriorityDonut from './charts/PriorityDonut';
 import UserAchievementBadge from './UserAchievementBadge';
 import { usePresence } from '../hooks/usePresence';
 import OnlineUsersPanel from './OnlineUsersPanel';
+import { getRolledUpTaskDates, syncProjectTaskDates } from '../utils/taskUtils';
 
 // Helper function to calculate task progress recursively
 const calculateTaskProgress = (task: Task): number => {
@@ -1071,6 +1072,7 @@ const TaskRow: React.FC<TaskRowProps> = ({ task, level, isExpanded, onToggleExpa
   const isPriorityUnset = task.priority === undefined || task.priority === null;
   const hasSubtasks = task.subTasks && task.subTasks.length > 0;
   const completedSubtasksCount = task.subTasks?.filter(st => st.status === TaskStatus.Hundred).length || 0;
+  const { startDate: effectiveStartDate, endDate: effectiveEndDate } = getRolledUpTaskDates(task);
   const formatDate = (date: Date) => new Date(date).toLocaleString('en-US', { month: 'short', day: 'numeric' });
   const isEditing = (field: string) => editingField?.taskId === task.id && editingField?.field === field;
   const progress = calculateTaskProgress(task);
@@ -1285,30 +1287,41 @@ const TaskRow: React.FC<TaskRowProps> = ({ task, level, isExpanded, onToggleExpa
         </div>
 
         <div className="col-span-2 text-slate-300">
-          {isEditing('startDate') ? (
-            <input
-              type="date"
-              defaultValue={new Date(task.startDate).toISOString().split('T')[0]}
-              onBlur={(e) => handleUpdateTaskField(task.id, 'startDate', new Date(e.target.value))}
-              onKeyDown={handleKeyDown}
-              className="bg-slate-700 border border-slate-600 text-white text-sm rounded-md block w-full p-1"
-              autoFocus
-            />
+          {hasSubtasks ? (
+            <span
+              className="p-1 text-slate-300 cursor-default select-none"
+              title="Calculated from subtasks (earliest start to final date)"
+            >
+              {formatDate(effectiveStartDate)} - {formatDate(effectiveEndDate)}
+            </span>
           ) : (
-            <span className="p-1 cursor-pointer" onClick={() => canEditTask && setEditingField({ taskId: task.id, field: 'startDate' })}>{formatDate(task.startDate)}</span>
-          )}
-          <span className="mx-1">-</span>
-          {isEditing('endDate') ? (
-            <input
-              type="date"
-              defaultValue={new Date(task.endDate).toISOString().split('T')[0]}
-              onBlur={(e) => handleUpdateTaskField(task.id, 'endDate', new Date(e.target.value))}
-              onKeyDown={handleKeyDown}
-              className="bg-slate-700 border border-slate-600 text-white text-sm rounded-md block w-full p-1"
-              autoFocus
-            />
-          ) : (
-            <span className="p-1 cursor-pointer" onClick={() => canEditTask && setEditingField({ taskId: task.id, field: 'endDate' })}>{formatDate(task.endDate)}</span>
+            <>
+              {isEditing('startDate') ? (
+                <input
+                  type="date"
+                  defaultValue={new Date(task.startDate).toISOString().split('T')[0]}
+                  onBlur={(e) => handleUpdateTaskField(task.id, 'startDate', new Date(e.target.value))}
+                  onKeyDown={handleKeyDown}
+                  className="bg-slate-700 border border-slate-600 text-white text-sm rounded-md block w-full p-1"
+                  autoFocus
+                />
+              ) : (
+                <span className="p-1 cursor-pointer" onClick={() => canEditTask && setEditingField({ taskId: task.id, field: 'startDate' })}>{formatDate(task.startDate)}</span>
+              )}
+              <span className="mx-1">-</span>
+              {isEditing('endDate') ? (
+                <input
+                  type="date"
+                  defaultValue={new Date(task.endDate).toISOString().split('T')[0]}
+                  onBlur={(e) => handleUpdateTaskField(task.id, 'endDate', new Date(e.target.value))}
+                  onKeyDown={handleKeyDown}
+                  className="bg-slate-700 border border-slate-600 text-white text-sm rounded-md block w-full p-1"
+                  autoFocus
+                />
+              ) : (
+                <span className="p-1 cursor-pointer" onClick={() => canEditTask && setEditingField({ taskId: task.id, field: 'endDate' })}>{formatDate(task.endDate)}</span>
+              )}
+            </>
           )}
         </div>
 
@@ -2569,7 +2582,8 @@ const ProjectDetail: React.FC<ProjectDetailProps> = ({ project, onBack, canEdit,
       findAndAdd(phase.tasks);
     });
 
-    onUpdateProject(updatedProject);
+    const syncedProject = syncProjectTaskDates(updatedProject);
+    onUpdateProject(syncedProject);
     setAddingSubtaskTo(null);
     setExpandedTasks(prev => new Set(prev).add(parentTaskId));
   };
@@ -2657,7 +2671,8 @@ const ProjectDetail: React.FC<ProjectDetailProps> = ({ project, onBack, canEdit,
       }
     }
 
-    onUpdateProject(updatedProject);
+    const syncedProject = syncProjectTaskDates(updatedProject);
+    onUpdateProject(syncedProject);
     setEditingField(null);
 
     // Keep visual anchor on the task so user doesn't lose context after re-sorting
@@ -2756,7 +2771,8 @@ const ProjectDetail: React.FC<ProjectDetailProps> = ({ project, onBack, canEdit,
       phase.tasks = findAndRemove(phase.tasks, taskToDeleteId);
     });
 
-    onUpdateProject(updatedProject);
+    const syncedProject = syncProjectTaskDates(updatedProject);
+    onUpdateProject(syncedProject);
     setTaskToDeleteId(null);
   };
 

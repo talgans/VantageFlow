@@ -27,14 +27,37 @@ const convertTaskDatesFromFirestore = (task: any): Task => {
     return isNaN(d.getTime()) ? undefined : d;
   };
 
+  const convertedSubTasks = task.subTasks?.map(convertTaskDatesFromFirestore);
+
+  let startDate = task.startDate?.toDate ? task.startDate.toDate() : (task.startDate ? new Date(task.startDate) : new Date());
+  let endDate = task.endDate?.toDate ? task.endDate.toDate() : (task.endDate ? new Date(task.endDate) : new Date());
+
+  // Roll up dates from subtasks if present
+  if (convertedSubTasks && convertedSubTasks.length > 0) {
+    let minStart = Infinity;
+    let maxEnd = -Infinity;
+    for (const st of convertedSubTasks) {
+      if (st.startDate) {
+        const s = new Date(st.startDate).getTime();
+        if (!isNaN(s) && s < minStart) minStart = s;
+      }
+      if (st.endDate) {
+        const e = new Date(st.endDate).getTime();
+        if (!isNaN(e) && e > maxEnd) maxEnd = e;
+      }
+    }
+    if (minStart !== Infinity) startDate = new Date(minStart);
+    if (maxEnd !== -Infinity) endDate = new Date(maxEnd);
+  }
+
   return {
     ...task,
-    startDate: task.startDate?.toDate ? task.startDate.toDate() : (task.startDate ? new Date(task.startDate) : new Date()),
-    endDate: task.endDate?.toDate ? task.endDate.toDate() : (task.endDate ? new Date(task.endDate) : new Date()),
+    startDate,
+    endDate,
     completedAt: parseOptionalDate(task.completedAt),
     updatedAt: parseOptionalDate(task.updatedAt),
     statusUpdatedAt: parseOptionalDate(task.statusUpdatedAt),
-    subTasks: task.subTasks?.map(convertTaskDatesFromFirestore),
+    subTasks: convertedSubTasks,
   };
 };
 
@@ -55,10 +78,28 @@ const convertTaskDatesToFirestore = (task: Task): any => {
     return new Date(dateValue);
   };
 
+  let finalStartDate = ensureDate(task.startDate);
+  let finalEndDate = ensureDate(task.endDate);
+
+  let convertedSubTasks: any[] | undefined;
+  if (task.subTasks && task.subTasks.length > 0) {
+    convertedSubTasks = task.subTasks.map(convertTaskDatesToFirestore);
+    let minStart = Infinity;
+    let maxEnd = -Infinity;
+    for (const st of task.subTasks) {
+      const s = ensureDate(st.startDate).getTime();
+      const e = ensureDate(st.endDate).getTime();
+      if (!isNaN(s) && s < minStart) minStart = s;
+      if (!isNaN(e) && e > maxEnd) maxEnd = e;
+    }
+    if (minStart !== Infinity) finalStartDate = new Date(minStart);
+    if (maxEnd !== -Infinity) finalEndDate = new Date(maxEnd);
+  }
+
   const converted: any = {
     ...task,
-    startDate: Timestamp.fromDate(ensureDate(task.startDate)),
-    endDate: Timestamp.fromDate(ensureDate(task.endDate)),
+    startDate: Timestamp.fromDate(finalStartDate),
+    endDate: Timestamp.fromDate(finalEndDate),
   };
 
   if (task.completedAt) {
@@ -72,8 +113,8 @@ const convertTaskDatesToFirestore = (task: Task): any => {
   }
 
   // Only include subTasks if they exist
-  if (task.subTasks && task.subTasks.length > 0) {
-    converted.subTasks = task.subTasks.map(convertTaskDatesToFirestore);
+  if (convertedSubTasks && convertedSubTasks.length > 0) {
+    converted.subTasks = convertedSubTasks;
   } else {
     // Remove subTasks field if empty or undefined
     delete converted.subTasks;
