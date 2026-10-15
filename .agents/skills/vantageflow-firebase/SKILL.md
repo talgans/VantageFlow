@@ -59,5 +59,8 @@ Require `firestore-admin/serviceAccountKey.json` (gitignored; not currently pres
 ## Deploy
 ```powershell
 firebase deploy --only firestore:rules --project vantageflow
+# Or:
+npm run deploy:rules
 ```
 Then `firebase_get_security_rules` and confirm the live rules contain `match /projects/{projectId}`.
+*Trap*: In the Firebase MCP server, if `firebase_update_environment` fails to set `active_project: vantageflow`, pass `active_project: default`. Always verify with `firebase_get_environment`.
