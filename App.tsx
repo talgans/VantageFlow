@@ -276,13 +276,21 @@ const App: React.FC = () => {
     };
 
     const handleUpdateProject = async (updatedProject: Project) => {
+        // Optimistic state update: immediate UI responsiveness without waiting for Firestore network roundtrip
+        setProjects(prev => prev.map(p => p.id === updatedProject.id ? updatedProject : p));
+        setSelectedProject(updatedProject);
+
+        if (!isFirestoreAvailable()) {
+            showToast('Project updated locally (mock mode)');
+            return;
+        }
+
         try {
             await updateFirestoreProject(updatedProject);
-            // Real-time listener will update the state
             showToast('Project updated successfully');
         } catch (error) {
             console.error('Error updating project:', error);
-            showToast('Failed to update project');
+            showToast('Failed to sync project update to database');
         }
     };
 

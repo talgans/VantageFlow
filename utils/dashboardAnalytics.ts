@@ -1,9 +1,18 @@
 import { Project, Task, TaskStatus } from '../types';
 
-export const calculateTaskCompletion = (tasks: Task[]) => {
+export const calculateTaskCompletion = (tasks: Task[]): number => {
     if (tasks.length === 0) return 0;
-    const completed = tasks.filter(t => t.status === TaskStatus.Hundred || (t.status as string) === 'Completed').length;
-    return Math.round((completed / tasks.length) * 100);
+    const totalProgress = tasks.reduce((sum, t) => {
+        const s = t.status as string;
+        if (s === TaskStatus.Hundred || s === 'Completed') return sum + 100;
+        if (s === TaskStatus.SeventyFive) return sum + 75;
+        if (s === TaskStatus.Fifty || s === 'In Progress') return sum + 50;
+        if (s === TaskStatus.TwentyFive) return sum + 25;
+        if (s === TaskStatus.AtRisk) return sum + 50;
+        const num = parseInt(s?.replace('%', '') || '0', 10);
+        return sum + (isNaN(num) ? 0 : num);
+    }, 0);
+    return Math.round(totalProgress / tasks.length);
 };
 
 export const getAllTasks = (project: Project): Task[] => {

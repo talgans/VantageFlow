@@ -14,7 +14,7 @@ const DashboardStatsCards: React.FC<DashboardStatsCardsProps> = ({ projects }) =
     const totalTasks = allTasks.length;
 
     const completedTasks = allTasks.filter(t => t.status === TaskStatus.Hundred || (t.status as string) === 'Completed').length;
-    const overallCompletion = totalTasks > 0 ? Math.round((completedTasks / totalTasks) * 100) : 0;
+    const overallCompletion = calculateTaskCompletion(allTasks);
 
     const atRiskProjects = projects.filter(p => getAllTasks(p).some(t => t.status === TaskStatus.AtRisk)).length;
 

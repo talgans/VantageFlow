@@ -228,9 +228,8 @@ interface SectionStatusConfig {
 }
 
 const getSectionStatusConfig = (phase: Phase): SectionStatusConfig => {
-  const allTasks = (phase.tasks || []).flatMap(t => t.subTasks ? [t, ...t.subTasks] : [t]);
-  const totalTasks = allTasks.length;
-  if (totalTasks === 0) {
+  const rootTasks = phase.tasks || [];
+  if (rootTasks.length === 0) {
     return {
       status: 'Not Started',
       fillGradient: 'from-slate-600 to-slate-500',
@@ -246,9 +245,14 @@ const getSectionStatusConfig = (phase: Phase): SectionStatusConfig => {
     };
   }
 
-  const hasAtRisk = allTasks.some(t => t.status === TaskStatus.AtRisk);
+  const allTasks = rootTasks.flatMap(t => t.subTasks ? [t, ...t.subTasks] : [t]);
+  const totalTasks = allTasks.length;
+  const hasAtRisk = allTasks.some(t => t.status === TaskStatus.AtRisk || (t.impediment && !t.impediment.resolved));
   const completedTasks = allTasks.filter(t => t.status === TaskStatus.Hundred || (t.status as string) === 'Completed').length;
-  const completionPct = Math.round((completedTasks / totalTasks) * 100);
+
+  // Calculate completion percentage as average progress across root tasks (which factors in subtask progress)
+  const totalProgress = rootTasks.reduce((sum, t) => sum + calculateTaskProgress(t), 0);
+  const completionPct = Math.round(totalProgress / rootTasks.length);
 
   if (hasAtRisk) {
     return {
@@ -1049,6 +1053,7 @@ interface TaskRowProps {
   draggedItemId: string | null;
   dropTarget: { taskId: string; position: 'above' | 'below' } | null;
   checkPermission: (ownerId?: string) => boolean;
+  checkTaskPermission?: (task: Task) => boolean;
   onAssign?: (task: Task) => void;
   projectTeam?: TeamMember[];
   formerMembers?: TeamMember[];
@@ -1065,7 +1070,7 @@ interface TaskRowProps {
   isLastChild?: boolean;
 }
 
-const TaskRow: React.FC<TaskRowProps> = ({ task, level, isExpanded, onToggleExpand, addingSubtaskTo, setAddingSubtaskTo, canEdit, handleSaveSubtask, editingField, setEditingField, handleUpdateTaskField, onRequestDelete, phaseId, parentId, onDragStart, onDragOver, onDrop, onDragEnd, onDragLeave, draggedItemId, dropTarget, checkPermission, onAssign, projectTeam, formerMembers, getUserDisplayName, getUserPhotoURL, onImageUpload, onRemoveImage, onViewImage, onOpenFeedback, onOpenImpediment, onRequestComplete, expandedTasks, highlightedTaskId, isLastChild }) => {
+const TaskRow: React.FC<TaskRowProps> = ({ task, level, isExpanded, onToggleExpand, addingSubtaskTo, setAddingSubtaskTo, canEdit, handleSaveSubtask, editingField, setEditingField, handleUpdateTaskField, onRequestDelete, phaseId, parentId, onDragStart, onDragOver, onDrop, onDragEnd, onDragLeave, draggedItemId, dropTarget, checkPermission, checkTaskPermission, onAssign, projectTeam, formerMembers, getUserDisplayName, getUserPhotoURL, onImageUpload, onRemoveImage, onViewImage, onOpenFeedback, onOpenImpediment, onRequestComplete, expandedTasks, highlightedTaskId, isLastChild }) => {
   const isSubtask = level > 0;
   const effectivePriority = getEffectivePriority(task);
   const priorityColor = PRIORITY_COLORS[effectivePriority];
@@ -1082,8 +1087,8 @@ const TaskRow: React.FC<TaskRowProps> = ({ task, level, isExpanded, onToggleExpa
   const hasImages = task.imageUrls && task.imageUrls.length > 0;
   const canAddMoreImages = !task.imageUrls || task.imageUrls.length < 5;
 
-  // Calculate permission for this specific task
-  const canEditTask = canEdit && checkPermission(task.ownerId);
+  // Calculate permission for this specific task: allows SuperAdmin, Admin, Manager, Project Owner, Team Lead, Task Creator, or assigned team member
+  const canEditTask = canEdit && (checkTaskPermission ? checkTaskPermission(task) : checkPermission(task.ownerId));
 
   const isBeingDragged = draggedItemId === task.id;
   const isDropTargetAbove = dropTarget?.taskId === task.id && dropTarget.position === 'above';
@@ -1326,29 +1331,7 @@ const TaskRow: React.FC<TaskRowProps> = ({ task, level, isExpanded, onToggleExpa
         </div>
 
         <div className="col-span-1 relative">
-          {hasSubtasks ? (
-            // Parent task: show calculated progress from subtasks (non-editable) with color coding
-            (() => {
-              // Get color based on calculated progress
-              const getParentStatusColors = () => {
-                if (progress >= 100) return { bg: 'bg-green-500/10', text: 'text-green-400', dot: 'bg-green-400' };
-                if (progress >= 75) return { bg: 'bg-indigo-500/10', text: 'text-indigo-400', dot: 'bg-indigo-400' };
-                if (progress >= 50) return { bg: 'bg-blue-500/10', text: 'text-blue-400', dot: 'bg-blue-400' };
-                if (progress >= 25) return { bg: 'bg-amber-500/10', text: 'text-amber-400', dot: 'bg-amber-400' };
-                return { bg: 'bg-gray-500/10', text: 'text-gray-400', dot: 'bg-gray-400' };
-              };
-              const colors = getParentStatusColors();
-              return (
-                <span
-                  className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${colors.bg} ${colors.text}`}
-                  title="Calculated from subtasks"
-                >
-                  <span className={`w-2 h-2 mr-1.5 rounded-full ${colors.dot}`}></span>
-                  {progress}%
-                </span>
-              );
-            })()
-          ) : isEditing('status') ? (
+          {isEditing('status') ? (
             <StatusEditButtons
               onSelect={(status) => {
                 setEditingField(null);
@@ -1362,9 +1345,40 @@ const TaskRow: React.FC<TaskRowProps> = ({ task, level, isExpanded, onToggleExpa
               }}
               onClose={() => setEditingField(null)}
             />
+          ) : hasSubtasks ? (
+            // Parent task: show calculated progress from subtasks with color coding, clickable to batch update
+            (() => {
+              const getParentStatusColors = () => {
+                if (progress >= 100) return { bg: 'bg-green-500/10', text: 'text-green-400', dot: 'bg-green-400' };
+                if (progress >= 75) return { bg: 'bg-indigo-500/10', text: 'text-indigo-400', dot: 'bg-indigo-400' };
+                if (progress >= 50) return { bg: 'bg-blue-500/10', text: 'text-blue-400', dot: 'bg-blue-400' };
+                if (progress >= 25) return { bg: 'bg-amber-500/10', text: 'text-amber-400', dot: 'bg-amber-400' };
+                return { bg: 'bg-gray-500/10', text: 'text-gray-400', dot: 'bg-gray-400' };
+              };
+              const colors = getParentStatusColors();
+              return (
+                <div
+                  className={`inline-block ${canEditTask ? 'cursor-pointer hover:opacity-80 transition-opacity' : ''}`}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    if (canEditTask) {
+                      setEditingField({ taskId: task.id, field: 'status' });
+                    }
+                  }}
+                  title={canEditTask ? `Calculated from ${task.subTasks?.length} subtasks (${progress}%). Click to batch update.` : 'Calculated from subtasks'}
+                >
+                  <span
+                    className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${colors.bg} ${colors.text}`}
+                  >
+                    <span className={`w-2 h-2 mr-1.5 rounded-full ${colors.dot}`}></span>
+                    {progress}%
+                  </span>
+                </div>
+              );
+            })()
           ) : (
             <div
-              className="inline-block cursor-pointer"
+              className={`inline-block ${canEditTask ? 'cursor-pointer' : ''}`}
               onClick={(e) => {
                 e.stopPropagation();
                 if (canEditTask) {
@@ -1541,6 +1555,7 @@ const TaskRow: React.FC<TaskRowProps> = ({ task, level, isExpanded, onToggleExpa
             draggedItemId={draggedItemId}
             dropTarget={dropTarget}
             checkPermission={checkPermission}
+            checkTaskPermission={checkTaskPermission}
             onAssign={onAssign}
             projectTeam={projectTeam}
             formerMembers={formerMembers}
@@ -1818,12 +1833,10 @@ const ProjectDetail: React.FC<ProjectDetailProps> = ({ project, onBack, canEdit,
   }, []);
 
   const overallCompletionPct = useMemo(() => {
-    const allTasks = (project.phases || []).flatMap(ph =>
-      (ph.tasks || []).flatMap(t => t.subTasks ? [t, ...t.subTasks] : [t])
-    );
-    if (allTasks.length === 0) return 0;
-    const completed = allTasks.filter(t => t.status === TaskStatus.Hundred || (t.status as string) === 'Completed').length;
-    return Math.round((completed / allTasks.length) * 100);
+    const rootTasks = (project.phases || []).flatMap(ph => ph.tasks || []);
+    if (rootTasks.length === 0) return 0;
+    const totalProgress = rootTasks.reduce((sum, t) => sum + calculateTaskProgress(t), 0);
+    return Math.round(totalProgress / rootTasks.length);
   }, [project.phases]);
 
   const priorityBreakdown = useMemo(() => {
@@ -2343,6 +2356,25 @@ const ProjectDetail: React.FC<ProjectDetailProps> = ({ project, onBack, canEdit,
   // Compute effective canEdit - false if project is archived
   const effectiveCanEdit = canEdit && !project.isArchived;
 
+  // Check task permission: allows SuperAdmin, Admin, Manager, Project Owner, Team Lead, Task Owner, or assigned team member
+  const checkTaskPermission = (task: Task): boolean => {
+    if (!effectiveCanEdit || !currentUserId) return false;
+    // SuperAdmin, Admin, Manager have full task edit permissions
+    if (userRole === 'admin' || userRole === 'manager') return true;
+    // Project owner can edit any task
+    if (project.ownerId === currentUserId) return true;
+    // Team lead (primary or secondary) can edit any task
+    const member = project.team?.members?.find(m => m.uid === currentUserId || (currentUserEmail && m.email?.toLowerCase() === currentUserEmail.toLowerCase()));
+    if (member && (member.leadRole === 'primary' || member.leadRole === 'secondary')) return true;
+    // Task creator can edit
+    if (task.ownerId === currentUserId || (task.ownerEmail && currentUserEmail && task.ownerEmail.toLowerCase() === currentUserEmail.toLowerCase())) return true;
+    // Assigned team member can edit
+    if (task.assignees && task.assignees.some(a => a.uid === currentUserId || (currentUserEmail && a.email?.toLowerCase() === currentUserEmail.toLowerCase()))) return true;
+    // If no owner or assignees set on item, allow any project team member to edit
+    if (!task.ownerId && (!task.assignees || task.assignees.length === 0)) return true;
+    return false;
+  };
+
   const checkPermission = (itemOwnerId?: string) => {
     if (!effectiveCanEdit || !currentUserId) return false;
     if (project.ownerId === currentUserId) return true;
@@ -2692,6 +2724,32 @@ const ProjectDetail: React.FC<ProjectDetailProps> = ({ project, onBack, canEdit,
             if (value === TaskStatus.Hundred || value === 'Completed') {
               task.completedAt = now;
               task.completedBy = currentUserMember;
+            } else {
+              task.completedAt = undefined;
+              task.completedBy = undefined;
+            }
+
+            // Cascade status change to subtasks if this is a parent task
+            if (task.subTasks && task.subTasks.length > 0) {
+              const cascadeToSubtasks = (subs: Task[]) => {
+                for (const sub of subs) {
+                  sub.status = value;
+                  sub.updatedAt = now;
+                  sub.statusUpdatedAt = now;
+                  sub.lastUpdatedBy = currentUserMember;
+                  if (value === TaskStatus.Hundred || value === 'Completed') {
+                    sub.completedAt = now;
+                    sub.completedBy = currentUserMember;
+                  } else {
+                    sub.completedAt = undefined;
+                    sub.completedBy = undefined;
+                  }
+                  if (sub.subTasks && sub.subTasks.length > 0) {
+                    cascadeToSubtasks(sub.subTasks);
+                  }
+                }
+              };
+              cascadeToSubtasks(task.subTasks);
             }
           }
           return true;
@@ -4017,6 +4075,7 @@ const ProjectDetail: React.FC<ProjectDetailProps> = ({ project, onBack, canEdit,
                           handleUpdateTaskField={handleUpdateTaskField}
                           onRequestDelete={handleRequestDeleteTask}
                           checkPermission={checkPermission}
+                          checkTaskPermission={checkTaskPermission}
                           phaseId={phase.id}
                           onDragStart={handleDragStart}
                           onDragOver={handleDragOver}

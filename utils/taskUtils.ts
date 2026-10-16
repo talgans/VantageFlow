@@ -1,4 +1,4 @@
-import { Task, Project } from '../types';
+import { Task, Project, TaskStatus } from '../types';
 
 /**
  * Safely normalizes any date representation (Date instance, Firestore Timestamp, ISO string, etc.)
@@ -21,6 +21,36 @@ export const ensureDate = (val: any): Date => {
     }
   }
   return new Date();
+};
+
+/**
+ * Calculates a numerical progress percentage (0 - 100) for a task or subtask.
+ */
+export const getTaskProgressNumber = (task: Task): number => {
+  if (!task.subTasks || task.subTasks.length === 0) {
+    const s = task.status as string;
+    if (s === TaskStatus.Hundred || s === 'Completed') return 100;
+    if (s === TaskStatus.SeventyFive) return 75;
+    if (s === TaskStatus.Fifty || s === 'In Progress') return 50;
+    if (s === TaskStatus.TwentyFive) return 25;
+    if (s === TaskStatus.AtRisk) return 50;
+    const num = parseInt(s?.replace('%', '') || '0', 10);
+    return isNaN(num) ? 0 : num;
+  }
+  const total = task.subTasks.reduce((sum, st) => sum + getTaskProgressNumber(st), 0);
+  return Math.round(total / task.subTasks.length);
+};
+
+/**
+ * Maps a numerical progress percentage to the appropriate TaskStatus enum value.
+ */
+export const getStatusFromProgress = (progress: number, hasBlocker = false): TaskStatus => {
+  if (hasBlocker) return TaskStatus.AtRisk;
+  if (progress >= 100) return TaskStatus.Hundred;
+  if (progress >= 75) return TaskStatus.SeventyFive;
+  if (progress >= 50) return TaskStatus.Fifty;
+  if (progress >= 25) return TaskStatus.TwentyFive;
+  return TaskStatus.Zero;
 };
 
 /**
@@ -56,8 +86,8 @@ export const getRolledUpTaskDates = (task: Task): { startDate: Date; endDate: Da
 };
 
 /**
- * Recursively updates task startDate and endDate to match the rolled-up subtask dates.
- * Returns a new Task object with updated dates and recursively synced subtasks.
+ * Recursively updates task startDate, endDate, and status to match rolled-up subtask values.
+ * Returns a new Task object with updated dates, rolled-up status, and recursively synced subtasks.
  */
 export const syncTaskDates = (task: Task): Task => {
   if (!task.subTasks || task.subTasks.length === 0) {
@@ -74,16 +104,27 @@ export const syncTaskDates = (task: Task): Task => {
     subTasks: syncedSubTasks,
   });
 
+  const progress = Math.round(
+    syncedSubTasks.reduce((sum, st) => sum + getTaskProgressNumber(st), 0) / syncedSubTasks.length
+  );
+  const hasActiveBlocker = syncedSubTasks.some(
+    st => st.status === TaskStatus.AtRisk || (st.impediment && !st.impediment.resolved)
+  );
+  const rolledUpStatus = getStatusFromProgress(progress, hasActiveBlocker);
+
   return {
     ...task,
     startDate,
     endDate,
+    status: rolledUpStatus,
+    completedAt: rolledUpStatus === TaskStatus.Hundred ? (task.completedAt || new Date()) : undefined,
+    completedBy: rolledUpStatus === TaskStatus.Hundred ? task.completedBy : undefined,
     subTasks: syncedSubTasks,
   };
 };
 
 /**
- * Recursively synchronizes all parent task start and end dates across all phases of a project.
+ * Recursively synchronizes all parent task start/end dates and statuses across all phases of a project.
  */
 export const syncProjectTaskDates = (project: Project): Project => {
   if (!project.phases || !Array.isArray(project.phases)) {
