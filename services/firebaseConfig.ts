@@ -1,6 +1,6 @@
 import { initializeApp } from 'firebase/app';
 import { getAuth } from 'firebase/auth';
-import { getFirestore } from 'firebase/firestore';
+import { initializeFirestore } from 'firebase/firestore';
 import { getStorage } from 'firebase/storage';
 
 /**
@@ -58,8 +58,12 @@ export const auth = getAuth(app);
 
 /**
  * Firestore Database instance
+ * Initialized with auto-detect long-polling to prevent ERR_QUIC_PROTOCOL_ERROR / QUIC_TOO_MANY_RTOS
+ * stream drops when UDP / HTTP/3 connections experience retransmission timeouts or proxy buffering.
  */
-export const db = getFirestore(app);
+export const db = initializeFirestore(app, {
+  experimentalAutoDetectLongPolling: true,
+});
 
 /**
  * Firebase Storage instance
