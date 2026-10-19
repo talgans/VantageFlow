@@ -1800,7 +1800,7 @@ const ProjectDetail: React.FC<ProjectDetailProps> = ({ project, onBack, canEdit,
   } | null>(null);
 
   // --- Accordion State ---
-  const AUTO_CLOSE_DURATION_MS = 3000;
+  const AUTO_CLOSE_DURATION_MS = 5000;
   const [isTopBandCollapsed, setIsTopBandCollapsed] = useState(false);
   // Once the user clicks anywhere in the summary row, it stops auto-collapsing
   const [isTopBandPinned, setIsTopBandPinned] = useState(false);
@@ -1816,7 +1816,7 @@ const ProjectDetail: React.FC<ProjectDetailProps> = ({ project, onBack, canEdit,
     setAutoCloseRemainingMs(AUTO_CLOSE_DURATION_MS);
   }, [project.id]);
 
-  // Auto-collapse the summary row after 3s countdown unless it has been clicked/pinned or is currently hovered
+  // Auto-collapse the summary row after 5s countdown unless it has been clicked/pinned or is currently hovered
   useEffect(() => {
     if (isTopBandPinned || isTopBandCollapsed || isTopBandHovered) return;
     const intervalMs = 50;
@@ -3162,12 +3162,15 @@ const ProjectDetail: React.FC<ProjectDetailProps> = ({ project, onBack, canEdit,
             </div>
           </div>
 
-          {/* Expanded summary row */}
+          {/* Expanded Header: Top Summary + Separator + Project Details */}
           <div
-            onClick={handleSummaryRowClick}
-            className={`transition-all duration-300 ease-in-out overflow-hidden ${isTopBandCollapsed ? 'max-h-0 opacity-0 pointer-events-none' : 'max-h-[600px] opacity-100'}`}
+            className={`transition-all duration-300 ease-in-out overflow-hidden ${isTopBandCollapsed ? 'max-h-0 opacity-0 pointer-events-none' : 'max-h-[2400px] opacity-100'}`}
           >
-            <div className="p-3.5 sm:p-4">
+            {/* Top Summary Row (Title Card + Section Progress Card) */}
+            <div
+              onClick={handleSummaryRowClick}
+              className="p-3.5 sm:p-4"
+            >
               <div className="grid grid-cols-1 lg:grid-cols-12 gap-4">
                 {/* Title & Description Card (lg:col-span-5) */}
                 <div className={`lg:col-span-5 p-3.5 sm:p-4 rounded-xl border flex flex-col justify-between transition-colors cursor-pointer hover:border-slate-600/80 ${project.isArchived
@@ -3257,7 +3260,7 @@ const ProjectDetail: React.FC<ProjectDetailProps> = ({ project, onBack, canEdit,
                         ))}
                       </div>
 
-                      {/* 3-sec Auto-close Timer Circle */}
+                      {/* 5-sec Auto-close Timer Circle */}
                       {!isTopBandPinned && !isTopBandCollapsed && (
                         <button
                           type="button"
@@ -3409,16 +3412,14 @@ const ProjectDetail: React.FC<ProjectDetailProps> = ({ project, onBack, canEdit,
                 </div>
               </div>
             </div>
-          </div>
-        </div>
 
-        {/* Separator between Project Heading and Project Detail */}
-        <div className="border-t border-slate-700" />
+            {/* Separator between Project Heading and Project Detail */}
+            <div className="border-t border-slate-700" />
 
-        {/* Collapsible Project Details Section */}
-        <div>
-          {/* Header with Project Type, Duration, and Cost inline */}
-          <button
+            {/* Collapsible Project Details Section */}
+            <div onClick={() => setIsTopBandPinned(true)}>
+              {/* Header with Project Type, Duration, and Cost inline */}
+              <button
             onClick={() => setIsCardsCollapsed(!isCardsCollapsed)}
             className="w-full p-4 flex items-center justify-between text-left hover:bg-slate-700/30 transition-colors"
           >
@@ -3615,6 +3616,8 @@ const ProjectDetail: React.FC<ProjectDetailProps> = ({ project, onBack, canEdit,
           </div>
         </div>
       </div>
+    </div>
+  </div>
 
       <div className="bg-slate-800/50 rounded-xl border border-slate-700">
         <div className="p-4 border-b border-slate-700 flex justify-between items-center">
