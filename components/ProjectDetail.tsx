@@ -1800,25 +1800,41 @@ const ProjectDetail: React.FC<ProjectDetailProps> = ({ project, onBack, canEdit,
   } | null>(null);
 
   // --- Accordion State ---
+  const AUTO_CLOSE_DURATION_MS = 3000;
   const [isTopBandCollapsed, setIsTopBandCollapsed] = useState(false);
   // Once the user clicks anywhere in the summary row, it stops auto-collapsing
   const [isTopBandPinned, setIsTopBandPinned] = useState(false);
   // Track hover to pause the auto-collapse timer while user is reading/interacting
   const [isTopBandHovered, setIsTopBandHovered] = useState(false);
+  const [autoCloseRemainingMs, setAutoCloseRemainingMs] = useState(AUTO_CLOSE_DURATION_MS);
 
   // Reset summary row state whenever a different project is opened
   useEffect(() => {
     setIsTopBandCollapsed(false);
     setIsTopBandPinned(false);
     setIsTopBandHovered(false);
+    setAutoCloseRemainingMs(AUTO_CLOSE_DURATION_MS);
   }, [project.id]);
 
-  // Auto-collapse the summary row after 3s unless it has been clicked/pinned or is currently hovered
+  // Auto-collapse the summary row after 3s countdown unless it has been clicked/pinned or is currently hovered
   useEffect(() => {
     if (isTopBandPinned || isTopBandCollapsed || isTopBandHovered) return;
-    const timer = setTimeout(() => setIsTopBandCollapsed(true), 3000);
-    return () => clearTimeout(timer);
-  }, [isTopBandPinned, isTopBandCollapsed, isTopBandHovered, project.id]);
+    const intervalMs = 50;
+    const interval = setInterval(() => {
+      setAutoCloseRemainingMs(prev => {
+        if (prev <= intervalMs) {
+          clearInterval(interval);
+          setIsTopBandCollapsed(true);
+          return 0;
+        }
+        return prev - intervalMs;
+      });
+    }, intervalMs);
+    return () => clearInterval(interval);
+  }, [isTopBandPinned, isTopBandCollapsed, isTopBandHovered]);
+
+  const timerFractionRemaining = Math.max(0, Math.min(1, autoCloseRemainingMs / AUTO_CLOSE_DURATION_MS));
+  const timerSecondsDisplay = Math.max(1, Math.ceil(autoCloseRemainingMs / 1000));
 
   const handleSummaryRowClick = useCallback((e: React.MouseEvent) => {
     const target = e.target as HTMLElement | null;
@@ -3095,451 +3111,507 @@ const ProjectDetail: React.FC<ProjectDetailProps> = ({ project, onBack, canEdit,
         </div>
       )}
 
-      {/* Collapsible Summary Row (Title Card + Sections Card) — auto-collapses after 3s unless clicked or hovered */}
-      <div
-        onMouseEnter={() => setIsTopBandHovered(true)}
-        onMouseLeave={() => setIsTopBandHovered(false)}
-      >
-        {/* Collapsed compact row (styled like the Project Details header) */}
-        <div className={`transition-all duration-300 ease-in-out overflow-hidden ${isTopBandCollapsed ? 'max-h-24 opacity-100' : 'max-h-0 opacity-0 pointer-events-none'}`}>
-          <div
-            role="button"
-            tabIndex={0}
-            onClick={() => {
-              setIsTopBandPinned(true);
-              setIsTopBandCollapsed(false);
-            }}
-            onKeyDown={(e) => {
-              if (e.key === 'Enter' || e.key === ' ') {
-                e.preventDefault();
+      {/* Combined Project Heading & Project Details Card */}
+      <div className={`bg-slate-800/50 rounded-xl border transition-colors overflow-hidden ${project.isArchived ? 'border-amber-500/50' : 'border-slate-700'}`}>
+        {/* Project Heading Area — auto-collapses after 3s unless clicked or hovered */}
+        <div
+          onMouseEnter={() => setIsTopBandHovered(true)}
+          onMouseLeave={() => setIsTopBandHovered(false)}
+        >
+          {/* Collapsed compact row */}
+          <div className={`transition-all duration-300 ease-in-out overflow-hidden ${isTopBandCollapsed ? 'max-h-24 opacity-100' : 'max-h-0 opacity-0 pointer-events-none'}`}>
+            <div
+              role="button"
+              tabIndex={0}
+              onClick={() => {
                 setIsTopBandPinned(true);
                 setIsTopBandCollapsed(false);
-              }
-            }}
-            className={`w-full p-4 flex items-center justify-between gap-4 text-left rounded-xl border transition-colors cursor-pointer hover:bg-slate-700/30 ${project.isArchived
-              ? 'bg-amber-500/10 border-amber-500/50'
-              : 'bg-slate-800/50 border-slate-700'}`}
-            title="Expand summary"
-            aria-expanded={false}
-          >
-            <div className="flex items-center gap-3 min-w-0">
-              <CircularProgress percentage={overallCompletionPct} size={30} strokeWidth={3} showText={false} />
-              <span className="font-semibold text-base text-white truncate">{project.name}</span>
-              {project.isPublic ? (
-                <span className="inline-flex items-center px-2 py-0.2 rounded-full text-[10px] font-medium bg-blue-500/10 text-blue-400 border border-blue-500/30">
-                  <span className="mr-1">🌐</span> Public
-                </span>
-              ) : (
-                <span className="inline-flex items-center px-2 py-0.2 rounded-full text-[10px] font-medium bg-slate-700/80 text-slate-400 border border-slate-600">
-                  <span className="mr-1">🔒</span> Private
-                </span>
-              )}
-              <span className="text-xs font-semibold text-slate-400 flex-shrink-0">{overallCompletionPct}%</span>
-              {projectStartDateLabel && (
-                <span className="hidden sm:flex items-center gap-1 text-xs text-slate-400 flex-shrink-0">
-                  <CalendarIcon className="w-3.5 h-3.5" />
-                  Started {projectStartDateLabel}
-                </span>
-              )}
+              }}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter' || e.key === ' ') {
+                  e.preventDefault();
+                  setIsTopBandPinned(true);
+                  setIsTopBandCollapsed(false);
+                }
+              }}
+              className="w-full p-4 flex items-center justify-between gap-4 text-left transition-colors cursor-pointer hover:bg-slate-700/30"
+              title="Expand summary"
+              aria-expanded={false}
+            >
+              <div className="flex items-center gap-3 min-w-0">
+                <CircularProgress percentage={overallCompletionPct} size={30} strokeWidth={3} showText={false} />
+                <span className="font-semibold text-base text-white truncate">{project.name}</span>
+                {project.isPublic ? (
+                  <span className="inline-flex items-center px-2 py-0.2 rounded-full text-[10px] font-medium bg-blue-500/10 text-blue-400 border border-blue-500/30">
+                    <span className="mr-1">🌐</span> Public
+                  </span>
+                ) : (
+                  <span className="inline-flex items-center px-2 py-0.2 rounded-full text-[10px] font-medium bg-slate-700/80 text-slate-400 border border-slate-600">
+                    <span className="mr-1">🔒</span> Private
+                  </span>
+                )}
+                <span className="text-xs font-semibold text-slate-400 flex-shrink-0">{overallCompletionPct}%</span>
+                {projectStartDateLabel && (
+                  <span className="hidden sm:flex items-center gap-1 text-xs text-slate-400 flex-shrink-0">
+                    <CalendarIcon className="w-3.5 h-3.5" />
+                    Started {projectStartDateLabel}
+                  </span>
+                )}
+              </div>
+              <ChevronDownIcon className="w-5 h-5 text-slate-400 -rotate-90 flex-shrink-0" />
             </div>
-            <ChevronDownIcon className="w-5 h-5 text-slate-400 -rotate-90 flex-shrink-0" />
           </div>
-        </div>
 
-        {/* Expanded summary row */}
-        <div
-          onClick={handleSummaryRowClick}
-          className={`transition-all duration-300 ease-in-out overflow-hidden ${isTopBandCollapsed ? 'max-h-0 opacity-0 pointer-events-none' : 'max-h-[600px] opacity-100'}`}
-        >
-          <div className="grid grid-cols-1 lg:grid-cols-12 gap-4">
-            {/* Title & Description Card (lg:col-span-5) */}
-            <div className={`lg:col-span-5 p-3.5 sm:p-4 rounded-xl border flex flex-col justify-between transition-colors cursor-pointer hover:border-slate-600/80 ${project.isArchived
-              ? 'bg-amber-500/10 border-amber-500/50'
-              : 'bg-slate-800/50 border-slate-700'}`}>
-              {/* Archived Notice */}
-              {project.isArchived && (
-                <div className="flex items-center gap-2 mb-2 pb-2 border-b border-amber-500/30">
-                  <svg className="w-4 h-4 text-amber-400 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M5 8h14M5 8a2 2 0 110-4h14a2 2 0 110 4M5 8v10a2 2 0 002 2h10a2 2 0 002-2V8m-9 4h4" />
-                  </svg>
-                  <span className="text-amber-200 text-xs font-medium flex-1">This project is archived.</span>
-                  {canArchive && (
-                    <button
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        setIsTopBandPinned(true);
-                        setArchiveConfirm({ show: true, action: 'unarchive' });
-                      }}
-                      className="px-2 py-0.5 bg-amber-500 hover:bg-amber-400 text-black text-xs font-medium rounded transition-colors cursor-pointer"
-                    >
-                      Unarchive
-                    </button>
+          {/* Expanded summary row */}
+          <div
+            onClick={handleSummaryRowClick}
+            className={`transition-all duration-300 ease-in-out overflow-hidden ${isTopBandCollapsed ? 'max-h-0 opacity-0 pointer-events-none' : 'max-h-[600px] opacity-100'}`}
+          >
+            <div className="p-3.5 sm:p-4">
+              <div className="grid grid-cols-1 lg:grid-cols-12 gap-4">
+                {/* Title & Description Card (lg:col-span-5) */}
+                <div className={`lg:col-span-5 p-3.5 sm:p-4 rounded-xl border flex flex-col justify-between transition-colors cursor-pointer hover:border-slate-600/80 ${project.isArchived
+                  ? 'bg-amber-500/10 border-amber-500/50'
+                  : 'bg-slate-900/40 border-slate-700/70'}`}>
+                  {/* Archived Notice */}
+                  {project.isArchived && (
+                    <div className="flex items-center gap-2 mb-2 pb-2 border-b border-amber-500/30">
+                      <svg className="w-4 h-4 text-amber-400 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M5 8h14M5 8a2 2 0 110-4h14a2 2 0 110 4M5 8v10a2 2 0 002 2h10a2 2 0 002-2V8m-9 4h4" />
+                      </svg>
+                      <span className="text-amber-200 text-xs font-medium flex-1">This project is archived.</span>
+                      {canArchive && (
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setIsTopBandPinned(true);
+                            setArchiveConfirm({ show: true, action: 'unarchive' });
+                          }}
+                          className="px-2 py-0.5 bg-amber-500 hover:bg-amber-400 text-black text-xs font-medium rounded transition-colors cursor-pointer"
+                        >
+                          Unarchive
+                        </button>
+                      )}
+                    </div>
                   )}
-                </div>
-              )}
-              <div className="flex items-start gap-3">
-                <CircularProgress
-                  percentage={overallCompletionPct}
-                  size={46}
-                  strokeWidth={4}
-                />
-                <div className="min-w-0 flex-1">
-                  <div className="flex items-center gap-2 flex-wrap">
-                    <h2 className="text-base sm:text-lg font-bold text-white leading-snug line-clamp-2 break-words" title={project.name}>{project.name}</h2>
-                    {project.isPublic ? (
-                      <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-blue-500/10 text-blue-400 border border-blue-500/30">
-                        <span className="mr-1">🌐</span> Public
-                      </span>
-                    ) : (
-                      <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-slate-700/80 text-slate-400 border border-slate-600">
-                        <span className="mr-1">🔒</span> Private
-                      </span>
-                    )}
-                  </div>
-                  <div className="flex items-center flex-wrap gap-x-3 gap-y-0.5 mt-1">
-                  {project.ownerId && (
-                    <div className="flex items-center gap-1.5 min-w-0">
-                      <span className="text-xs text-slate-400">Owner:</span>
-                      {getUserPhotoURL(project.ownerId, project.ownerEmail) ? (
-                        <img src={getUserPhotoURL(project.ownerId, project.ownerEmail)} alt="Owner" className="w-4 h-4 rounded-full object-cover flex-shrink-0" />
-                      ) : (
-                        <div className="w-4 h-4 rounded-full bg-brand-secondary/30 flex items-center justify-center flex-shrink-0">
-                          <UserIcon className="w-2.5 h-2.5 text-brand-light" />
+                  <div className="flex items-start gap-3">
+                    <CircularProgress
+                      percentage={overallCompletionPct}
+                      size={46}
+                      strokeWidth={4}
+                    />
+                    <div className="min-w-0 flex-1">
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <h2 className="text-base sm:text-lg font-bold text-white leading-snug line-clamp-2 break-words" title={project.name}>{project.name}</h2>
+                        {project.isPublic ? (
+                          <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-blue-500/10 text-blue-400 border border-blue-500/30">
+                            <span className="mr-1">🌐</span> Public
+                          </span>
+                        ) : (
+                          <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-slate-700/80 text-slate-400 border border-slate-600">
+                            <span className="mr-1">🔒</span> Private
+                          </span>
+                        )}
+                      </div>
+                      <div className="flex items-center flex-wrap gap-x-3 gap-y-0.5 mt-1">
+                      {project.ownerId && (
+                        <div className="flex items-center gap-1.5 min-w-0">
+                          <span className="text-xs text-slate-400">Owner:</span>
+                          {getUserPhotoURL(project.ownerId, project.ownerEmail) ? (
+                            <img src={getUserPhotoURL(project.ownerId, project.ownerEmail)} alt="Owner" className="w-4 h-4 rounded-full object-cover flex-shrink-0" />
+                          ) : (
+                            <div className="w-4 h-4 rounded-full bg-brand-secondary/30 flex items-center justify-center flex-shrink-0">
+                              <UserIcon className="w-2.5 h-2.5 text-brand-light" />
+                            </div>
+                          )}
+                          <span className="text-xs text-brand-light truncate">{getUserDisplayName(project.ownerId, project.ownerEmail) || project.ownerEmail}</span>
                         </div>
                       )}
-                      <span className="text-xs text-brand-light truncate">{getUserDisplayName(project.ownerId, project.ownerEmail) || project.ownerEmail}</span>
-                    </div>
-                  )}
-                  {projectStartDateLabel && (
-                    <div className="flex items-center gap-1.5 flex-shrink-0" title="Project start date">
-                      <CalendarIcon className="w-3.5 h-3.5 text-slate-400" />
-                      <span className="text-xs text-slate-400">Start:</span>
-                      <span className="text-xs text-slate-200 font-medium">{projectStartDateLabel}</span>
-                    </div>
-                  )}
-                  </div>
-                </div>
-              </div>
-              {project.description && (
-                <p className="text-xs text-slate-400 mt-2 line-clamp-2 leading-relaxed" title={project.description}>{project.description}</p>
-              )}
-            </div>
-
-            {/* Section Progress Stats Card (lg:col-span-7) */}
-            <div className="lg:col-span-7 bg-slate-800/50 rounded-xl border border-slate-700 hover:border-slate-600/80 p-3.5 sm:p-4 flex flex-col transition-colors cursor-pointer">
-              {/* Header: label, status legend, collapse chevron */}
-              <div className="flex items-center justify-between gap-3 mb-2">
-                <span className="text-[10px] font-semibold text-slate-400 uppercase tracking-wider flex-shrink-0">Section Progress</span>
-                <div className="flex items-center gap-3 min-w-0">
-                  <div className="hidden sm:flex items-center gap-2.5 flex-wrap justify-end">
-                    {[...STATUS_STACK_ORDER].reverse().map(s => (
-                      <span key={s.key} className="flex items-center gap-1 text-[10px] text-slate-400">
-                        <span className={`w-2 h-2 rounded-sm ${s.color}`} />
-                        {s.label}
-                      </span>
-                    ))}
-                  </div>
-                  <button
-                    type="button"
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      setIsTopBandPinned(true);
-                      setIsTopBandCollapsed(true);
-                    }}
-                    className="p-1 -m-1 rounded-md text-slate-400 hover:text-white hover:bg-slate-700/50 transition-colors flex-shrink-0 cursor-pointer"
-                    title="Hide summary"
-                    aria-label="Hide summary"
-                    aria-expanded={!isTopBandCollapsed}
-                  >
-                    <ChevronDownIcon className="w-5 h-5 transition-transform duration-300" />
-                  </button>
-                </div>
-              </div>
-
-              <div className="flex items-stretch gap-4 flex-1 min-h-[110px]">
-                {/* Left Column: Stats */}
-                <div className="flex flex-col justify-center gap-2 pr-4 border-r border-slate-700/60 flex-shrink-0">
-                  <div className="text-left">
-                    <p className="text-xl sm:text-2xl font-bold text-white leading-none">{(project.phases || []).length}</p>
-                    <span className="text-[11px] text-slate-400 font-medium">Sections</span>
-                  </div>
-                  <div className="text-left">
-                    <p className="text-xl sm:text-2xl font-bold text-white leading-none">
-                      {priorityBreakdown.total}
-                    </p>
-                    <span className="text-[11px] text-slate-400 font-medium">Tasks</span>
-                  </div>
-                </div>
-
-                {/* Priority Donut Chart Column */}
-                <div className="flex flex-col justify-center pr-4 border-r border-slate-700/60 flex-shrink-0">
-                  <span className="text-[10px] font-semibold text-slate-400 uppercase tracking-wider mb-1.5">Priority</span>
-                  <PriorityDonut
-                    critical={priorityBreakdown.critical}
-                    important={priorityBreakdown.important}
-                    enhancement={priorityBreakdown.enhancement}
-                    total={priorityBreakdown.total}
-                    activePriorities={filters.priorities}
-                    onTogglePriority={togglePriorityFilter}
-                  />
-                </div>
-
-                {/* Right Column: Stacked status chart using full card height */}
-                <div className="flex-1 flex min-w-0">
-                  <div className="flex gap-2 items-stretch h-full w-full overflow-x-auto pb-0.5 px-0.5">
-                    {(project.phases || []).length === 0 ? (
-                      <div className="flex flex-col items-center gap-1 h-full">
-                        <div className="w-7 flex-1 min-h-[64px] bg-slate-700/50 rounded-md border border-slate-600/30" title="No sections" />
-                        <span className="text-[10px] text-slate-500 font-medium">-</span>
+                      {projectStartDateLabel && (
+                        <div className="flex items-center gap-1.5 flex-shrink-0" title="Project start date">
+                          <CalendarIcon className="w-3.5 h-3.5 text-slate-400" />
+                          <span className="text-xs text-slate-400">Start:</span>
+                          <span className="text-xs text-slate-200 font-medium">{projectStartDateLabel}</span>
+                        </div>
+                      )}
                       </div>
-                    ) : (project.phases || []).map((phase, index) => {
-                      const config = getSectionStatusConfig(phase);
-                      const breakdown = getSectionStatusBreakdown(phase);
-                      const sectionIdLabel = `S${index + 1}`;
-                      const breakdownText = STATUS_STACK_ORDER
-                        .filter(s => breakdown.counts[s.key] > 0)
-                        .map(s => `  ${s.label}: ${breakdown.counts[s.key]}`)
-                        .join('\n');
+                    </div>
+                  </div>
+                  {project.description && (
+                    <p className="text-xs text-slate-400 mt-2 line-clamp-2 leading-relaxed" title={project.description}>{project.description}</p>
+                  )}
+                </div>
 
-                      return (
+                {/* Section Progress Stats Card (lg:col-span-7) */}
+                <div className="lg:col-span-7 bg-slate-900/40 rounded-xl border border-slate-700/70 hover:border-slate-600/80 p-3.5 sm:p-4 flex flex-col transition-colors cursor-pointer">
+                  {/* Header: label, status legend, timer circle, collapse chevron */}
+                  <div className="flex items-center justify-between gap-3 mb-2">
+                    <span className="text-[10px] font-semibold text-slate-400 uppercase tracking-wider flex-shrink-0">Section Progress</span>
+                    <div className="flex items-center gap-2.5 min-w-0">
+                      <div className="hidden sm:flex items-center gap-2.5 flex-wrap justify-end">
+                        {[...STATUS_STACK_ORDER].reverse().map(s => (
+                          <span key={s.key} className="flex items-center gap-1 text-[10px] text-slate-400">
+                            <span className={`w-2 h-2 rounded-sm ${s.color}`} />
+                            {s.label}
+                          </span>
+                        ))}
+                      </div>
+
+                      {/* 3-sec Auto-close Timer Circle */}
+                      {!isTopBandPinned && !isTopBandCollapsed && (
                         <button
-                          key={phase.id}
                           type="button"
                           onClick={(e) => {
                             e.stopPropagation();
                             setIsTopBandPinned(true);
-                            handleScrollToSection(phase.id);
                           }}
-                          className="group flex flex-col items-center gap-1 h-full focus:outline-none transition-transform hover:-translate-y-0.5 cursor-pointer flex-shrink-0"
-                          title={`${sectionIdLabel}: ${phase.name}\nStatus: ${config.label}\nCompleted: ${config.completionPct}% (${config.completedTasks}/${config.totalTasks} tasks)${breakdownText ? `\n${breakdownText}` : ''}\nClick to scroll to this section`}
+                          className="flex items-center gap-1.5 px-2 py-0.5 rounded-full bg-slate-900/80 border border-slate-700/80 hover:border-brand-secondary/60 hover:bg-slate-800 transition-all cursor-pointer group flex-shrink-0"
+                          title={isTopBandHovered ? "Auto-close paused • Click to pin open" : `Closing in ${timerSecondsDisplay}s • Click to keep open`}
+                          aria-label={isTopBandHovered ? "Auto-close paused. Click to keep heading open." : `Closing in ${timerSecondsDisplay} seconds. Click to keep heading open.`}
                         >
-                          {/* Stacked Column: one segment per task status (bottom = 100%, top = 0%) */}
-                          <div className="relative w-7 sm:w-8 flex-1 min-h-[64px] bg-slate-900/60 rounded-md border border-slate-700/80 overflow-hidden flex flex-col-reverse group-hover:border-slate-500 group-hover:shadow-md transition-all">
-                            {breakdown.total > 0 && STATUS_STACK_ORDER.map(s => {
-                              const count = breakdown.counts[s.key];
-                              if (count === 0) return null;
-                              return (
-                                <div
-                                  key={s.key}
-                                  className={`w-full flex-shrink-0 ${s.color} border-t border-slate-900/50 transition-all duration-500 ease-out group-hover:brightness-110`}
-                                  style={{ height: `${(count / breakdown.total) * 100}%`, minHeight: '3px' }}
-                                />
-                              );
-                            })}
+                          <div className="relative w-5 h-5 flex items-center justify-center flex-shrink-0">
+                            <svg className="w-5 h-5 -rotate-90" viewBox="0 0 28 28">
+                              <circle
+                                cx="14"
+                                cy="14"
+                                r="10.5"
+                                fill="none"
+                                stroke="currentColor"
+                                strokeWidth="2.5"
+                                className="text-slate-700/80"
+                              />
+                              <circle
+                                cx="14"
+                                cy="14"
+                                r="10.5"
+                                fill="none"
+                                stroke="currentColor"
+                                strokeWidth="2.5"
+                                strokeDasharray={65.973}
+                                style={{ strokeDashoffset: 65.973 * (1 - timerFractionRemaining) }}
+                                strokeLinecap="round"
+                                className={`${isTopBandHovered ? 'text-amber-400' : 'text-brand-light'} transition-[stroke-dashoffset] duration-75 ease-linear`}
+                              />
+                            </svg>
+                            <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
+                              {isTopBandHovered ? (
+                                <span className="text-[8px] font-bold text-amber-400 leading-none">⏸</span>
+                              ) : (
+                                <span className="text-[9px] font-bold text-white leading-none">{timerSecondsDisplay}</span>
+                              )}
+                            </div>
                           </div>
-
-                          {/* Section ID Badge */}
-                          <span className={`text-[9px] font-bold px-1.5 py-0.2 rounded border transition-all ${config.badgeBg} ${config.badgeText} ${config.badgeBorder} group-hover:scale-105`}>
-                            {sectionIdLabel}
+                          <span className="text-[10px] font-medium text-slate-400 group-hover:text-slate-200">
+                            {isTopBandHovered ? 'Paused' : `${timerSecondsDisplay}s`}
                           </span>
                         </button>
-                      );
-                    })}
+                      )}
+
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setIsTopBandPinned(true);
+                          setIsTopBandCollapsed(true);
+                        }}
+                        className="p-1 -m-1 rounded-md text-slate-400 hover:text-white hover:bg-slate-700/50 transition-colors flex-shrink-0 cursor-pointer"
+                        title="Hide summary"
+                        aria-label="Hide summary"
+                        aria-expanded={!isTopBandCollapsed}
+                      >
+                        <ChevronDownIcon className="w-5 h-5 transition-transform duration-300" />
+                      </button>
+                    </div>
+                  </div>
+
+                  <div className="flex items-stretch gap-4 flex-1 min-h-[110px]">
+                    {/* Left Column: Stats */}
+                    <div className="flex flex-col justify-center gap-2 pr-4 border-r border-slate-700/60 flex-shrink-0">
+                      <div className="text-left">
+                        <p className="text-xl sm:text-2xl font-bold text-white leading-none">{(project.phases || []).length}</p>
+                        <span className="text-[11px] text-slate-400 font-medium">Sections</span>
+                      </div>
+                      <div className="text-left">
+                        <p className="text-xl sm:text-2xl font-bold text-white leading-none">
+                          {priorityBreakdown.total}
+                        </p>
+                        <span className="text-[11px] text-slate-400 font-medium">Tasks</span>
+                      </div>
+                    </div>
+
+                    {/* Priority Donut Chart Column */}
+                    <div className="flex flex-col justify-center pr-4 border-r border-slate-700/60 flex-shrink-0">
+                      <span className="text-[10px] font-semibold text-slate-400 uppercase tracking-wider mb-1.5">Priority</span>
+                      <PriorityDonut
+                        critical={priorityBreakdown.critical}
+                        important={priorityBreakdown.important}
+                        enhancement={priorityBreakdown.enhancement}
+                        total={priorityBreakdown.total}
+                        activePriorities={filters.priorities}
+                        onTogglePriority={togglePriorityFilter}
+                      />
+                    </div>
+
+                    {/* Right Column: Stacked status chart using full card height */}
+                    <div className="flex-1 flex min-w-0">
+                      <div className="flex gap-2 items-stretch h-full w-full overflow-x-auto pb-0.5 px-0.5">
+                        {(project.phases || []).length === 0 ? (
+                          <div className="flex flex-col items-center gap-1 h-full">
+                            <div className="w-7 flex-1 min-h-[64px] bg-slate-700/50 rounded-md border border-slate-600/30" title="No sections" />
+                            <span className="text-[10px] text-slate-500 font-medium">-</span>
+                          </div>
+                        ) : (project.phases || []).map((phase, index) => {
+                          const config = getSectionStatusConfig(phase);
+                          const breakdown = getSectionStatusBreakdown(phase);
+                          const sectionIdLabel = `S${index + 1}`;
+                          const breakdownText = STATUS_STACK_ORDER
+                            .filter(s => breakdown.counts[s.key] > 0)
+                            .map(s => `  ${s.label}: ${breakdown.counts[s.key]}`)
+                            .join('\n');
+
+                          return (
+                            <button
+                              key={phase.id}
+                              type="button"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                setIsTopBandPinned(true);
+                                handleScrollToSection(phase.id);
+                              }}
+                              className="group flex flex-col items-center gap-1 h-full focus:outline-none transition-transform hover:-translate-y-0.5 cursor-pointer flex-shrink-0"
+                              title={`${sectionIdLabel}: ${phase.name}\nStatus: ${config.label}\nCompleted: ${config.completionPct}% (${config.completedTasks}/${config.totalTasks} tasks)${breakdownText ? `\n${breakdownText}` : ''}\nClick to scroll to this section`}
+                            >
+                              {/* Stacked Column: one segment per task status (bottom = 100%, top = 0%) */}
+                              <div className="relative w-7 sm:w-8 flex-1 min-h-[64px] bg-slate-900/60 rounded-md border border-slate-700/80 overflow-hidden flex flex-col-reverse group-hover:border-slate-500 group-hover:shadow-md transition-all">
+                                {breakdown.total > 0 && STATUS_STACK_ORDER.map(s => {
+                                  const count = breakdown.counts[s.key];
+                                  if (count === 0) return null;
+                                  return (
+                                    <div
+                                      key={s.key}
+                                      className={`w-full flex-shrink-0 ${s.color} border-t border-slate-900/50 transition-all duration-500 ease-out group-hover:brightness-110`}
+                                      style={{ height: `${(count / breakdown.total) * 100}%`, minHeight: '3px' }}
+                                    />
+                                  );
+                                })}
+                              </div>
+
+                              {/* Section ID Badge */}
+                              <span className={`text-[9px] font-bold px-1.5 py-0.2 rounded border transition-all ${config.badgeBg} ${config.badgeText} ${config.badgeBorder} group-hover:scale-105`}>
+                                {sectionIdLabel}
+                              </span>
+                            </button>
+                          );
+                        })}
+                      </div>
+                    </div>
                   </div>
                 </div>
               </div>
             </div>
           </div>
         </div>
-      </div>
 
+        {/* Separator between Project Heading and Project Detail */}
+        <div className="border-t border-slate-700" />
 
-      {/* Collapsible Project Details Section */}
-      <div className="bg-slate-800/50 rounded-xl border border-slate-700 overflow-hidden">
-        {/* Header with Project Type, Duration, and Cost inline */}
-        <button
-          onClick={() => setIsCardsCollapsed(!isCardsCollapsed)}
-          className="w-full p-4 flex items-center justify-between text-left hover:bg-slate-700/30 transition-colors"
-        >
-          <div className="flex items-center gap-6 flex-wrap">
-            <h3 className="font-semibold text-lg text-white">Project Details</h3>
-            {/* Project Type - inline */}
-            <div className="flex items-center gap-2">
-              <div className="bg-slate-700 p-1.5 rounded-lg text-brand-light">
-                <InfoIcon className="w-4 h-4" />
+        {/* Collapsible Project Details Section */}
+        <div>
+          {/* Header with Project Type, Duration, and Cost inline */}
+          <button
+            onClick={() => setIsCardsCollapsed(!isCardsCollapsed)}
+            className="w-full p-4 flex items-center justify-between text-left hover:bg-slate-700/30 transition-colors"
+          >
+            <div className="flex items-center gap-6 flex-wrap">
+              <h3 className="font-semibold text-lg text-white">Project Details</h3>
+              {/* Project Type - inline */}
+              <div className="flex items-center gap-2">
+                <div className="bg-slate-700 p-1.5 rounded-lg text-brand-light">
+                  <InfoIcon className="w-4 h-4" />
+                </div>
+                <div>
+                  <span className="text-xs text-slate-400">Project Type</span>
+                  <p className="text-sm font-semibold text-white">{project.coreSystem}</p>
+                </div>
               </div>
-              <div>
-                <span className="text-xs text-slate-400">Project Type</span>
-                <p className="text-sm font-semibold text-white">{project.coreSystem}</p>
+              {/* Duration - inline */}
+              <div className="flex items-center gap-2">
+                <div className="bg-slate-700 p-1.5 rounded-lg text-brand-light">
+                  <CalendarIcon className="w-4 h-4" />
+                </div>
+                <div>
+                  <span className="text-xs text-slate-400">Duration</span>
+                  <p className="text-sm font-semibold text-white">{project.duration} {project.durationUnit || 'weeks'}</p>
+                </div>
+              </div>
+              {/* Cost/Funding - inline */}
+              <div className="flex items-center gap-2">
+                <div className="bg-slate-700 p-1.5 rounded-lg text-brand-light">
+                  <MoneyIcon className="w-4 h-4" />
+                </div>
+                <div>
+                  <span className="text-xs text-slate-400">Cost / Funding</span>
+                  <p className="text-sm font-semibold text-white">{project.cost ? `${project.currency === Currency.USD ? '$' : '₦'}${project.cost.toLocaleString()}` : '—'}</p>
+                </div>
               </div>
             </div>
-            {/* Duration - inline */}
-            <div className="flex items-center gap-2">
-              <div className="bg-slate-700 p-1.5 rounded-lg text-brand-light">
-                <CalendarIcon className="w-4 h-4" />
-              </div>
-              <div>
-                <span className="text-xs text-slate-400">Duration</span>
-                <p className="text-sm font-semibold text-white">{project.duration} {project.durationUnit || 'weeks'}</p>
-              </div>
-            </div>
-            {/* Cost/Funding - inline */}
-            <div className="flex items-center gap-2">
-              <div className="bg-slate-700 p-1.5 rounded-lg text-brand-light">
-                <MoneyIcon className="w-4 h-4" />
-              </div>
-              <div>
-                <span className="text-xs text-slate-400">Cost / Funding</span>
-                <p className="text-sm font-semibold text-white">{project.cost ? `${project.currency === Currency.USD ? '$' : '₦'}${project.cost.toLocaleString()}` : '—'}</p>
-              </div>
-            </div>
-          </div>
-          <ChevronDownIcon className={`w-5 h-5 text-slate-400 transition-transform duration-300 ${isCardsCollapsed ? '-rotate-90' : ''}`} />
-        </button>
-        <div className={`transition-all duration-300 ease-in-out ${isCardsCollapsed ? 'max-h-0 opacity-0' : 'max-h-[1000px] opacity-100'}`}>
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-6 p-4 pt-0">
-            {/* Team Card - Expanded to 2 columns */}
-            <div
-              className={`md:col-span-2 bg-slate-800/50 p-4 rounded-xl border ${effectiveCanEdit && onEditProject ? 'border-slate-700 hover:border-brand-secondary cursor-pointer transition-colors' : 'border-slate-700'}`}
-              onClick={() => effectiveCanEdit && onEditProject && onEditProject()}
-            >
-              <div className="flex items-center space-x-3 text-slate-400 mb-3">
-                <TeamIcon className="w-5 h-5" />
-                <span className="text-sm font-medium">Team Members</span>
-              </div>
-              {project.team?.members && project.team.members.length > 0 ? (
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-4 gap-y-2">
-                  {[...project.team.members].sort((a, b) => {
-                    const getRank = (role?: string) => {
-                      if (role === 'primary') return 1;
-                      if (role === 'secondary') return 2;
-                      return 3;
-                    };
-                    return getRank(a.leadRole) - getRank(b.leadRole);
-                  }).slice(0, 8).map((member) => {
-                    const isPrimary = member.leadRole === 'primary';
-                    const isSecondary = member.leadRole === 'secondary';
-                    const isLead = isPrimary || isSecondary;
-                    const memberPhoto = getUserPhotoURL(member.uid, member.email);
-                    const memberName = getUserDisplayName(member.uid, member.email) || member.displayName || member.email;
-                    return (
-                      <div key={member.uid} className="flex items-center gap-2 min-w-0">
-                        {memberPhoto ? (
-                          <img src={memberPhoto} alt={memberName} className="w-6 h-6 rounded-full object-cover flex-shrink-0" />
-                        ) : (
-                          <div className={`w-6 h-6 rounded-full flex items-center justify-center flex-shrink-0 ${isPrimary ? 'bg-blue-500/20' : isSecondary ? 'bg-amber-500/20' : 'bg-slate-700'
-                            }`}>
-                            {isLead ? <StarIcon className={`w-3 h-3 ${isPrimary ? 'text-blue-400' : 'text-amber-400'}`} /> : <UserIcon className="w-3 h-3 text-slate-400" />}
-                          </div>
-                        )}
-                        <span className={`text-sm ${isPrimary ? 'text-blue-300 font-medium' : isSecondary ? 'text-amber-300 font-medium' : 'text-white'}`}>
-                          {memberName}
-                        </span>
-                        <div className="scale-75 origin-left flex-shrink-0">
-                          <UserAchievementBadge userId={member.uid} />
-                        </div>
-                        {isLead && (
-                          <span className={`text-xs px-1.5 py-0.5 rounded flex-shrink-0 ${isPrimary ? 'bg-blue-500/30 text-blue-300' : 'bg-amber-500/30 text-amber-300'}`}>
-                            {isPrimary ? '1st Lead' : '2nd Lead'}
+            <ChevronDownIcon className={`w-5 h-5 text-slate-400 transition-transform duration-300 ${isCardsCollapsed ? '-rotate-90' : ''}`} />
+          </button>
+          <div className={`transition-all duration-300 ease-in-out ${isCardsCollapsed ? 'max-h-0 opacity-0' : 'max-h-[1000px] opacity-100'}`}>
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-6 p-4 pt-0">
+              {/* Team Card - Expanded to 2 columns */}
+              <div
+                className={`md:col-span-2 bg-slate-800/50 p-4 rounded-xl border ${effectiveCanEdit && onEditProject ? 'border-slate-700 hover:border-brand-secondary cursor-pointer transition-colors' : 'border-slate-700'}`}
+                onClick={() => effectiveCanEdit && onEditProject && onEditProject()}
+              >
+                <div className="flex items-center space-x-3 text-slate-400 mb-3">
+                  <TeamIcon className="w-5 h-5" />
+                  <span className="text-sm font-medium">Team Members</span>
+                </div>
+                {project.team?.members && project.team.members.length > 0 ? (
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-4 gap-y-2">
+                    {[...project.team.members].sort((a, b) => {
+                      const getRank = (role?: string) => {
+                        if (role === 'primary') return 1;
+                        if (role === 'secondary') return 2;
+                        return 3;
+                      };
+                      return getRank(a.leadRole) - getRank(b.leadRole);
+                    }).slice(0, 8).map((member) => {
+                      const isPrimary = member.leadRole === 'primary';
+                      const isSecondary = member.leadRole === 'secondary';
+                      const isLead = isPrimary || isSecondary;
+                      const memberPhoto = getUserPhotoURL(member.uid, member.email);
+                      const memberName = getUserDisplayName(member.uid, member.email) || member.displayName || member.email;
+                      return (
+                        <div key={member.uid} className="flex items-center gap-2 min-w-0">
+                          {memberPhoto ? (
+                            <img src={memberPhoto} alt={memberName} className="w-6 h-6 rounded-full object-cover flex-shrink-0" />
+                          ) : (
+                            <div className={`w-6 h-6 rounded-full flex items-center justify-center flex-shrink-0 ${isPrimary ? 'bg-blue-500/20' : isSecondary ? 'bg-amber-500/20' : 'bg-slate-700'
+                              }`}>
+                              {isLead ? <StarIcon className={`w-3 h-3 ${isPrimary ? 'text-blue-400' : 'text-amber-400'}`} /> : <UserIcon className="w-3 h-3 text-slate-400" />}
+                            </div>
+                          )}
+                          <span className={`text-sm ${isPrimary ? 'text-blue-300 font-medium' : isSecondary ? 'text-amber-300 font-medium' : 'text-white'}`}>
+                            {memberName}
                           </span>
-                        )}
-                        {member.phoneNumber && (
-                          <a
-                            href={`https://wa.me/${member.phoneNumber}?text=Hi ${memberName.split(' ')[0]}`}
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            className="text-green-500 hover:text-green-400 p-0.5 rounded-full hover:bg-green-500/10 transition-colors flex-shrink-0"
-                            title={`Chat with ${memberName} on WhatsApp`}
-                            onClick={(e) => e.stopPropagation()}
-                          >
-                            <WhatsAppIcon className="w-4 h-4" />
-                          </a>
+                          <div className="scale-75 origin-left flex-shrink-0">
+                            <UserAchievementBadge userId={member.uid} />
+                          </div>
+                          {isLead && (
+                            <span className={`text-xs px-1.5 py-0.5 rounded flex-shrink-0 ${isPrimary ? 'bg-blue-500/30 text-blue-300' : 'bg-amber-500/30 text-amber-300'}`}>
+                              {isPrimary ? '1st Lead' : '2nd Lead'}
+                            </span>
+                          )}
+                          {member.phoneNumber && (
+                            <a
+                              href={`https://wa.me/${member.phoneNumber}?text=Hi ${memberName.split(' ')[0]}`}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="text-green-500 hover:text-green-400 p-0.5 rounded-full hover:bg-green-500/10 transition-colors flex-shrink-0"
+                              title={`Chat with ${memberName} on WhatsApp`}
+                              onClick={(e) => e.stopPropagation()}
+                            >
+                              <WhatsAppIcon className="w-4 h-4" />
+                            </a>
+                          )}
+                        </div>
+                      );
+                    })}
+                    {project.team.members.length > 8 && (
+                      <p className="text-xs text-slate-400 col-span-full">+{project.team.members.length - 8} more</p>
+                    )}
+                  </div>
+                ) : project.team?.name ? (
+                  <p className="text-white font-semibold">{project.team.name} / {project.team.size || 0}</p>
+                ) : (
+                  <p className="text-slate-500 text-sm">No team assigned</p>
+                )}
+              </div>
+
+              {/* Project Status Card */}
+              {(() => {
+                const allTasks = (project.phases || []).flatMap(ph => (ph.tasks || []).flatMap(t => t.subTasks ? [t, ...t.subTasks] : [t]));
+                const now = new Date();
+                const atRiskCount = allTasks.filter(t => t.status === TaskStatus.AtRisk).length;
+                const overdueCount = allTasks.filter(t => {
+                  const endDate = new Date(t.endDate);
+                  const progress = (() => {
+                    const statusStr = t.status as string;
+                    if (statusStr === TaskStatus.Hundred || statusStr === 'Completed') return 100;
+                    const pct = parseInt(statusStr.replace('%', ''));
+                    return isNaN(pct) ? 0 : pct;
+                  })();
+                  return endDate < now && progress < 100;
+                }).length;
+                const lateDeliveryCount = allTasks.filter(t => {
+                  const endDate = new Date(t.endDate);
+                  const progress = (() => {
+                    const statusStr = t.status as string;
+                    if (statusStr === TaskStatus.Hundred || statusStr === 'Completed') return 100;
+                    const pct = parseInt(statusStr.replace('%', ''));
+                    return isNaN(pct) ? 0 : pct;
+                  })();
+                  // Late delivery: completed but after end date (simplified: just count overdue for now)
+                  return endDate < now && progress === 100;
+                }).length;
+                const totalIssues = atRiskCount + overdueCount;
+
+                return (
+                  <div className="bg-slate-800/50 p-4 rounded-xl border border-slate-700">
+                    <div className="flex items-center space-x-3 text-slate-400 mb-3">
+                      <ChartBarIcon className="w-5 h-5" />
+                      <span className="text-sm font-medium">Project Status</span>
+                    </div>
+                    <div className="space-y-3">
+                      {/* At Risk */}
+                      <div className="flex items-center justify-between">
+                        <div className="flex items-center gap-2">
+                          <div className={`w-2 h-2 rounded-full ${atRiskCount > 0 ? 'bg-red-500' : 'bg-green-500'}`} />
+                          <span className="text-sm text-slate-300">At Risk</span>
+                        </div>
+                        <span className={`text-sm font-semibold ${atRiskCount > 0 ? 'text-red-400' : 'text-green-400'}`}>
+                          {atRiskCount} {atRiskCount === 1 ? 'item' : 'items'}
+                        </span>
+                      </div>
+                      {/* Overdue */}
+                      <div className="flex items-center justify-between">
+                        <div className="flex items-center gap-2">
+                          <div className={`w-2 h-2 rounded-full ${overdueCount > 0 ? 'bg-amber-500' : 'bg-green-500'}`} />
+                          <span className="text-sm text-slate-300">Overdue</span>
+                        </div>
+                        <span className={`text-sm font-semibold ${overdueCount > 0 ? 'text-amber-400' : 'text-green-400'}`}>
+                          {overdueCount} {overdueCount === 1 ? 'task' : 'tasks'}
+                        </span>
+                      </div>
+                      {/* Late Deliveries */}
+                      <div className="flex items-center justify-between">
+                        <div className="flex items-center gap-2">
+                          <div className={`w-2 h-2 rounded-full ${lateDeliveryCount > 0 ? 'bg-orange-500' : 'bg-green-500'}`} />
+                          <span className="text-sm text-slate-300">Late Deliveries</span>
+                        </div>
+                        <span className={`text-sm font-semibold ${lateDeliveryCount > 0 ? 'text-orange-400' : 'text-green-400'}`}>
+                          {lateDeliveryCount}
+                        </span>
+                      </div>
+                      {/* Summary */}
+                      <div className="pt-2 border-t border-slate-700">
+                        {totalIssues === 0 ? (
+                          <p className="text-sm text-green-400 font-medium flex items-center gap-2">
+                            <CheckCircleIcon className="w-4 h-4" /> All on track
+                          </p>
+                        ) : (
+                          <p className="text-sm text-amber-400 font-medium">
+                            {totalIssues} {totalIssues === 1 ? 'issue' : 'issues'} need attention
+                          </p>
                         )}
                       </div>
-                    );
-                  })}
-                  {project.team.members.length > 8 && (
-                    <p className="text-xs text-slate-400 col-span-full">+{project.team.members.length - 8} more</p>
-                  )}
-                </div>
-              ) : project.team?.name ? (
-                <p className="text-white font-semibold">{project.team.name} / {project.team.size || 0}</p>
-              ) : (
-                <p className="text-slate-500 text-sm">No team assigned</p>
-              )}
+                    </div>
+                  </div>
+                );
+              })()}
             </div>
-
-            {/* Project Status Card */}
-            {(() => {
-              const allTasks = (project.phases || []).flatMap(ph => (ph.tasks || []).flatMap(t => t.subTasks ? [t, ...t.subTasks] : [t]));
-              const now = new Date();
-              const atRiskCount = allTasks.filter(t => t.status === TaskStatus.AtRisk).length;
-              const overdueCount = allTasks.filter(t => {
-                const endDate = new Date(t.endDate);
-                const progress = (() => {
-                  const statusStr = t.status as string;
-                  if (statusStr === TaskStatus.Hundred || statusStr === 'Completed') return 100;
-                  const pct = parseInt(statusStr.replace('%', ''));
-                  return isNaN(pct) ? 0 : pct;
-                })();
-                return endDate < now && progress < 100;
-              }).length;
-              const lateDeliveryCount = allTasks.filter(t => {
-                const endDate = new Date(t.endDate);
-                const progress = (() => {
-                  const statusStr = t.status as string;
-                  if (statusStr === TaskStatus.Hundred || statusStr === 'Completed') return 100;
-                  const pct = parseInt(statusStr.replace('%', ''));
-                  return isNaN(pct) ? 0 : pct;
-                })();
-                // Late delivery: completed but after end date (simplified: just count overdue for now)
-                return endDate < now && progress === 100;
-              }).length;
-              const totalIssues = atRiskCount + overdueCount;
-
-              return (
-                <div className="bg-slate-800/50 p-4 rounded-xl border border-slate-700">
-                  <div className="flex items-center space-x-3 text-slate-400 mb-3">
-                    <ChartBarIcon className="w-5 h-5" />
-                    <span className="text-sm font-medium">Project Status</span>
-                  </div>
-                  <div className="space-y-3">
-                    {/* At Risk */}
-                    <div className="flex items-center justify-between">
-                      <div className="flex items-center gap-2">
-                        <div className={`w-2 h-2 rounded-full ${atRiskCount > 0 ? 'bg-red-500' : 'bg-green-500'}`} />
-                        <span className="text-sm text-slate-300">At Risk</span>
-                      </div>
-                      <span className={`text-sm font-semibold ${atRiskCount > 0 ? 'text-red-400' : 'text-green-400'}`}>
-                        {atRiskCount} {atRiskCount === 1 ? 'item' : 'items'}
-                      </span>
-                    </div>
-                    {/* Overdue */}
-                    <div className="flex items-center justify-between">
-                      <div className="flex items-center gap-2">
-                        <div className={`w-2 h-2 rounded-full ${overdueCount > 0 ? 'bg-amber-500' : 'bg-green-500'}`} />
-                        <span className="text-sm text-slate-300">Overdue</span>
-                      </div>
-                      <span className={`text-sm font-semibold ${overdueCount > 0 ? 'text-amber-400' : 'text-green-400'}`}>
-                        {overdueCount} {overdueCount === 1 ? 'task' : 'tasks'}
-                      </span>
-                    </div>
-                    {/* Late Deliveries */}
-                    <div className="flex items-center justify-between">
-                      <div className="flex items-center gap-2">
-                        <div className={`w-2 h-2 rounded-full ${lateDeliveryCount > 0 ? 'bg-orange-500' : 'bg-green-500'}`} />
-                        <span className="text-sm text-slate-300">Late Deliveries</span>
-                      </div>
-                      <span className={`text-sm font-semibold ${lateDeliveryCount > 0 ? 'text-orange-400' : 'text-green-400'}`}>
-                        {lateDeliveryCount}
-                      </span>
-                    </div>
-                    {/* Summary */}
-                    <div className="pt-2 border-t border-slate-700">
-                      {totalIssues === 0 ? (
-                        <p className="text-sm text-green-400 font-medium flex items-center gap-2">
-                          <CheckCircleIcon className="w-4 h-4" /> All on track
-                        </p>
-                      ) : (
-                        <p className="text-sm text-amber-400 font-medium">
-                          {totalIssues} {totalIssues === 1 ? 'issue' : 'issues'} need attention
-                        </p>
-                      )}
-                    </div>
-                  </div>
-                </div>
-              );
-            })()}
           </div>
         </div>
       </div>
