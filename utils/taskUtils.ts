@@ -112,11 +112,22 @@ export const syncTaskDates = (task: Task): Task => {
   );
   const rolledUpStatus = getStatusFromProgress(progress, hasActiveBlocker);
 
+  const resolvedImpediment =
+    rolledUpStatus === TaskStatus.Hundred && task.impediment && !task.impediment.resolved
+      ? {
+          ...task.impediment,
+          resolved: true,
+          resolvedAt: new Date(),
+          resolutionNote: task.impediment.resolutionNote || 'Resolved upon task completion',
+        }
+      : task.impediment;
+
   return {
     ...task,
     startDate,
     endDate,
     status: rolledUpStatus,
+    impediment: resolvedImpediment,
     completedAt: rolledUpStatus === TaskStatus.Hundred ? (task.completedAt || new Date()) : undefined,
     completedBy: rolledUpStatus === TaskStatus.Hundred ? task.completedBy : undefined,
     subTasks: syncedSubTasks,

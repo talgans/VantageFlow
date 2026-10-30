@@ -111,6 +111,12 @@ const SideNav: React.FC<SideNavProps> = ({
       (project.phases || []).forEach(phase => {
         const walkTasks = (tasks: Task[]) => {
           tasks.forEach(task => {
+            if (task.status === TaskStatus.Hundred || (task.status as string) === 'Completed') {
+              if (task.subTasks && task.subTasks.length > 0) {
+                walkTasks(task.subTasks);
+              }
+              return;
+            }
             const hasBlocker = Boolean(task.impediment && !task.impediment.resolved);
             const isAssigned = Boolean(
               currentUserId &&

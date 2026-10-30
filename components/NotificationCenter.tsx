@@ -3,7 +3,7 @@ import { getFirestore, collection, query, where, orderBy, onSnapshot, updateDoc,
 import { getAuth } from 'firebase/auth';
 import { useNavigate } from 'react-router-dom';
 import { Notification, Project, Task, TaskStatus } from '../types';
-import { BellIcon, SparklesIcon, FlagIcon, ChevronDownIcon, CheckCircleIcon } from './icons';
+import { BellIcon, SparklesIcon, FlagIcon, ChevronDownIcon, CheckCircleIcon, XMarkIcon } from './icons';
 
 interface NotificationCenterProps {
     projects?: Project[];
@@ -70,17 +70,56 @@ const extractTaskName = (message: string): string => {
     return '';
 };
 
+const READ_RETENTION_MS = 36 * 60 * 60 * 1000; // 36 hours for read notifications without active blockers
+
 export const NotificationCenter: React.FC<NotificationCenterProps> = ({ projects = [], onSelectTask }) => {
     const [rawNotifications, setRawNotifications] = useState<Notification[]>([]);
     const [isOpen, setIsOpen] = useState(false);
     const [activeTab, setActiveTab] = useState<FilterTab>('all');
     const [collapsedProjects, setCollapsedProjects] = useState<Set<string>>(new Set());
+    const [dismissedIds, setDismissedIds] = useState<Set<string>>(new Set());
     const dropdownRef = useRef<HTMLDivElement>(null);
     const auth = getAuth();
     const db = getFirestore();
     const navigate = useNavigate();
 
     const currentUser = auth.currentUser;
+    const storageKey = currentUser?.uid ? `vf_dismissed_headsup_${currentUser.uid}` : null;
+
+    // Load locally dismissed notification/task IDs
+    useEffect(() => {
+        if (!storageKey) {
+            setDismissedIds(new Set());
+            return;
+        }
+        try {
+            const raw = localStorage.getItem(storageKey);
+            if (raw) {
+                const parsed = JSON.parse(raw);
+                if (Array.isArray(parsed)) {
+                    setDismissedIds(new Set(parsed));
+                }
+            }
+        } catch (err) {
+            console.error('Failed to read dismissed heads-up items from localStorage:', err);
+        }
+    }, [storageKey]);
+
+    const addLocalDismissedIds = (ids: string[]) => {
+        if (!storageKey || ids.length === 0) return;
+        setDismissedIds(prev => {
+            const next = new Set(prev);
+            ids.forEach(id => next.add(id));
+            try {
+                // Keep most recent 250 dismissed keys to avoid unbounded growth
+                const serialized = Array.from(next).slice(-250);
+                localStorage.setItem(storageKey, JSON.stringify(serialized));
+            } catch (err) {
+                console.error('Failed to persist dismissed heads-up items:', err);
+            }
+            return next;
+        });
+    };
 
     // Helper map to quickly find tasks in projects prop
     const taskLookup = useMemo(() => {
@@ -143,9 +182,15 @@ export const NotificationCenter: React.FC<NotificationCenterProps> = ({ projects
 
         const items: HeadsUpNotificationItem[] = [];
         const seenKeys = new Set<string>();
+        const nowMs = Date.now();
 
         // 1. Process Firestore notifications
         rawNotifications.forEach(n => {
+            const itemKey = `notif_${n.id}`;
+            if (n.dismissed || dismissedIds.has(itemKey)) {
+                return;
+            }
+
             const rawMsg = n.message || '';
             const lowerMsg = rawMsg.toLowerCase();
 
@@ -161,6 +206,11 @@ export const NotificationCenter: React.FC<NotificationCenterProps> = ({ projects
 
             const tId = n.taskId || extractTaskId(n.link);
             const liveMatch = tId ? taskLookup.get(tId) : undefined;
+            const liveStatus = liveMatch?.task.status ?? n.status;
+            const isTaskCompleted =
+                liveStatus === TaskStatus.Hundred ||
+                (liveStatus as string) === 'Completed';
+
             const taskName = n.taskName || liveMatch?.task.name || extractTaskName(rawMsg) || 'Task Activity';
             const phaseName = n.phaseName || liveMatch?.phaseName || '';
             const projectName = n.projectName || liveMatch?.projectName || 'Project';
@@ -193,6 +243,20 @@ export const NotificationCenter: React.FC<NotificationCenterProps> = ({ projects
                 badgeStyle = 'bg-green-500/20 text-green-300 border-green-500/30';
             }
 
+            const isRead = n.read ?? false;
+
+            // Lifecycle rule for completed (100%) tasks:
+            // - Auto-clear stale actionable notifications ('assigned', 'blocker', 'blocker_cleared') immediately
+            // - Hide 'completed', 'mention', or 'comment' notifications as soon as they have been read
+            if (isTaskCompleted) {
+                if (type === 'assigned' || type === 'blocker' || type === 'blocker_cleared') {
+                    return;
+                }
+                if (isRead) {
+                    return;
+                }
+            }
+
             // Clean context text
             let contextText = rawMsg;
             if (rawMsg.includes(': ')) {
@@ -200,8 +264,16 @@ export const NotificationCenter: React.FC<NotificationCenterProps> = ({ projects
             }
 
             const createdDate = (n.createdAt as any)?.toDate ? (n.createdAt as any).toDate() : new Date(n.createdAt || Date.now());
+            const hasActiveBlocker =
+                !isTaskCompleted &&
+                (Boolean(liveMatch?.task.impediment && !liveMatch?.task.impediment.resolved) ||
+                    (!liveMatch && type === 'blocker'));
 
-            const itemKey = `notif_${n.id}`;
+            // Auto-hide read notifications older than 36h unless the task still has an active unresolved blocker
+            if (isRead && !hasActiveBlocker && nowMs - createdDate.getTime() > READ_RETENTION_MS) {
+                return;
+            }
+
             seenKeys.add(itemKey);
 
             items.push({
@@ -212,8 +284,8 @@ export const NotificationCenter: React.FC<NotificationCenterProps> = ({ projects
                 phaseName,
                 taskId: tId,
                 taskName,
-                status: liveMatch?.task.status,
-                hasBlocker: Boolean(liveMatch?.task.impediment && !liveMatch?.task.impediment.resolved) || type === 'blocker',
+                status: liveStatus,
+                hasBlocker: hasActiveBlocker,
                 blockerDescription: liveMatch?.task.impediment?.description,
                 type,
                 badgeLabel,
@@ -221,7 +293,7 @@ export const NotificationCenter: React.FC<NotificationCenterProps> = ({ projects
                 contextText,
                 authorName: n.authorName,
                 createdAt: createdDate,
-                read: n.read ?? false,
+                read: isRead,
                 link: n.link,
             });
         });
@@ -233,72 +305,83 @@ export const NotificationCenter: React.FC<NotificationCenterProps> = ({ projects
             (project.phases || []).forEach(phase => {
                 const inspect = (tasks: Task[]) => {
                     tasks.forEach(task => {
-                        const isAssigned = Boolean(
-                            task.assignees?.some(a => a.uid === currentUid || (currentEmail && a.email?.toLowerCase() === currentEmail))
-                        );
+                        const isCompleted =
+                            task.status === TaskStatus.Hundred ||
+                            (task.status as string) === 'Completed';
 
-                        // Check for recent comments directed or mentioning user
-                        const userMentions = (task.feedbackNotes || []).filter(note => {
-                            if (note.author?.uid === currentUid) return false;
-                            const msg = (note.message || '').toLowerCase();
-                            return (
-                                note.mentionedUids?.includes(currentUid) ||
-                                (currentName && msg.includes(`@${currentName}`)) ||
-                                (currentEmail && msg.includes(`@${currentEmail}`))
+                        // Never synthesize fallback items for completed (100%) tasks
+                        if (!isCompleted) {
+                            const isAssigned = Boolean(
+                                task.assignees?.some(a => a.uid === currentUid || (currentEmail && a.email?.toLowerCase() === currentEmail))
                             );
-                        });
 
-                        const latestMentionNote = userMentions.length > 0 ? userMentions[userMentions.length - 1] : null;
+                            // Check for recent comments directed or mentioning user
+                            const userMentions = (task.feedbackNotes || []).filter(note => {
+                                if (note.author?.uid === currentUid) return false;
+                                const msg = (note.message || '').toLowerCase();
+                                return (
+                                    note.mentionedUids?.includes(currentUid) ||
+                                    (currentName && msg.includes(`@${currentName}`)) ||
+                                    (currentEmail && msg.includes(`@${currentEmail}`))
+                                );
+                            });
 
-                        // Only add if user is assigned or directly commented/mentioned
-                        if (isAssigned || latestMentionNote) {
-                            const dedupeKey = `proj_${project.id}_${task.id}`;
-                            // If we already have a recent unread notification for this task, avoid duplicating
-                            const alreadyNotified = items.some(i => i.taskId === task.id && !i.read);
-                            if (!alreadyNotified && !seenKeys.has(dedupeKey)) {
-                                seenKeys.add(dedupeKey);
+                            const latestMentionNote = userMentions.length > 0 ? userMentions[userMentions.length - 1] : null;
 
-                                const hasBlocker = Boolean(task.impediment && !task.impediment.resolved);
-                                const noteDate = latestMentionNote
-                                    ? new Date(latestMentionNote.createdAt)
-                                    : (task.statusUpdatedAt || task.updatedAt ? new Date(task.statusUpdatedAt || task.updatedAt!) : new Date(task.startDate || Date.now()));
+                            // Only add if user is assigned or directly commented/mentioned
+                            if (isAssigned || latestMentionNote) {
+                                const dedupeKey = `proj_${project.id}_${task.id}`;
+                                // If we already have a notification for this task or it was dismissed, avoid duplicating
+                                const alreadyNotified = items.some(i => i.taskId === task.id);
+                                if (!alreadyNotified && !seenKeys.has(dedupeKey) && !dismissedIds.has(dedupeKey)) {
+                                    const hasBlocker = Boolean(task.impediment && !task.impediment.resolved);
+                                    const noteDate = latestMentionNote
+                                        ? new Date(latestMentionNote.createdAt)
+                                        : (task.statusUpdatedAt || task.updatedAt ? new Date(task.statusUpdatedAt || task.updatedAt!) : new Date(task.startDate || Date.now()));
 
-                                if (latestMentionNote) {
-                                    items.push({
-                                        id: dedupeKey,
-                                        projectId: project.id,
-                                        projectName: project.name,
-                                        phaseName: phase.name,
-                                        taskId: task.id,
-                                        taskName: task.name,
-                                        status: task.status,
-                                        hasBlocker,
-                                        type: 'mention',
-                                        badgeLabel: '@Mention',
-                                        badgeStyle: 'bg-indigo-500/20 text-indigo-300 border-indigo-500/40',
-                                        contextText: latestMentionNote.message,
-                                        authorName: latestMentionNote.author?.displayName || latestMentionNote.author?.email?.split('@')[0],
-                                        createdAt: noteDate,
-                                        read: true,
-                                    });
-                                } else if (hasBlocker) {
-                                    items.push({
-                                        id: dedupeKey,
-                                        projectId: project.id,
-                                        projectName: project.name,
-                                        phaseName: phase.name,
-                                        taskId: task.id,
-                                        taskName: task.name,
-                                        status: task.status,
-                                        hasBlocker: true,
-                                        blockerDescription: task.impediment?.description,
-                                        type: 'blocker',
-                                        badgeLabel: 'Blocked',
-                                        badgeStyle: 'bg-red-500/20 text-red-300 border-red-500/40',
-                                        contextText: task.impediment?.description,
-                                        createdAt: task.impediment?.reportedAt ? new Date(task.impediment.reportedAt) : noteDate,
-                                        read: true,
-                                    });
+                                    const isRecentMention =
+                                        Boolean(latestMentionNote) &&
+                                        (hasBlocker || nowMs - noteDate.getTime() <= READ_RETENTION_MS);
+
+                                    if (isRecentMention && latestMentionNote) {
+                                        seenKeys.add(dedupeKey);
+                                        items.push({
+                                            id: dedupeKey,
+                                            projectId: project.id,
+                                            projectName: project.name,
+                                            phaseName: phase.name,
+                                            taskId: task.id,
+                                            taskName: task.name,
+                                            status: task.status,
+                                            hasBlocker,
+                                            type: 'mention',
+                                            badgeLabel: '@Mention',
+                                            badgeStyle: 'bg-indigo-500/20 text-indigo-300 border-indigo-500/40',
+                                            contextText: latestMentionNote.message,
+                                            authorName: latestMentionNote.author?.displayName || latestMentionNote.author?.email?.split('@')[0],
+                                            createdAt: noteDate,
+                                            read: true,
+                                        });
+                                    } else if (hasBlocker) {
+                                        seenKeys.add(dedupeKey);
+                                        items.push({
+                                            id: dedupeKey,
+                                            projectId: project.id,
+                                            projectName: project.name,
+                                            phaseName: phase.name,
+                                            taskId: task.id,
+                                            taskName: task.name,
+                                            status: task.status,
+                                            hasBlocker: true,
+                                            blockerDescription: task.impediment?.description,
+                                            type: 'blocker',
+                                            badgeLabel: 'Blocked',
+                                            badgeStyle: 'bg-red-500/20 text-red-300 border-red-500/40',
+                                            contextText: task.impediment?.description,
+                                            createdAt: task.impediment?.reportedAt ? new Date(task.impediment.reportedAt) : noteDate,
+                                            read: true,
+                                        });
+                                    }
                                 }
                             }
                         }
@@ -318,11 +401,15 @@ export const NotificationCenter: React.FC<NotificationCenterProps> = ({ projects
         });
 
         return items;
-    }, [rawNotifications, projects, taskLookup, currentUser]);
+    }, [rawNotifications, projects, taskLookup, currentUser, dismissedIds]);
 
-    // Unread count
+    // Unread & Read counts
     const unreadCount = useMemo(() => {
         return headsUpItems.filter(i => !i.read).length;
+    }, [headsUpItems]);
+
+    const readCount = useMemo(() => {
+        return headsUpItems.filter(i => i.read).length;
     }, [headsUpItems]);
 
     // Filter items based on active tab
@@ -374,6 +461,42 @@ export const NotificationCenter: React.FC<NotificationCenterProps> = ({ projects
             await updateDoc(doc(db, 'notifications', notificationId), { read: true });
         } catch (error) {
             console.error('Error marking notification as read:', error);
+        }
+    };
+
+    const dismissItem = async (item: HeadsUpNotificationItem) => {
+        addLocalDismissedIds([item.id]);
+        if (item.notificationId) {
+            try {
+                await updateDoc(doc(db, 'notifications', item.notificationId), {
+                    read: true,
+                    dismissed: true,
+                });
+            } catch (error) {
+                console.error('Error dismissing notification:', error);
+            }
+        }
+    };
+
+    const clearReadItems = async () => {
+        const readItems = headsUpItems.filter(i => i.read);
+        if (readItems.length === 0) return;
+
+        addLocalDismissedIds(readItems.map(i => i.id));
+        const firestoreReadItems = readItems.filter(i => i.notificationId);
+        if (firestoreReadItems.length === 0) return;
+
+        try {
+            await Promise.all(
+                firestoreReadItems.map(i =>
+                    updateDoc(doc(db, 'notifications', i.notificationId!), {
+                        read: true,
+                        dismissed: true,
+                    })
+                )
+            );
+        } catch (error) {
+            console.error('Error clearing read notifications:', error);
         }
     };
 
@@ -439,32 +562,43 @@ export const NotificationCenter: React.FC<NotificationCenterProps> = ({ projects
             {isOpen && (
                 <div className="absolute right-0 mt-2 w-[340px] sm:w-[420px] bg-slate-900/95 backdrop-blur-md rounded-2xl shadow-2xl border border-brand-secondary/35 z-50 overflow-hidden flex flex-col max-h-[85vh] animate-fade-in text-slate-200">
                     {/* Header */}
-                    <div className="p-3.5 border-b border-slate-800 bg-slate-800/80 flex items-center justify-between">
-                        <div className="flex items-center gap-2">
-                            <span className="relative flex h-2.5 w-2.5">
+                    <div className="p-3.5 border-b border-slate-800 bg-slate-800/80 flex items-center justify-between gap-2">
+                        <div className="flex items-center gap-2 min-w-0">
+                            <span className="relative flex h-2.5 w-2.5 flex-shrink-0">
                                 <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-brand-secondary opacity-75"></span>
                                 <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-brand-secondary"></span>
                             </span>
-                            <h3 className="text-sm font-bold text-white flex items-center gap-1.5">
+                            <h3 className="text-sm font-bold text-white flex items-center gap-1.5 truncate">
                                 <span>⚡ Heads-Up & Activity</span>
                             </h3>
                             {unreadCount > 0 && (
-                                <span className="text-[10px] font-bold px-1.5 py-0.2 rounded-full bg-red-500/20 text-red-300 border border-red-500/40">
+                                <span className="text-[10px] font-bold px-1.5 py-0.2 rounded-full bg-red-500/20 text-red-300 border border-red-500/40 flex-shrink-0">
                                     {unreadCount} unread
                                 </span>
                             )}
                         </div>
 
-                        {unreadCount > 0 && (
-                            <button
-                                onClick={markAllAsRead}
-                                className="text-xs text-brand-light hover:text-white transition-colors flex items-center gap-1 font-medium"
-                                title="Mark all items as read"
-                            >
-                                <CheckCircleIcon className="w-3.5 h-3.5" />
-                                <span>Mark read</span>
-                            </button>
-                        )}
+                        <div className="flex items-center gap-2.5 flex-shrink-0">
+                            {unreadCount > 0 && (
+                                <button
+                                    onClick={markAllAsRead}
+                                    className="text-xs text-brand-light hover:text-white transition-colors flex items-center gap-1 font-medium"
+                                    title="Mark all items as read"
+                                >
+                                    <CheckCircleIcon className="w-3.5 h-3.5" />
+                                    <span>Mark read</span>
+                                </button>
+                            )}
+                            {readCount > 0 && (
+                                <button
+                                    onClick={clearReadItems}
+                                    className="text-xs text-slate-400 hover:text-slate-200 transition-colors flex items-center gap-1 font-medium"
+                                    title="Dismiss all read notifications"
+                                >
+                                    <span>Clear read</span>
+                                </button>
+                            )}
+                        </div>
                     </div>
 
                     {/* Filter Quick Chips (Heads-Up Style) */}
@@ -552,7 +686,7 @@ export const NotificationCenter: React.FC<NotificationCenterProps> = ({ projects
                                                             )}
 
                                                             <div className="pl-1 space-y-1">
-                                                                {/* Top Row: Phase + Badges + Relative Time */}
+                                                                {/* Top Row: Phase + Badges + Relative Time + Dismiss */}
                                                                 <div className="flex items-center justify-between gap-1 text-[10px]">
                                                                     <div className="flex items-center gap-1.5 truncate">
                                                                         {item.phaseName && (
@@ -564,9 +698,23 @@ export const NotificationCenter: React.FC<NotificationCenterProps> = ({ projects
                                                                             {item.badgeLabel}
                                                                         </span>
                                                                     </div>
-                                                                    <span className="text-slate-400 font-mono text-[10px] flex-shrink-0">
-                                                                        {formatRelativeTime(item.createdAt)}
-                                                                    </span>
+                                                                    <div className="flex items-center gap-1 flex-shrink-0">
+                                                                        <span className="text-slate-400 font-mono text-[10px]">
+                                                                            {formatRelativeTime(item.createdAt)}
+                                                                        </span>
+                                                                        <button
+                                                                            type="button"
+                                                                            onClick={(e) => {
+                                                                                e.stopPropagation();
+                                                                                dismissItem(item);
+                                                                            }}
+                                                                            className="p-0.5 rounded text-slate-500 hover:text-slate-200 hover:bg-slate-700/60 transition-colors"
+                                                                            title="Dismiss notification"
+                                                                            aria-label="Dismiss notification"
+                                                                        >
+                                                                            <XMarkIcon className="w-3.5 h-3.5" />
+                                                                        </button>
+                                                                    </div>
                                                                 </div>
 
                                                                 {/* Middle Row: Task Name */}

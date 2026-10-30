@@ -118,6 +118,7 @@ export interface Notification {
   authorPhotoURL?: string;
   message: string;
   read: boolean;
+  dismissed?: boolean;
   emailSent: boolean;
   createdAt: Date;
   link?: string;

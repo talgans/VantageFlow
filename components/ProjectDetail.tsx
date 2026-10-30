@@ -2009,6 +2009,10 @@ const ProjectDetail: React.FC<ProjectDetailProps> = ({ project, onBack, canEdit,
       const inspect = (tasks: Task[]) => {
         tasks.forEach(t => {
           const hasBlocker = Boolean(t.impediment && !t.impediment.resolved);
+          if (t.status === TaskStatus.Hundred || (t.status as string) === 'Completed') {
+            if (t.subTasks) inspect(t.subTasks);
+            return;
+          }
           let ts = getTaskActivityTimestamp(t);
           if (lastLocalActiveTaskId && t.id === lastLocalActiveTaskId) {
             ts = Infinity;
@@ -2740,6 +2744,15 @@ const ProjectDetail: React.FC<ProjectDetailProps> = ({ project, onBack, canEdit,
             if (value === TaskStatus.Hundred || value === 'Completed') {
               task.completedAt = now;
               task.completedBy = currentUserMember;
+              if (task.impediment && !task.impediment.resolved) {
+                task.impediment = {
+                  ...task.impediment,
+                  resolved: true,
+                  resolvedAt: now,
+                  resolvedBy: currentUserMember,
+                  resolutionNote: task.impediment.resolutionNote || 'Resolved upon task completion',
+                };
+              }
             } else {
               task.completedAt = undefined;
               task.completedBy = undefined;
@@ -2756,6 +2769,15 @@ const ProjectDetail: React.FC<ProjectDetailProps> = ({ project, onBack, canEdit,
                   if (value === TaskStatus.Hundred || value === 'Completed') {
                     sub.completedAt = now;
                     sub.completedBy = currentUserMember;
+                    if (sub.impediment && !sub.impediment.resolved) {
+                      sub.impediment = {
+                        ...sub.impediment,
+                        resolved: true,
+                        resolvedAt: now,
+                        resolvedBy: currentUserMember,
+                        resolutionNote: sub.impediment.resolutionNote || 'Resolved upon task completion',
+                      };
+                    }
                   } else {
                     sub.completedAt = undefined;
                     sub.completedBy = undefined;
@@ -2789,14 +2811,20 @@ const ProjectDetail: React.FC<ProjectDetailProps> = ({ project, onBack, canEdit,
 
     // Keep visual anchor on the task so user doesn't lose context after re-sorting
     setHighlightedTaskId(taskId);
-    setLastLocalActiveTaskId(taskId);
+    if (field === 'status' && (value === TaskStatus.Hundred || value === 'Completed')) {
+      setLastLocalActiveTaskId(prev => (prev === taskId ? null : prev));
+    } else {
+      setLastLocalActiveTaskId(taskId);
+    }
     setIsHeadsUpDismissed(false);
     setTimeout(() => {
       setHighlightedTaskId(prev => (prev === taskId ? null : prev));
     }, 4500);
 
     if (field === 'status') {
-      showToast(`Status updated to "${value}". Follow-up available in Heads-Up.`);
+      if (value !== TaskStatus.Hundred && value !== 'Completed') {
+        showToast(`Status updated to "${value}". Follow-up available in Heads-Up.`);
+      }
     }
 
     // Check phase completion and award points
