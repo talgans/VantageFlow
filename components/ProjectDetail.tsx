@@ -7,7 +7,7 @@ import { notificationService } from '../services/notificationService';
 import { achievementService } from '../services/achievementService';
 import { getProjectInsights } from '../services/geminiService';
 import { uploadTaskImage } from '../services/storageService';
-import { ArrowLeftIcon, SparklesIcon, InfoIcon, TeamIcon, CalendarIcon, MoneyIcon, CheckCircleIcon, PlusCircleIcon, ChevronRightIcon, ChevronLeftIcon, ChevronDownIcon, ListBulletIcon, ChartBarIcon, TrashIcon, ArrowUpIcon, ArrowDownIcon, GripVerticalIcon, StarIcon, UserIcon, WhatsAppIcon, PhotoIcon, XMarkIcon, FlagIcon, MagnifyingGlassIcon, ChatBubbleBottomCenterTextIcon, CornerDownRightIcon } from './icons';
+import { ArrowLeftIcon, SparklesIcon, InfoIcon, TeamIcon, CalendarIcon, MoneyIcon, CheckCircleIcon, PlusCircleIcon, ChevronRightIcon, ChevronLeftIcon, ChevronDownIcon, ListBulletIcon, ChartBarIcon, TrashIcon, ArrowUpIcon, ArrowDownIcon, GripVerticalIcon, StarIcon, TrophyIcon, UserIcon, WhatsAppIcon, PhotoIcon, XMarkIcon, FlagIcon, MagnifyingGlassIcon, ChatBubbleBottomCenterTextIcon, CornerDownRightIcon } from './icons';
 import { TaskImpedimentModal } from './TaskImpedimentModal';
 import { TaskCompletionModal } from './TaskCompletionModal';
 import { TaskFeedbackDrawer } from './TaskFeedbackDrawer';
@@ -146,6 +146,7 @@ import { useUserLookup } from '../hooks/useUserLookup';
 import SectionStatusDonut from './charts/SectionStatusDonut';
 import PriorityDonut from './charts/PriorityDonut';
 import UserAchievementBadge from './UserAchievementBadge';
+import ProjectPerformanceView from './ProjectPerformanceView';
 import { usePresence } from '../hooks/usePresence';
 import OnlineUsersPanel from './OnlineUsersPanel';
 import { getRolledUpTaskDates, syncProjectTaskDates } from '../utils/taskUtils';
@@ -1711,7 +1712,7 @@ const ProjectDetail: React.FC<ProjectDetailProps> = ({ project, onBack, canEdit,
   const [addingSubtaskTo, setAddingSubtaskTo] = useState<string | null>(null);
   const [addingTaskToPhase, setAddingTaskToPhase] = useState<string | null>(null);
   const [editingField, setEditingField] = useState<{ taskId: string; field: string } | null>(null);
-  const [viewMode, setViewMode] = useState<'list' | 'gantt'>('list');
+  const [viewMode, setViewMode] = useState<'list' | 'gantt' | 'performance'>('list');
   const [taskToDeleteId, setTaskToDeleteId] = useState<string | null>(null);
   const [sortConfig, setSortConfig] = useState<SortConfig>({ key: 'status', direction: 'ascending' });
   const [impedimentModalTask, setImpedimentModalTask] = useState<Task | null>(null);
@@ -2209,7 +2210,8 @@ const ProjectDetail: React.FC<ProjectDetailProps> = ({ project, onBack, canEdit,
     };
     updatedProject.phases.forEach((p: Phase) => updateInTasks(p.tasks));
     onUpdateProject(updatedProject);
-    showToast('Task marked At Risk: blocker recorded');
+    if (currentUserId) { achievementService.awardPoints(currentUserId, 2, 'blocker_resolved', `Flagged blocker on "${taskToBlock.name}"`, project.id); }
+    showToast('Task marked At Risk: blocker recorded (+2 XP Transparency)');
 
     if (notify) {
       const recipients = getTaskFeedbackRecipients(taskToBlock);
@@ -2251,7 +2253,8 @@ const ProjectDetail: React.FC<ProjectDetailProps> = ({ project, onBack, canEdit,
     };
     updatedProject.phases.forEach((p: Phase) => updateInTasks(p.tasks));
     onUpdateProject(updatedProject);
-    showToast(`Blocker resolved! Status restored to ${newStatus}`);
+    if (currentUserId) { achievementService.awardPoints(currentUserId, 10, 'blocker_resolved', `Resolved blocker on "${taskToResolve.name}"`, project.id); }
+    showToast(`Blocker resolved! Status restored to ${newStatus} (+10 XP Unblocker!)`);
 
     if (notify) {
       const recipients = getTaskFeedbackRecipients(taskToResolve);
@@ -2325,8 +2328,9 @@ const ProjectDetail: React.FC<ProjectDetailProps> = ({ project, onBack, canEdit,
     onUpdateProject(updatedProject);
     showToast(
       mentionedMembers && mentionedMembers.length > 0
-        ? `Feedback note posted (${mentionedMembers.length} member${mentionedMembers.length > 1 ? 's' : ''} mentioned)`
-        : 'Feedback note added'
+        ? `Feedback note posted (${mentionedMembers.length} member${mentionedMembers.length > 1 ? 's' : ''} mentioned) (+3 XP)`
+        : 'Feedback note added (+3 XP)'
+    ); if (currentUserId) { achievementService.awardPoints(currentUserId, 3, 'collaboration', `Posted feedback note on "${targetTask.name}"`, project.id); } void (0
     );
 
     // If notify is checked OR if there are explicitly @mentioned members, send notification
@@ -2823,7 +2827,12 @@ const ProjectDetail: React.FC<ProjectDetailProps> = ({ project, onBack, canEdit,
 
     if (field === 'status') {
       if (value !== TaskStatus.Hundred && value !== 'Completed') {
-        showToast(`Status updated to "${value}". Follow-up available in Heads-Up.`);
+        const xpMap: Record<string, number> = { [TaskStatus.TwentyFive]: 3, [TaskStatus.Fifty]: 5, [TaskStatus.SeventyFive]: 8 };
+        const progXp = xpMap[value as string] || 0;
+        if (progXp > 0 && currentUserId) {
+          achievementService.awardPoints(currentUserId, progXp, 'progress_update', `Updated "${existingTask?.name || 'task'}" progress to ${value}`, project.id);
+        }
+        showToast(`Status updated to "${value}"${progXp > 0 ? ` (+${progXp} XP Progress!)` : ''}. Follow-up available in Heads-Up.`);
       }
     }
 
@@ -2878,10 +2887,10 @@ const ProjectDetail: React.FC<ProjectDetailProps> = ({ project, onBack, canEdit,
         // Award points to all assignees
         completedTask.assignees.forEach(async (member) => {
           if (member.uid) {
-            await achievementService.awardPoints(member.uid, 10, 'task_complete', `Completed task: ${completedTask.name}`, project.id);
+            const priPts = completedTask.priority === TaskPriority.Critical ? 25 : completedTask.priority === TaskPriority.Enhancement ? 10 : 15; const isOnTime = !completedTask.endDate || new Date(completedTask.endDate).getTime() + 86400000 >= Date.now(); await achievementService.awardPoints(member.uid, priPts + (isOnTime ? 10 : 0), 'task_complete', `Completed task: ${completedTask.name}${isOnTime ? ' (On-Time +10 XP)' : ''}`, project.id);
           }
         });
-        showToast('Task completed! 10 points awarded to assignees.');
+        const basePriPts = completedTask.priority === TaskPriority.Critical ? 25 : completedTask.priority === TaskPriority.Enhancement ? 10 : 15; const onTimeBonus = !completedTask.endDate || new Date(completedTask.endDate).getTime() + 86400000 >= Date.now() ? 10 : 0; showToast(`Task completed! +${basePriPts + onTimeBonus} XP awarded to assignees${onTimeBonus ? ' (+10 XP On-Time bonus!)' : ''}.`);
       }
     }
   };
@@ -3043,7 +3052,8 @@ const ProjectDetail: React.FC<ProjectDetailProps> = ({ project, onBack, canEdit,
       }
 
       onUpdateProject(updatedProject);
-      showToast('Image uploaded successfully');
+      if (currentUserId) { achievementService.awardPoints(currentUserId, 5, 'quality', `Uploaded proof image on task`, project.id); }
+      showToast('Image uploaded successfully (+5 XP Proof of Work!)');
     } catch (error) {
       console.error('Error uploading task image:', error);
       showToast('Failed to upload image. Please try again.');
@@ -3496,6 +3506,7 @@ const ProjectDetail: React.FC<ProjectDetailProps> = ({ project, onBack, canEdit,
                 <div className="flex items-center space-x-3 text-slate-400 mb-3">
                   <TeamIcon className="w-5 h-5" />
                   <span className="text-sm font-medium">Team Members</span>
+                  <button type="button" onClick={(e) => { e.stopPropagation(); setViewMode('performance'); }} className="ml-auto inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-semibold bg-yellow-500/15 hover:bg-yellow-500/25 text-yellow-300 border border-yellow-500/30 transition-colors" title="Open Project Team Performance & Leaderboard"><TrophyIcon className="w-3.5 h-3.5 text-yellow-400" /><span>Team Performance</span></button>
                 </div>
                 {project.team?.members && project.team.members.length > 0 ? (
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-4 gap-y-2">
@@ -3680,6 +3691,7 @@ const ProjectDetail: React.FC<ProjectDetailProps> = ({ project, onBack, canEdit,
             <div className="flex items-center rounded-lg bg-slate-900 p-1">
               <ViewModeButton icon={<ListBulletIcon />} label="List" isActive={viewMode === 'list'} onClick={() => setViewMode('list')} />
               <ViewModeButton icon={<ChartBarIcon />} label="Gantt" isActive={viewMode === 'gantt'} onClick={() => setViewMode('gantt')} />
+              <ViewModeButton icon={<TrophyIcon />} label="Performance" isActive={viewMode === 'performance'} onClick={() => setViewMode('performance')} />
             </div>
           </div>
         </div>
@@ -4217,7 +4229,21 @@ const ProjectDetail: React.FC<ProjectDetailProps> = ({ project, onBack, canEdit,
           })}
           </>
         ) : (
-          <GanttChart project={project} />
+          viewMode === 'gantt' ? (
+            <GanttChart project={project} />
+          ) : (
+            <ProjectPerformanceView
+              projects={[project]}
+              focusedProject={project}
+              currentUserId={currentUserId}
+              currentUserName={currentUserMember.displayName || currentUserEmail}
+              showToast={showToast}
+              onJumpToTask={(_projId, taskId, phaseId) => {
+                setViewMode('list');
+                setTimeout(() => jumpToTask(taskId, phaseId), 80);
+              }}
+            />
+          )
         )}
       </div>
 

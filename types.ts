@@ -124,21 +124,95 @@ export interface Notification {
   link?: string;
 }
 
+export type AchievementCategory =
+  | 'task_complete'
+  | 'phase_complete'
+  | 'milestone'
+  | 'collaboration'
+  | 'quality'
+  | 'progress_update'
+  | 'blocker_resolved'
+  | 'kudos';
+
 export interface UserAchievement {
   id: string;
   userId: string;
   points: number;
-  category: 'task_complete' | 'phase_complete' | 'milestone' | 'collaboration' | 'quality';
+  category: AchievementCategory;
   description: string;
-  awardedAt: Date;
+  awardedAt: Date | any;
   projectId?: string;
+  fromUserId?: string;
+  fromUserName?: string;
 }
 
 export interface UserStats {
   userId: string;
   totalPoints: number;
   starRating: 1 | 2 | 3 | 4 | 5;
+  rankTitle?: string;
+  nextStarPoints?: number;
   achievements: UserAchievement[];
+}
+
+export interface BadgeAward {
+  id: string;
+  label: string;
+  icon: string;
+  description: string;
+  colorClass: string;
+}
+
+export interface QuickWinOpportunity {
+  id: string;
+  projectId: string;
+  projectName: string;
+  phaseId: string;
+  phaseName: string;
+  taskId: string;
+  taskName: string;
+  actionLabel: string;
+  reason: string;
+  xpReward: number;
+  urgency: 'high' | 'medium' | 'low';
+}
+
+export interface MemberPerformanceMetrics {
+  userId: string;
+  displayName?: string;
+  email?: string;
+  photoURL?: string;
+  leadRole?: 'primary' | 'secondary';
+  totalPoints: number;
+  starRating: 1 | 2 | 3 | 4 | 5;
+  rankTitle: string;
+  nextRankTitle: string | null;
+  pointsToNextStar: number;
+  progressToNextStarPct: number;
+  // Dimension breakdowns
+  executionPoints: number;     // Completions & priority bonus
+  timelinessPoints: number;    // On-time delivery bonuses
+  communicationPoints: number; // Feedback notes & @mentions
+  unblockingPoints: number;    // Blockers reported & resolved
+  transparencyPoints: number;  // Incremental status updates (25/50/75%) & proof uploads
+  kudosPoints: number;         // Peer kudos received
+  // Operational counts
+  tasksAssigned: number;
+  tasksCompleted: number;
+  tasksInProgress: number;
+  tasksOnTime: number;
+  criticalCompleted: number;
+  completionRatePct: number;
+  onTimeRatePct: number;
+  feedbackNotesCount: number;
+  blockersResolvedCount: number;
+  blockersReportedCount: number;
+  proofUploadsCount: number;
+  kudosReceivedCount: number;
+  achievementsCount: number;
+  needsEngagement: boolean;
+  badges: BadgeAward[];
+  lastActiveAt?: Date | null;
 }
 
 export interface Project {

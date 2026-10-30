@@ -587,7 +587,7 @@ const App: React.FC = () => {
                             showToast={showToast}
                         />
                     ) : currentPage === 'performance' ? (
-                        <UserPerformanceDashboard projects={projects.filter(p => !p.isDeleted)} />
+                        <UserPerformanceDashboard projects={projects.filter(p => !p.isDeleted)} showToast={showToast} onSelectTask={(projectId, taskId, phaseId) => { const targetProject = projects.find(p => p.id === projectId); if (targetProject) { handleSelectProject(targetProject); setActiveDeepLink({ projectId, taskId, phaseId }); } }} />
                     ) : currentPage === 'projects' ? (
                         <ProjectsList
                             projects={projects}
