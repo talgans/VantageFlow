@@ -1,6 +1,5 @@
-
 import React, { useState, useRef, useEffect, useMemo } from 'react';
-import { UserRole, Project, TaskStatus } from '../types';
+import { UserRole, Project, Task, TaskStatus } from '../types';
 import { UsersIcon, Bars3Icon, UserIcon, ChevronDownIcon } from './icons';
 import { useAuth } from '../contexts/AuthContext';
 import { useUserLookup } from '../hooks/useUserLookup';
@@ -8,6 +7,21 @@ import { usePresence } from '../hooks/usePresence';
 import UserAchievementBadge from './UserAchievementBadge';
 import OnlineUsersAccordion from './OnlineUsersAccordion';
 import NotificationCenter from './NotificationCenter';
+import CircularProgress from './CircularProgress';
+
+const calculateTaskProgress = (task: Task): number => {
+  if (!task.subTasks || task.subTasks.length === 0) {
+    const statusStr = task.status as string;
+    if (statusStr === TaskStatus.AtRisk) return 50;
+    const percentage = parseInt(statusStr.replace('%', ''));
+    if (!isNaN(percentage)) return percentage;
+    if (statusStr === 'Completed') return 100;
+    if (statusStr === 'In Progress') return 50;
+    return 0;
+  }
+  const totalProgress = task.subTasks.reduce((sum, subTask) => sum + calculateTaskProgress(subTask), 0);
+  return Math.round(totalProgress / task.subTasks.length);
+};
 
 interface HeaderProps {
   currentUserRole: UserRole;
@@ -18,6 +32,8 @@ interface HeaderProps {
   projects?: Project[];
   selectedProject?: Project | null;
   onSelectTask?: (projectId: string, taskId: string) => void;
+  isProjectScrolled?: boolean;
+  onProjectTitleClick?: () => void;
 }
 
 const Header: React.FC<HeaderProps> = ({
@@ -29,6 +45,8 @@ const Header: React.FC<HeaderProps> = ({
   projects = [],
   selectedProject,
   onSelectTask,
+  isProjectScrolled = false,
+  onProjectTitleClick,
 }) => {
   const { user } = useAuth();
   const { getUserById } = useUserLookup();
@@ -64,6 +82,15 @@ const Header: React.FC<HeaderProps> = ({
   };
 
   const { name: displayName, photo: photoURL } = getUserDisplayInfo();
+
+  // Calculate overall completion percentage for the currently active project
+  const selectedProjectCompletionPct = useMemo(() => {
+    if (!selectedProject) return 0;
+    const rootTasks = (selectedProject.phases || []).flatMap(ph => ph.tasks || []);
+    if (rootTasks.length === 0) return 0;
+    const totalProgress = rootTasks.reduce((sum, t) => sum + calculateTaskProgress(t), 0);
+    return Math.round(totalProgress / rootTasks.length);
+  }, [selectedProject]);
 
   // Calculate project stats for the current user
   const userStats = useMemo(() => {
@@ -179,9 +206,17 @@ const Header: React.FC<HeaderProps> = ({
     });
   }, [onlineUsers, user, activeProjectScope.isEligible, teammateKeys]);
 
+  const showGlassProjectPill = Boolean(selectedProject && isProjectScrolled);
+
   return (
-    <header className="flex-shrink-0 bg-slate-900/70 backdrop-blur-sm sticky top-0 z-10 p-4 border-b border-slate-700 flex justify-between items-center gap-4">
-      <div className="flex items-center space-x-3 sm:space-x-5 min-w-0">
+    <header
+      className={`flex-shrink-0 sticky top-0 z-20 p-4 border-b flex justify-between items-center gap-4 transition-all duration-300 ${
+        showGlassProjectPill
+          ? 'bg-slate-900/55 backdrop-blur-xl border-white/10 shadow-[0_8px_30px_rgb(0,0,0,0.35)]'
+          : 'bg-slate-900/70 backdrop-blur-sm border-slate-700'
+      }`}
+    >
+      <div className="flex items-center space-x-3 sm:space-x-5 min-w-0 flex-1">
         <button
           onClick={onMenuClick}
           className="lg:hidden text-slate-400 hover:text-white transition-colors p-2 flex-shrink-0"
@@ -192,11 +227,49 @@ const Header: React.FC<HeaderProps> = ({
           VantageFlow
         </h1>
         {user && activeProjectScope.isEligible && scopedOnlineUsers.length > 0 && (
-          <OnlineUsersAccordion
-            users={scopedOnlineUsers}
-            currentUserId={user.uid}
-            projects={activeProjectScope.relevantProjects}
-          />
+          <div className="flex-shrink-0">
+            <OnlineUsersAccordion
+              users={scopedOnlineUsers}
+              currentUserId={user.uid}
+              projects={activeProjectScope.relevantProjects}
+            />
+          </div>
+        )}
+
+        {/* Glass Mode Project Title Pill — transitions into header next to "Who's Online" when scrolling down */}
+        {selectedProject && (
+          <button
+            type="button"
+            onClick={onProjectTitleClick}
+            title={`${selectedProject.name} (${selectedProjectCompletionPct}%) — Click to scroll to top`}
+            aria-hidden={!showGlassProjectPill}
+            tabIndex={showGlassProjectPill ? 0 : -1}
+            className={`group relative flex items-center gap-2.5 px-3.5 py-1.5 rounded-xl min-w-0 max-w-xs sm:max-w-md lg:max-w-xl cursor-pointer select-none transition-all duration-300 ease-out bg-gradient-to-r from-white/[0.09] via-white/[0.06] to-slate-800/40 hover:from-white/[0.14] hover:to-slate-800/60 backdrop-blur-xl border border-white/15 hover:border-white/25 shadow-[0_4px_24px_-4px_rgba(0,0,0,0.5),inset_0_1px_0_0_rgba(255,255,255,0.2)] ${
+              showGlassProjectPill
+                ? 'opacity-100 translate-y-0 scale-100 pointer-events-auto'
+                : 'opacity-0 translate-y-3 scale-95 pointer-events-none'
+            }`}
+          >
+            <CircularProgress
+              percentage={selectedProjectCompletionPct}
+              size={26}
+              strokeWidth={2.75}
+              showText={false}
+              className="flex-shrink-0"
+            />
+            <span className="font-semibold text-sm sm:text-[15px] text-white/95 group-hover:text-white truncate tracking-tight drop-shadow-sm">
+              {selectedProject.name}
+            </span>
+            {selectedProject.isPublic ? (
+              <span className="hidden xs:inline-flex sm:inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-medium bg-blue-500/15 text-blue-300 border border-blue-400/30 backdrop-blur-md flex-shrink-0">
+                <span className="mr-1">🌐</span> Public
+              </span>
+            ) : (
+              <span className="hidden xs:inline-flex sm:inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-medium bg-slate-800/70 text-slate-300 border border-white/15 backdrop-blur-md flex-shrink-0">
+                <span className="mr-1">🔒</span> Private
+              </span>
+            )}
+          </button>
         )}
       </div>
       <div className="flex items-center space-x-3 sm:space-x-4 flex-shrink-0">

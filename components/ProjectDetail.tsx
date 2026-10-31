@@ -415,6 +415,7 @@ interface ProjectDetailProps {
   onEditProject?: () => void;
   initialTarget?: InitialTargetItem;
   onClearInitialTarget?: () => void;
+  isScrolled?: boolean;
 }
 
 type SortKey = 'name' | 'startDate' | 'status' | 'priority' | 'deliverables' | 'updatedAt';
@@ -1694,7 +1695,7 @@ const findNextIncompleteTask = (
   return null;
 };
 
-const ProjectDetail: React.FC<ProjectDetailProps> = ({ project, onBack, canEdit, onUpdateProject, showToast, currentUserId, currentUserEmail, userRole, onEditProject, initialTarget, onClearInitialTarget }) => {
+const ProjectDetail: React.FC<ProjectDetailProps> = ({ project, onBack, canEdit, onUpdateProject, showToast, currentUserId, currentUserEmail, userRole, onEditProject, initialTarget, onClearInitialTarget, isScrolled = false }) => {
   const { getProjectOnlineUsers } = usePresence(project.id);
   const projectOnlineUsers = useMemo(() => getProjectOnlineUsers(project), [getProjectOnlineUsers, project]);
   const [aiInsight, setAiInsight] = useState('');
@@ -3177,17 +3178,19 @@ const ProjectDetail: React.FC<ProjectDetailProps> = ({ project, onBack, canEdit,
               aria-expanded={false}
             >
               <div className="flex items-center gap-3 min-w-0">
-                <CircularProgress percentage={overallCompletionPct} size={30} strokeWidth={3} showText={false} />
-                <span className="font-semibold text-base text-white truncate">{project.name}</span>
-                {project.isPublic ? (
-                  <span className="inline-flex items-center px-2 py-0.2 rounded-full text-[10px] font-medium bg-blue-500/10 text-blue-400 border border-blue-500/30">
-                    <span className="mr-1">🌐</span> Public
-                  </span>
-                ) : (
-                  <span className="inline-flex items-center px-2 py-0.2 rounded-full text-[10px] font-medium bg-slate-700/80 text-slate-400 border border-slate-600">
-                    <span className="mr-1">🔒</span> Private
-                  </span>
-                )}
+                <div className={`flex items-center gap-3 min-w-0 transition-all duration-300 ease-out ${isScrolled ? '-translate-y-3 opacity-0' : 'translate-y-0 opacity-100'}`}>
+                  <CircularProgress percentage={overallCompletionPct} size={30} strokeWidth={3} showText={false} />
+                  <span className="font-semibold text-base text-white truncate">{project.name}</span>
+                  {project.isPublic ? (
+                    <span className="inline-flex items-center px-2 py-0.2 rounded-full text-[10px] font-medium bg-blue-500/10 text-blue-400 border border-blue-500/30">
+                      <span className="mr-1">🌐</span> Public
+                    </span>
+                  ) : (
+                    <span className="inline-flex items-center px-2 py-0.2 rounded-full text-[10px] font-medium bg-slate-700/80 text-slate-400 border border-slate-600">
+                      <span className="mr-1">🔒</span> Private
+                    </span>
+                  )}
+                </div>
                 <span className="text-xs font-semibold text-slate-400 flex-shrink-0">{overallCompletionPct}%</span>
                 {projectStartDateLabel && (
                   <span className="hidden sm:flex items-center gap-1 text-xs text-slate-400 flex-shrink-0">

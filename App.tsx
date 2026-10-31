@@ -119,6 +119,16 @@ const App: React.FC = () => {
 
     const [isSideNavOpen, setIsSideNavOpen] = useState(false);
     const [isSideNavCollapsed, setIsSideNavCollapsed] = useState(false);
+    const [isProjectScrolled, setIsProjectScrolled] = useState(false);
+    const mainScrollRef = useRef<HTMLElement>(null);
+
+    // Reset scroll state when switching or closing a project
+    useEffect(() => {
+        setIsProjectScrolled(false);
+        if (mainScrollRef.current && !activeDeepLink) {
+            mainScrollRef.current.scrollTop = 0;
+        }
+    }, [selectedProject?.id]);
 
     const [isProjectModalOpen, setIsProjectModalOpen] = useState(false);
     const [editingProject, setEditingProject] = useState<Project | null>(null);
@@ -516,6 +526,10 @@ const App: React.FC = () => {
                 }}
                 projects={projects}
                 selectedProject={selectedProject}
+                isProjectScrolled={isProjectScrolled}
+                onProjectTitleClick={() => {
+                    mainScrollRef.current?.scrollTo({ top: 0, behavior: 'smooth' });
+                }}
                 onSelectTask={(projectId, taskId) => {
                     const targetProject = projects.find(p => p.id === projectId);
                     if (targetProject) {
@@ -561,7 +575,18 @@ const App: React.FC = () => {
                         }
                     }}
                 />
-                <main className="flex-1 min-w-0 overflow-y-auto p-4 sm:p-6 lg:p-8">
+                <main
+                    ref={mainScrollRef}
+                    onScroll={(e) => {
+                        if (selectedProject) {
+                            const scrolled = e.currentTarget.scrollTop > 70;
+                            if (scrolled !== isProjectScrolled) {
+                                setIsProjectScrolled(scrolled);
+                            }
+                        }
+                    }}
+                    className="flex-1 min-w-0 overflow-y-auto p-4 sm:p-6 lg:p-8"
+                >
                     {selectedProject ? (
                         <ProjectDetail
                             project={selectedProject}
@@ -575,6 +600,7 @@ const App: React.FC = () => {
                             onEditProject={() => handleShowEditProjectModal(selectedProject)}
                             initialTarget={activeDeepLink?.projectId === selectedProject.id ? activeDeepLink : undefined}
                             onClearInitialTarget={() => setActiveDeepLink(null)}
+                            isScrolled={isProjectScrolled}
                         />
                     ) : currentPage === 'users' ? (
                         <UserAdministrationPage
