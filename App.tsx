@@ -551,6 +551,7 @@ const App: React.FC = () => {
                     isCollapsed={isSideNavCollapsed}
                     onToggleCollapse={() => setIsSideNavCollapsed(!isSideNavCollapsed)}
                     projects={projects}
+                    selectedProject={selectedProject}
                     currentUserId={user?.uid}
                     onSelectTask={(projectId, taskId) => {
                         const targetProject = projects.find(p => p.id === projectId);

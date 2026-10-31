@@ -1,4 +1,4 @@
-import React, { useMemo } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { UserRole, Project, Task, TaskStatus } from '../types';
 import {
   HomeIcon,
@@ -21,6 +21,7 @@ interface SideNavProps {
   isCollapsed: boolean;
   onToggleCollapse: () => void;
   projects?: Project[];
+  selectedProject?: Project | null;
   currentUserId?: string;
   onSelectTask?: (projectId: string, taskId: string) => void;
 }
@@ -37,6 +38,8 @@ interface RecentFollowUpItem {
   timestamp: Date;
   isAssignedToUser: boolean;
 }
+
+const MAX_HEADS_UP_ITEMS = 10;
 
 const formatRelativeTime = (dateInput?: Date | string | null): string => {
   if (!dateInput) return '';
@@ -83,10 +86,22 @@ const SideNav: React.FC<SideNavProps> = ({
   isCollapsed,
   onToggleCollapse,
   projects,
+  selectedProject,
   currentUserId,
   onSelectTask,
 }) => {
   const isAdmin = userRole === UserRole.Admin || userRole === UserRole.SuperAdmin;
+
+  // Scope mode when a project is selected: auto-defaults to 'project' and resets on project switch
+  const [scopeMode, setScopeMode] = useState<'project' | 'all'>('project');
+
+  useEffect(() => {
+    if (selectedProject?.id) {
+      setScopeMode('project');
+    }
+  }, [selectedProject?.id]);
+
+  const isScopedToProject = Boolean(selectedProject && scopeMode === 'project');
 
   const navItems = [
     { id: 'dashboard', label: 'Dashboard', icon: HomeIcon, adminOnly: false },
@@ -100,14 +115,16 @@ const SideNav: React.FC<SideNavProps> = ({
     onClose();
   };
 
-  // Extract recent / actionable tasks across active projects
+  // Extract recent / actionable tasks (scoped to selectedProject when in 'project' mode, otherwise across active projects)
   const recentFollowUps = useMemo<RecentFollowUpItem[]>(() => {
     if (!projects || projects.length === 0) return [];
     const items: RecentFollowUpItem[] = [];
 
-    const activeProjects = projects.filter(p => !p.isDeleted && !p.isArchived);
+    const sourceProjects = isScopedToProject && selectedProject
+      ? [selectedProject]
+      : projects.filter(p => !p.isDeleted && !p.isArchived);
 
-    activeProjects.forEach(project => {
+    sourceProjects.forEach(project => {
       (project.phases || []).forEach(phase => {
         const walkTasks = (tasks: Task[]) => {
           tasks.forEach(task => {
@@ -166,8 +183,8 @@ const SideNav: React.FC<SideNavProps> = ({
       return b.timestamp.getTime() - a.timestamp.getTime();
     });
 
-    return items.slice(0, 4);
-  }, [projects, currentUserId]);
+    return items.slice(0, MAX_HEADS_UP_ITEMS);
+  }, [projects, selectedProject, isScopedToProject, currentUserId]);
 
   const handleTaskClick = (projectId: string, taskId: string) => {
     if (onSelectTask) {
@@ -280,27 +297,73 @@ const SideNav: React.FC<SideNavProps> = ({
           <div className="flex-1 min-h-0 flex flex-col border-t border-slate-700/60 overflow-hidden">
             {!isCollapsed ? (
               <div className="flex flex-col h-full p-2 overflow-hidden">
-                <div className="flex items-center justify-between px-1.5 py-1 mb-1">
-                  <div className="flex items-center gap-1.5">
-                    <span className="relative flex h-2 w-2">
+                <div className="flex items-center justify-between px-1.5 py-1 mb-1 gap-1">
+                  <div className="flex items-center gap-1.5 min-w-0">
+                    <span className="relative flex h-2 w-2 flex-shrink-0">
                       <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-brand-secondary opacity-75"></span>
                       <span className="relative inline-flex rounded-full h-2 w-2 bg-brand-secondary"></span>
                     </span>
-                    <span className="text-[11px] font-semibold text-slate-300 uppercase tracking-wider">
+                    <span className="text-[11px] font-semibold text-slate-300 uppercase tracking-wider truncate">
                       Heads-Up
                     </span>
+                    {recentFollowUps.length > 0 && (
+                      <span className="text-[10px] px-1.5 py-0.2 rounded-full bg-slate-700 text-slate-300 font-medium flex-shrink-0">
+                        {recentFollowUps.length}
+                      </span>
+                    )}
                   </div>
-                  {recentFollowUps.length > 0 && (
-                    <span className="text-[10px] px-1.5 py-0.2 rounded-full bg-slate-700 text-slate-300 font-medium">
-                      {recentFollowUps.length}
-                    </span>
+
+                  {selectedProject && (
+                    <div
+                      className="flex items-center bg-slate-900/80 border border-slate-700/70 rounded-md p-0.5 flex-shrink-0"
+                      role="group"
+                      aria-label="Filter Heads-Up by project scope"
+                    >
+                      <button
+                        type="button"
+                        onClick={() => setScopeMode('project')}
+                        className={`px-1.5 py-0.5 text-[9px] font-semibold rounded transition-colors ${
+                          scopeMode === 'project'
+                            ? 'bg-brand-secondary text-white shadow-xs'
+                            : 'text-slate-400 hover:text-slate-200'
+                        }`}
+                        title={`Show only items for ${selectedProject.name}`}
+                      >
+                        Project
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setScopeMode('all')}
+                        className={`px-1.5 py-0.5 text-[9px] font-semibold rounded transition-colors ${
+                          scopeMode === 'all'
+                            ? 'bg-brand-secondary text-white shadow-xs'
+                            : 'text-slate-400 hover:text-slate-200'
+                        }`}
+                        title="Show items across all projects"
+                      >
+                        All
+                      </button>
+                    </div>
                   )}
                 </div>
 
                 <div className="flex-1 overflow-y-auto space-y-1.5 pr-0.5 custom-scrollbar">
                   {recentFollowUps.length === 0 ? (
-                    <div className="p-2 text-center text-xs text-slate-500 italic">
-                      No recent task activity
+                    <div className="p-2 text-center text-xs text-slate-500 italic space-y-1.5">
+                      <div>
+                        {isScopedToProject && selectedProject
+                          ? `No active items in ${selectedProject.name}`
+                          : 'No recent task activity'}
+                      </div>
+                      {isScopedToProject && (
+                        <button
+                          type="button"
+                          onClick={() => setScopeMode('all')}
+                          className="text-[10px] not-italic font-medium text-brand-light hover:underline"
+                        >
+                          Show all projects
+                        </button>
+                      )}
                     </div>
                   ) : (
                     recentFollowUps.map(item => {
@@ -359,13 +422,50 @@ const SideNav: React.FC<SideNavProps> = ({
                   )}
                 </button>
                 {/* Popover on hover in collapsed mode */}
-                <div className="absolute left-full top-0 ml-2 w-60 p-2.5 bg-slate-900 border border-slate-700 text-slate-200 text-xs rounded-xl shadow-2xl opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all duration-150 z-50 pointer-events-auto">
-                  <div className="text-[11px] font-bold text-slate-300 uppercase tracking-wider mb-2 flex items-center gap-1.5">
-                    <span>⚡ Heads-Up & Follow-ups</span>
+                <div className="absolute left-full top-0 ml-2 w-64 p-2.5 bg-slate-900 border border-slate-700 text-slate-200 text-xs rounded-xl shadow-2xl opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all duration-150 z-50 pointer-events-auto">
+                  <div className="flex items-center justify-between gap-2 mb-2">
+                    <div className="text-[11px] font-bold text-slate-300 uppercase tracking-wider flex items-center gap-1.5">
+                      <span>⚡ Heads-Up</span>
+                      {recentFollowUps.length > 0 && (
+                        <span className="text-[10px] px-1.5 py-0.2 rounded-full bg-slate-800 text-slate-300 font-medium">
+                          {recentFollowUps.length}
+                        </span>
+                      )}
+                    </div>
+                    {selectedProject && (
+                      <div className="flex items-center bg-slate-800 border border-slate-700 rounded-md p-0.5 flex-shrink-0">
+                        <button
+                          type="button"
+                          onClick={() => setScopeMode('project')}
+                          className={`px-1.5 py-0.5 text-[9px] font-semibold rounded transition-colors ${
+                            scopeMode === 'project'
+                              ? 'bg-brand-secondary text-white'
+                              : 'text-slate-400 hover:text-slate-200'
+                          }`}
+                        >
+                          Project
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setScopeMode('all')}
+                          className={`px-1.5 py-0.5 text-[9px] font-semibold rounded transition-colors ${
+                            scopeMode === 'all'
+                              ? 'bg-brand-secondary text-white'
+                              : 'text-slate-400 hover:text-slate-200'
+                          }`}
+                        >
+                          All
+                        </button>
+                      </div>
+                    )}
                   </div>
                   <div className="space-y-1.5 max-h-60 overflow-y-auto">
                     {recentFollowUps.length === 0 ? (
-                      <div className="text-slate-500 italic text-[11px]">No recent activity</div>
+                      <div className="text-slate-500 italic text-[11px]">
+                        {isScopedToProject && selectedProject
+                          ? `No active items in ${selectedProject.name}`
+                          : 'No recent activity'}
+                      </div>
                     ) : (
                       recentFollowUps.map(item => (
                         <div
