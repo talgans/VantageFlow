@@ -410,7 +410,7 @@ export const deleteUser = functions.https.onCall(async (data, context) => {
         formerMembers.push({
           ...memberToMove,
           isFormerMember: true,
-          departedAt: admin.firestore.FieldValue.serverTimestamp(),
+          departedAt: admin.firestore.Timestamp.now(),
         });
       }
 
@@ -437,10 +437,10 @@ export const deleteUser = functions.https.onCall(async (data, context) => {
 
     await admin.auth().deleteUser(uid);
     return { success: true, message: 'User deleted and projects safely updated' };
-  } catch (error) {
+  } catch (error: any) {
     console.error('Error deleting user:', error);
     if (error instanceof functions.https.HttpsError) throw error;
-    throw new functions.https.HttpsError('internal', 'Failed to delete user');
+    throw new functions.https.HttpsError('internal', error?.message ? `Failed to delete user: ${error.message}` : 'Failed to delete user');
   }
 });
 

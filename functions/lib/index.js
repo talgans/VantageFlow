@@ -362,7 +362,7 @@ exports.deleteUser = functions.https.onCall(async (data, context) => {
             const memberToMove = currentMembers.find((m) => m.uid === uid);
             const updatedMembers = currentMembers.filter((m) => m.uid !== uid);
             if (memberToMove && !formerMembers.some((fm) => fm.uid === uid)) {
-                formerMembers.push(Object.assign(Object.assign({}, memberToMove), { isFormerMember: true, departedAt: admin.firestore.FieldValue.serverTimestamp() }));
+                formerMembers.push(Object.assign(Object.assign({}, memberToMove), { isFormerMember: true, departedAt: admin.firestore.Timestamp.now() }));
             }
             batch.update(doc.ref, {
                 memberUids: updatedMemberUids,
@@ -385,7 +385,7 @@ exports.deleteUser = functions.https.onCall(async (data, context) => {
         console.error('Error deleting user:', error);
         if (error instanceof functions.https.HttpsError)
             throw error;
-        throw new functions.https.HttpsError('internal', 'Failed to delete user');
+        throw new functions.https.HttpsError('internal', (error === null || error === void 0 ? void 0 : error.message) ? `Failed to delete user: ${error.message}` : 'Failed to delete user');
     }
 });
 /**
