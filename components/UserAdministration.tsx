@@ -1,6 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import { UserIcon, ShieldCheckIcon, XMarkIcon, TrashIcon } from './icons';
 import { getFunctions, httpsCallable } from 'firebase/functions';
+import AlertModal from './AlertModal';
+import ConfirmationModal from './ConfirmationModal';
 
 interface User {
   uid: string;
@@ -34,6 +36,14 @@ const UserAdministration: React.FC<UserAdministrationProps> = ({ isOpen, onClose
   const [error, setError] = useState<string | null>(null);
   const [updatingUserId, setUpdatingUserId] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState<'users' | 'permissions'>('users');
+  const [userToDelete, setUserToDelete] = useState<{ uid: string; email: string } | null>(null);
+  const [isDeleting, setIsDeleting] = useState(false);
+  const [alertModal, setAlertModal] = useState<{
+    isOpen: boolean;
+    title?: string;
+    message: React.ReactNode;
+    type?: 'info' | 'warning' | 'error' | 'success';
+  } | null>(null);
   
   // Default permission configurations
   const [permissions, setPermissions] = useState<RolePermissions>({
@@ -81,31 +91,57 @@ const UserAdministration: React.FC<UserAdministrationProps> = ({ isOpen, onClose
       setUsers(users.map(u => u.uid === uid ? { ...u, role: newRole } : u));
       
       // Show success message
-      alert(`User role updated to ${newRole} successfully!`);
+      setAlertModal({
+        isOpen: true,
+        title: 'Role Updated',
+        message: `User role updated to ${newRole} successfully!`,
+        type: 'success',
+      });
     } catch (err: any) {
       console.error('Error updating role:', err);
-      alert(`Failed to update role: ${err.message}`);
+      setAlertModal({
+        isOpen: true,
+        title: 'Update Failed',
+        message: `Failed to update role: ${err.message}`,
+        type: 'error',
+      });
     } finally {
       setUpdatingUserId(null);
     }
   };
 
-  const handleDeleteUser = async (uid: string, email: string) => {
-    if (!confirm(`Are you sure you want to delete user ${email}? This action cannot be undone.`)) {
-      return;
-    }
+  const handleDeleteUser = (uid: string, email: string) => {
+    setUserToDelete({ uid, email });
+  };
 
+  const confirmDeleteUser = async () => {
+    if (!userToDelete) return;
+    setIsDeleting(true);
     try {
       const functions = getFunctions();
       const deleteUserFunction = httpsCallable(functions, 'deleteUser');
-      await deleteUserFunction({ uid });
+      await deleteUserFunction({ uid: userToDelete.uid });
       
       // Remove from local state
-      setUsers(users.filter(u => u.uid !== uid));
-      alert('User deleted successfully!');
+      setUsers(users.filter(u => u.uid !== userToDelete.uid));
+      const deletedEmail = userToDelete.email;
+      setUserToDelete(null);
+      setAlertModal({
+        isOpen: true,
+        title: 'User Deleted',
+        message: `User ${deletedEmail} was deleted successfully!`,
+        type: 'success',
+      });
     } catch (err: any) {
       console.error('Error deleting user:', err);
-      alert(`Failed to delete user: ${err.message}`);
+      setAlertModal({
+        isOpen: true,
+        title: 'Delete Failed',
+        message: `Failed to delete user: ${err.message}`,
+        type: 'error',
+      });
+    } finally {
+      setIsDeleting(false);
     }
   };
 
@@ -366,6 +402,28 @@ const UserAdministration: React.FC<UserAdministrationProps> = ({ isOpen, onClose
           </button>
         </div>
       </div>
+
+      <ConfirmationModal
+        isOpen={!!userToDelete}
+        onClose={() => setUserToDelete(null)}
+        onConfirm={confirmDeleteUser}
+        title="Delete User"
+        message={<>Are you sure you want to delete user <strong>{userToDelete?.email}</strong>? This action cannot be undone.</>}
+        confirmText="Delete User"
+        confirmVariant="danger"
+        isLoading={isDeleting}
+        loadingText="Deleting..."
+      />
+
+      {alertModal && (
+        <AlertModal
+          isOpen={alertModal.isOpen}
+          onClose={() => setAlertModal(null)}
+          title={alertModal.title}
+          message={alertModal.message}
+          type={alertModal.type}
+        />
+      )}
     </div>
   );
 };

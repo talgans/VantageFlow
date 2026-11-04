@@ -15,6 +15,7 @@ import {
 } from '../services/permissionsService';
 import { uploadProfilePhoto } from '../services/storageService';
 import { inviteUserByEmail, sendUserReminderEmail } from '../services/userService';
+import ConfirmationModal from './ConfirmationModal';
 
 interface User {
   uid: string;
@@ -67,6 +68,11 @@ const UserAdministrationPage: React.FC<UserAdministrationPageProps> = ({
 
   // Edit User Profile Modal state
   const [showEditProfileModal, setShowEditProfileModal] = useState(false);
+  const [roleToDelete, setRoleToDelete] = useState<string | null>(null);
+  const [userToDelete, setUserToDelete] = useState<{ uid: string; email: string } | null>(null);
+  const [userToRemind, setUserToRemind] = useState<User | null>(null);
+  const [isDeletingUser, setIsDeletingUser] = useState(false);
+  const [isSendingReminder, setIsSendingReminder] = useState(false);
   const [editingUser, setEditingUser] = useState<User | null>(null);
   const [editDisplayName, setEditDisplayName] = useState('');
   const [editPhotoURL, setEditPhotoURL] = useState('');
@@ -129,13 +135,16 @@ const UserAdministrationPage: React.FC<UserAdministrationPageProps> = ({
   };
 
   const handleDeleteRole = (roleName: string) => {
-    if (!confirm(`Are you sure you want to delete the "${roleName}" role? This cannot be undone.`)) {
-      return;
-    }
+    setRoleToDelete(roleName);
+  };
+
+  const confirmDeleteRole = () => {
+    if (!roleToDelete) return;
     try {
-      const updatedPermissions = deleteRole(permissions, roleName);
+      const updatedPermissions = deleteRole(permissions, roleToDelete);
       setPermissions(updatedPermissions);
-      showToast(`Role "${roleName}" removed. Don't forget to save!`);
+      showToast(`Role "${roleToDelete}" removed. Don't forget to save!`);
+      setRoleToDelete(null);
     } catch (err: any) {
       showToast(err.message);
     }
@@ -181,22 +190,27 @@ const UserAdministrationPage: React.FC<UserAdministrationPageProps> = ({
     }
   };
 
-  const handleDeleteUser = async (uid: string, email: string) => {
-    if (!confirm(`Are you sure you want to delete user ${email}? This action cannot be undone.`)) {
-      return;
-    }
+  const handleDeleteUser = (uid: string, email: string) => {
+    setUserToDelete({ uid, email });
+  };
 
+  const confirmDeleteUser = async () => {
+    if (!userToDelete) return;
+    setIsDeletingUser(true);
     try {
       const functions = getFunctions(app, 'us-central1');
       const deleteUserFunction = httpsCallable(functions, 'deleteUser');
-      await deleteUserFunction({ uid });
+      await deleteUserFunction({ uid: userToDelete.uid });
 
       // Remove from local state
-      setUsers(users.filter(u => u.uid !== uid));
+      setUsers(users.filter(u => u.uid !== userToDelete.uid));
       showToast('User deleted successfully!');
+      setUserToDelete(null);
     } catch (err: any) {
       console.error('Error deleting user:', err);
       showToast(`Failed to delete user: ${err.message}`);
+    } finally {
+      setIsDeletingUser(false);
     }
   };
 
@@ -282,19 +296,23 @@ const UserAdministrationPage: React.FC<UserAdministrationPageProps> = ({
     }
   };
 
-  const handleRemindUser = async (user: User) => {
-    if (!confirm(`Send a reminder email to ${user.email}?`)) {
-      return;
-    }
+  const handleRemindUser = (user: User) => {
+    setUserToRemind(user);
+  };
 
-    showToast(`Sending reminder to ${user.email}...`);
-
+  const confirmRemindUser = async () => {
+    if (!userToRemind) return;
+    setIsSendingReminder(true);
+    showToast(`Sending reminder to ${userToRemind.email}...`);
     try {
-      await sendUserReminderEmail(user.email);
-      showToast(`Reminder sent to ${user.email}!`);
+      await sendUserReminderEmail(userToRemind.email);
+      showToast(`Reminder sent to ${userToRemind.email}!`);
+      setUserToRemind(null);
     } catch (err: any) {
       console.error('Error sending reminder:', err);
       showToast(`Failed to send reminder: ${err.message}`);
+    } finally {
+      setIsSendingReminder(false);
     }
   };
 
@@ -1087,6 +1105,42 @@ const UserAdministrationPage: React.FC<UserAdministrationPageProps> = ({
           </div>
         </div>
       )}
+      {/* Delete Role Confirmation Modal */}
+      <ConfirmationModal
+        isOpen={!!roleToDelete}
+        onClose={() => setRoleToDelete(null)}
+        onConfirm={confirmDeleteRole}
+        title="Delete Role"
+        message={<>Are you sure you want to delete the role "<strong>{roleToDelete}</strong>"? This action cannot be undone.</>}
+        confirmText="Delete Role"
+        confirmVariant="danger"
+      />
+
+      {/* Delete User Confirmation Modal */}
+      <ConfirmationModal
+        isOpen={!!userToDelete}
+        onClose={() => setUserToDelete(null)}
+        onConfirm={confirmDeleteUser}
+        title="Delete User"
+        message={<>Are you sure you want to delete user <strong>{userToDelete?.email}</strong>? This action cannot be undone.</>}
+        confirmText="Delete User"
+        confirmVariant="danger"
+        isLoading={isDeletingUser}
+        loadingText="Deleting..."
+      />
+
+      {/* Setup Reminder Confirmation Modal */}
+      <ConfirmationModal
+        isOpen={!!userToRemind}
+        onClose={() => setUserToRemind(null)}
+        onConfirm={confirmRemindUser}
+        title="Send Setup Reminder"
+        message={<>Send an account setup reminder email to <strong>{userToRemind?.email}</strong>?</>}
+        confirmText="Send Reminder"
+        confirmVariant="primary"
+        isLoading={isSendingReminder}
+        loadingText="Sending..."
+      />
     </div>
   );
 };

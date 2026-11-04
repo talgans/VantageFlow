@@ -4,6 +4,8 @@ import { XMarkIcon, UserIcon, MagnifyingGlassIcon, StarIcon, EnvelopeIcon, PlusC
 import { getFunctions, httpsCallable } from 'firebase/functions';
 import UserAchievementBadge from './UserAchievementBadge';
 import { inviteUserByEmail, sendUserReminderEmail, ProjectInviteContext } from '../services/userService';
+import AlertModal from './AlertModal';
+import ConfirmationModal from './ConfirmationModal';
 
 interface User {
     uid: string;
@@ -25,6 +27,7 @@ interface TeamMemberSelectorProps {
     onMemberRemovedWithChoice?: (member: TeamMember, choice: 'former' | 'clear') => void;
     onRestoreFormerMember?: (member: TeamMember) => void;
     canInviteUsers?: boolean;
+    canAddMembers?: boolean;
     canTransferOwnership?: boolean;
     onTransferOwnership?: (newOwner: TeamMember) => void;
     projectContext?: ProjectInviteContext;
@@ -44,6 +47,7 @@ const TeamMemberSelector: React.FC<TeamMemberSelectorProps> = ({
     onMemberRemovedWithChoice,
     onRestoreFormerMember,
     canInviteUsers = false,
+    canAddMembers,
     canTransferOwnership = false,
     onTransferOwnership,
     projectContext,
@@ -72,6 +76,16 @@ const TeamMemberSelector: React.FC<TeamMemberSelectorProps> = ({
     // Ownership transfer state (1st Lead -> 2nd Lead)
     const [selectedTransferTargetUid, setSelectedTransferTargetUid] = useState<string>('');
     const [pendingOwnershipTransfer, setPendingOwnershipTransfer] = useState<TeamMember | null>(null);
+
+    const effectiveCanAddMembers = canAddMembers ?? canInviteUsers;
+    const [isRemoving, setIsRemoving] = useState(false);
+    const [pendingReminderEmail, setPendingReminderEmail] = useState<string | null>(null);
+    const [alertModal, setAlertModal] = useState<{
+        isOpen: boolean;
+        title?: string;
+        message: React.ReactNode;
+        type?: 'info' | 'warning' | 'error' | 'success';
+    } | null>(null);
 
     useEffect(() => {
         fetchUsers();
@@ -152,12 +166,17 @@ const TeamMemberSelector: React.FC<TeamMemberSelectorProps> = ({
         }
     };
 
-    const confirmRemoval = () => {
+    const confirmRemoval = async () => {
         if (!pendingRemoval) return;
-        const { member } = pendingRemoval;
-        onMemberRemovedWithChoice?.(member, removalChoice);
-        onChange(selectedMembers.filter((m) => m.uid !== member.uid));
-        setPendingRemoval(null);
+        setIsRemoving(true);
+        try {
+            const { member } = pendingRemoval;
+            onMemberRemovedWithChoice?.(member, removalChoice);
+            onChange(selectedMembers.filter((m) => m.uid !== member.uid));
+            setPendingRemoval(null);
+        } finally {
+            setIsRemoving(false);
+        }
     };
 
     const handleToggleMember = (user: User) => {
@@ -168,6 +187,10 @@ const TeamMemberSelector: React.FC<TeamMemberSelectorProps> = ({
         if (isSelected(user.uid)) {
             initiateRemoveMember(user.uid);
         } else {
+            if (!effectiveCanAddMembers) {
+                notify('Only Project Leads (1st Lead, 2nd Lead) and Admins can add members.', 'warning');
+                return;
+            }
             onChange([
                 ...selectedMembers,
                 {
@@ -220,11 +243,15 @@ const TeamMemberSelector: React.FC<TeamMemberSelectorProps> = ({
         }
     }, [secondaryLeads, selectedTransferTargetUid]);
 
-    const notify = (msg: string) => {
+    const notify = (msg: string, type: 'info' | 'warning' | 'error' | 'success' = 'info') => {
         if (showToast) {
             showToast(msg);
         } else {
-            alert(msg);
+            setAlertModal({
+                isOpen: true,
+                message: msg,
+                type,
+            });
         }
     };
 
@@ -237,18 +264,23 @@ const TeamMemberSelector: React.FC<TeamMemberSelectorProps> = ({
         return !found.lastSignIn;
     };
 
-    const handleSendReminder = async (email: string, e?: React.MouseEvent) => {
+    const handleSendReminder = (email: string, e?: React.MouseEvent) => {
         if (e) e.stopPropagation();
         if (!email || remindingEmail) return;
-        if (!confirm(`Send an account setup reminder email to ${email}?`)) return;
+        setPendingReminderEmail(email);
+    };
 
-        setRemindingEmail(email);
+    const executeSendReminder = async () => {
+        if (!pendingReminderEmail) return;
+        const targetEmail = pendingReminderEmail;
+        setRemindingEmail(targetEmail);
         try {
-            await sendUserReminderEmail(email, projectContext);
-            notify(`Reminder email sent to ${email}!`);
+            await sendUserReminderEmail(targetEmail, projectContext);
+            notify(`Reminder email sent to ${targetEmail}!`, 'success');
+            setPendingReminderEmail(null);
         } catch (err: any) {
             console.error('Error sending reminder:', err);
-            notify(`Failed to send reminder: ${err.message}`);
+            notify(`Failed to send reminder: ${err.message}`, 'error');
         } finally {
             setRemindingEmail(null);
         }
@@ -412,19 +444,6 @@ const TeamMemberSelector: React.FC<TeamMemberSelectorProps> = ({
                                         <EnvelopeIcon className="w-3.5 h-3.5" />
                                     </button>
                                 )}
-                                {canTransferOwnership && !disabled && member.leadRole === 'secondary' && (
-                                    <button
-                                        type="button"
-                                        onClick={(e) => {
-                                            e.stopPropagation();
-                                            setPendingOwnershipTransfer(member);
-                                        }}
-                                        className="text-[10px] px-1.5 py-0.5 rounded bg-blue-500/25 hover:bg-blue-500/40 text-blue-200 border border-blue-400/30 transition-colors"
-                                        title="Transfer 1st Lead (Project Ownership) to this 2nd Lead"
-                                    >
-                                        Make 1st Lead
-                                    </button>
-                                )}
                                 {!disabled && !isPrimaryLead(member.uid) && (
                                     <button
                                         type="button"
@@ -440,58 +459,8 @@ const TeamMemberSelector: React.FC<TeamMemberSelectorProps> = ({
                 </div>
             )}
 
-            {/* Project Lead / Ownership Transfer Section (Visible to 1st Lead / Admin) */}
-            {canTransferOwnership && !disabled && (
-                <div className="bg-slate-900/60 border border-slate-700/80 rounded-lg p-3 space-y-2">
-                    <div className="flex items-center justify-between flex-wrap gap-2">
-                        <div>
-                            <h4 className="text-xs font-semibold text-slate-200 uppercase tracking-wider flex items-center gap-1.5">
-                                <StarIcon className="w-3.5 h-3.5 text-blue-400" />
-                                Project Lead / Ownership Transfer
-                            </h4>
-                            <p className="text-xs text-slate-400 mt-0.5">
-                                {secondaryLeads.length > 0
-                                    ? 'Transfer 1st Lead ownership to your 2nd Lead. You will remain on the project as a 2nd Lead.'
-                                    : 'To transfer project ownership to another member, first set them as a 2nd Lead (click ⭐ next to their name below).'}
-                            </p>
-                        </div>
-                        {secondaryLeads.length > 0 && (
-                            <div className="flex items-center gap-2">
-                                {secondaryLeads.length > 1 ? (
-                                    <select
-                                        value={selectedTransferTargetUid}
-                                        onChange={(e) => setSelectedTransferTargetUid(e.target.value)}
-                                        className="bg-slate-800 border border-slate-600 text-white text-xs rounded-lg px-2.5 py-1.5 focus:ring-brand-secondary focus:border-brand-secondary"
-                                    >
-                                        {secondaryLeads.map((sl) => (
-                                            <option key={sl.uid} value={sl.uid}>
-                                                {sl.displayName || sl.email} (2nd Lead)
-                                            </option>
-                                        ))}
-                                    </select>
-                                ) : (
-                                    <span className="text-xs px-2.5 py-1 rounded bg-amber-500/15 border border-amber-500/30 text-amber-300 font-medium">
-                                        2nd Lead: {secondaryLeads[0].displayName || secondaryLeads[0].email}
-                                    </span>
-                                )}
-                                <button
-                                    type="button"
-                                    onClick={() => {
-                                        const target = secondaryLeads.find((m) => m.uid === selectedTransferTargetUid) || secondaryLeads[0];
-                                        if (target) setPendingOwnershipTransfer(target);
-                                    }}
-                                    className="px-3 py-1.5 text-xs font-semibold bg-blue-600 hover:bg-blue-500 text-white rounded-lg transition-colors shrink-0"
-                                >
-                                    Transfer 1st Lead
-                                </button>
-                            </div>
-                        )}
-                    </div>
-                </div>
-            )}
-
             {/* Invite New Member by Email (Visible to Project Leads: 1st Lead, 2nd Lead, Admin/SuperAdmin) */}
-            {canInviteUsers && !disabled && (
+            {effectiveCanAddMembers && !disabled && (
                 <div className="bg-slate-900/60 border border-slate-700/80 rounded-lg p-3 space-y-2">
                     <div className="flex items-center justify-between">
                         <label className="text-xs font-semibold text-slate-200 uppercase tracking-wider flex items-center gap-1.5">
@@ -555,13 +524,19 @@ const TeamMemberSelector: React.FC<TeamMemberSelectorProps> = ({
                     disabled={disabled}
                     className="text-sm text-brand-light hover:text-white transition-colors disabled:opacity-50"
                 >
-                    {isExpanded ? 'Hide Directory' : 'Select Members'}
+                    {isExpanded ? 'Hide Directory' : (effectiveCanAddMembers ? 'Select Members' : 'Browse Directory (View Only)')}
                 </button>
             </div>
 
             {/* User Selection Panel */}
             {isExpanded && (
                 <div className="bg-slate-900/50 border border-slate-700 rounded-lg overflow-hidden">
+                    {!effectiveCanAddMembers && (
+                        <div className="px-3.5 py-2 bg-slate-800/80 border-b border-slate-700 text-xs text-slate-300 flex items-center gap-2">
+                            <InfoIcon className="w-3.5 h-3.5 text-blue-400 shrink-0" />
+                            <span>Directory is read-only. Only Project Leads (1st Lead, 2nd Lead) and Admins can add members.</span>
+                        </div>
+                    )}
                     {/* Search */}
                     <div className="p-3 border-b border-slate-700">
                         <div className="relative">
@@ -821,63 +796,123 @@ const TeamMemberSelector: React.FC<TeamMemberSelectorProps> = ({
                             <button
                                 type="button"
                                 onClick={() => setPendingRemoval(null)}
-                                className="flex-1 px-4 py-2 bg-slate-700 hover:bg-slate-600 text-slate-200 rounded-lg text-sm font-medium transition-colors"
+                                disabled={isRemoving}
+                                className="flex-1 px-4 py-2 bg-slate-700 hover:bg-slate-600 text-slate-200 rounded-lg text-sm font-medium transition-colors disabled:opacity-50"
                             >
                                 Cancel
                             </button>
                             <button
                                 type="button"
                                 onClick={confirmRemoval}
-                                className="flex-1 px-4 py-2 bg-brand-primary hover:bg-brand-primary/90 text-white rounded-lg text-sm font-medium transition-colors"
+                                disabled={isRemoving}
+                                className="flex-1 px-4 py-2 bg-red-600 hover:bg-red-500 text-white rounded-lg text-sm font-semibold transition-colors flex items-center justify-center gap-2 disabled:opacity-50"
                             >
-                                Confirm Removal
+                                {isRemoving && (
+                                    <div className="animate-spin rounded-full h-4 w-4 border-2 border-white border-t-transparent" />
+                                )}
+                                <span>{isRemoving ? 'Removing...' : 'Confirm Removal'}</span>
                             </button>
                         </div>
                     </div>
                 </div>
             )}
 
-            {/* Ownership Transfer Confirmation Dialog */}
-            {pendingOwnershipTransfer && (
-                <div className="fixed inset-0 bg-black/75 z-50 flex items-center justify-center p-4" onClick={() => setPendingOwnershipTransfer(null)}>
-                    <div className="bg-slate-800 border border-blue-500/40 rounded-xl max-w-md w-full p-6 shadow-2xl space-y-4" onClick={(e) => e.stopPropagation()}>
-                        <div className="flex items-center gap-3 border-b border-slate-700 pb-3">
-                            <div className="w-10 h-10 rounded-full bg-blue-500/20 text-blue-300 flex items-center justify-center shrink-0">
-                                <StarIcon className="w-5 h-5" />
+            {/* Relocated Danger Zone: Project Lead / Ownership Transfer */}
+            {canTransferOwnership && !disabled && (
+                <div className="mt-6 border border-amber-500/30 bg-gradient-to-b from-slate-900/90 to-amber-950/10 rounded-xl p-4 space-y-3">
+                    <div className="flex items-start justify-between flex-wrap gap-3">
+                        <div>
+                            <h4 className="text-xs font-bold text-amber-400 uppercase tracking-wider flex items-center gap-1.5">
+                                <StarIcon className="w-4 h-4 text-amber-400" />
+                                Danger Zone: Project Ownership Transfer
+                            </h4>
+                            <p className="text-xs text-slate-300 mt-1 max-w-xl leading-relaxed">
+                                {secondaryLeads.length > 0
+                                    ? 'Transfer primary project ownership (1st Lead) to a designated 2nd Lead. Upon confirmation, you will automatically step down to a 2nd Lead on this project.'
+                                    : 'To transfer project ownership, assign at least one member as a 2nd Lead first (click ⭐ next to their name in the active members list above).'}
+                            </p>
+                        </div>
+                        {secondaryLeads.length > 0 && (
+                            <div className="flex items-center gap-2.5">
+                                {secondaryLeads.length > 1 ? (
+                                    <select
+                                        value={selectedTransferTargetUid}
+                                        onChange={(e) => setSelectedTransferTargetUid(e.target.value)}
+                                        className="bg-slate-800 border border-slate-600 text-white text-xs rounded-lg px-3 py-2 focus:ring-brand-secondary focus:border-brand-secondary"
+                                    >
+                                        {secondaryLeads.map((sl) => (
+                                            <option key={sl.uid} value={sl.uid}>
+                                                {sl.displayName || sl.email} (2nd Lead)
+                                            </option>
+                                        ))}
+                                    </select>
+                                ) : (
+                                    <span className="text-xs px-3 py-1.5 rounded-lg bg-amber-500/15 border border-amber-500/30 text-amber-300 font-semibold">
+                                        Target: {secondaryLeads[0].displayName || secondaryLeads[0].email}
+                                    </span>
+                                )}
+                                <button
+                                    type="button"
+                                    onClick={() => {
+                                        const target = secondaryLeads.find((m) => m.uid === selectedTransferTargetUid) || secondaryLeads[0];
+                                        if (target) setPendingOwnershipTransfer(target);
+                                    }}
+                                    className="px-3.5 py-2 text-xs font-bold bg-amber-600 hover:bg-amber-500 text-white rounded-lg transition-colors shadow-md shadow-amber-600/20 shrink-0 cursor-pointer"
+                                >
+                                    Transfer 1st Lead...
+                                </button>
                             </div>
-                            <div>
-                                <h3 className="text-base font-semibold text-white">Transfer Project Ownership (1st Lead)</h3>
-                                <p className="text-xs text-slate-400">
-                                    New 1st Lead: {pendingOwnershipTransfer.displayName || pendingOwnershipTransfer.email}
-                                </p>
-                            </div>
-                        </div>
-
-                        <div className="bg-blue-500/10 border border-blue-500/30 rounded-lg p-3 text-xs text-blue-200 leading-relaxed">
-                            You are about to transfer <strong className="text-white">1st Lead (Project Ownership)</strong> to{' '}
-                            <strong className="text-white">{pendingOwnershipTransfer.displayName || pendingOwnershipTransfer.email}</strong> (currently a 2nd Lead).
-                            <br /><br />
-                            The previous 1st Lead will remain on the project as a <strong className="text-amber-300">2nd Lead</strong>. Remember to click <strong className="text-white">Save Changes</strong> to persist this ownership transfer.
-                        </div>
-
-                        <div className="flex gap-3 pt-2">
-                            <button
-                                type="button"
-                                onClick={() => setPendingOwnershipTransfer(null)}
-                                className="flex-1 px-4 py-2 bg-slate-700 hover:bg-slate-600 text-slate-200 rounded-lg text-sm font-medium transition-colors"
-                            >
-                                Cancel
-                            </button>
-                            <button
-                                type="button"
-                                onClick={handleConfirmOwnershipTransfer}
-                                className="flex-1 px-4 py-2 bg-blue-600 hover:bg-blue-500 text-white rounded-lg text-sm font-semibold transition-colors"
-                            >
-                                Confirm Transfer
-                            </button>
-                        </div>
+                        )}
                     </div>
                 </div>
+            )}
+
+            {/* Ownership Transfer Confirmation Modal with TRANSFER typing guard */}
+            <ConfirmationModal
+                isOpen={!!pendingOwnershipTransfer}
+                onClose={() => setPendingOwnershipTransfer(null)}
+                onConfirm={handleConfirmOwnershipTransfer}
+                title="Transfer Project Ownership (1st Lead)"
+                message={
+                    pendingOwnershipTransfer ? (
+                        <div className="space-y-3">
+                            <p>
+                                You are about to transfer <strong className="text-white">1st Lead (Project Ownership)</strong> to{' '}
+                                <strong className="text-white">{pendingOwnershipTransfer.displayName || pendingOwnershipTransfer.email}</strong>.
+                            </p>
+                            <div className="p-3 bg-amber-500/10 border border-amber-500/30 rounded-lg text-xs text-amber-200 leading-relaxed">
+                                ⚠️ The previous 1st Lead will automatically step down and remain on this project as a <strong className="text-amber-300">2nd Lead</strong>. Remember to click <strong className="text-white">Save Changes</strong> to persist.
+                            </div>
+                        </div>
+                    ) : null
+                }
+                confirmText="Transfer 1st Lead"
+                confirmVariant="warning"
+                requireTextConfirmation="TRANSFER"
+            />
+
+            {/* Setup Reminder Confirmation Modal */}
+            <ConfirmationModal
+                isOpen={!!pendingReminderEmail}
+                onClose={() => setPendingReminderEmail(null)}
+                onConfirm={executeSendReminder}
+                title="Send Account Setup Reminder"
+                message={<>Send an account setup reminder email to <strong>{pendingReminderEmail}</strong>?</>}
+                confirmText="Send Reminder"
+                confirmVariant="primary"
+                isLoading={!!remindingEmail}
+                loadingText="Sending..."
+            />
+
+            {/* Aesthetic Alert Modal */}
+            {alertModal && (
+                <AlertModal
+                    isOpen={alertModal.isOpen}
+                    onClose={() => setAlertModal(null)}
+                    title={alertModal.title}
+                    message={alertModal.message}
+                    type={alertModal.type}
+                />
             )}
         </div>
     );

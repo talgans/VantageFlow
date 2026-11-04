@@ -1,17 +1,18 @@
 
 import React, { useState, useEffect, useMemo } from 'react';
 import { Project, Phase, Task, TaskStatus, DurationUnit, Currency, TeamMember } from '../types';
-import { XMarkIcon, PlusCircleIcon, TrashIcon } from './icons';
+import { XMarkIcon, PlusCircleIcon, TrashIcon, InfoIcon } from './icons';
 import { parseProjectText } from '../utils/projectParser';
 import TeamMemberSelector from './TeamMemberSelector';
 import { notificationService } from '../services/notificationService';
 import { formatProjectTimeline } from '../services/userService';
+import AlertModal from './AlertModal';
 
 export type ProjectModalTab = 'overview' | 'team' | 'structure';
 
 interface ProjectModalProps {
   onClose: () => void;
-  onSave: (projectData: Omit<Project, 'id'> & { id?: string }) => void;
+  onSave: (projectData: Omit<Project, 'id'> & { id?: string }) => void | Promise<void>;
   projectToEdit?: Project | null;
   openWithTextImport?: boolean;
   currentUserId?: string; // The current user's ID - will be primary lead for new projects
@@ -40,9 +41,10 @@ interface InputFieldProps {
   error?: string;
   required?: boolean;
   type?: string;
+  disabled?: boolean;
 }
 
-const InputField: React.FC<InputFieldProps> = ({ name, label, value, onChange, error, required, type = "text" }) => (
+const InputField: React.FC<InputFieldProps> = ({ name, label, value, onChange, error, required, type = "text", disabled = false }) => (
   <div>
     <label htmlFor={name} className="block mb-1 text-xs font-semibold text-slate-300">
       {label} {required && <span className="text-red-400">*</span>}
@@ -53,7 +55,8 @@ const InputField: React.FC<InputFieldProps> = ({ name, label, value, onChange, e
       name={name}
       value={value}
       onChange={onChange}
-      className="bg-slate-700/80 border border-slate-600 text-white text-sm rounded-lg focus:ring-brand-secondary focus:border-brand-secondary block w-full px-3 py-2"
+      disabled={disabled}
+      className={`bg-slate-700/80 border border-slate-600 text-white text-sm rounded-lg focus:ring-brand-secondary focus:border-brand-secondary block w-full px-3 py-2 ${disabled ? 'opacity-60 cursor-not-allowed' : ''}`}
     />
     {error && <p className="mt-0.5 text-[11px] text-red-400">{error}</p>}
   </div>
@@ -149,8 +152,16 @@ const ProjectModal: React.FC<ProjectModalProps> = ({
     }
   }, [projectToEdit, currentUserId, currentUserEmail]);
 
+  const [isSaving, setIsSaving] = useState(false);
+  const [alertModal, setAlertModal] = useState<{
+    isOpen: boolean;
+    title?: string;
+    message: React.ReactNode;
+    type?: 'info' | 'warning' | 'error' | 'success';
+  } | null>(null);
+
   // Determine if the current user is a Project Lead (1st Lead, 2nd Lead) or Admin/SuperAdmin
-  const { canInviteUsers, canTransferOwnership } = useMemo(() => {
+  const { canInviteUsers, canAddMembers, canTransferOwnership, canEditDefinitions, canDeleteStructure } = useMemo(() => {
     const isAdminOrSuperAdmin =
       currentUserEmail?.toLowerCase() === 'talgans@gmail.com' ||
       currentUserRole === 'superadmin' ||
@@ -177,7 +188,12 @@ const ProjectModal: React.FC<ProjectModalProps> = ({
 
     return {
       canInviteUsers: !projectToEdit || isAdminOrSuperAdmin || isPrimary || isSecondary,
+      canAddMembers: !projectToEdit || isAdminOrSuperAdmin || isPrimary || isSecondary,
       canTransferOwnership: Boolean(isAdminOrSuperAdmin || isPrimary),
+      // Project definitions (Overview tab) can ONLY be edited by 1st Lead or 2nd Lead (no general Admin override)
+      canEditDefinitions: !projectToEdit || isPrimary || isSecondary,
+      // Structure tab deletions allowed for Admins, 1st Lead, and 2nd Lead
+      canDeleteStructure: !projectToEdit || isAdminOrSuperAdmin || isPrimary || isSecondary,
     };
   }, [projectToEdit, currentUserId, currentUserEmail, currentUserRole, projectOwnerId, teamMembers]);
 
@@ -315,58 +331,64 @@ const ProjectModal: React.FC<ProjectModalProps> = ({
     })));
   };
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (isSaving) return;
     if (validate()) {
-      onSave({
-        ...(projectToEdit || {}),
-        id: projectToEdit?.id,
-        name: formData.name,
-        description: formData.description,
-        coreSystem: formData.coreSystem,
-        startDate: new Date(formData.startDate),
-        duration: Number(formData.duration),
-        durationUnit: formData.durationUnit,
-        ownerId: currentOwner.uid || projectToEdit?.ownerId || currentUserId,
-        ownerEmail: currentOwner.email || projectToEdit?.ownerEmail || currentUserEmail,
-        ownerName: currentOwner.displayName ?? projectToEdit?.ownerName,
-        ownerPhotoURL: currentOwner.photoURL ?? projectToEdit?.ownerPhotoURL,
-        team: {
-          ...(projectToEdit?.team || {}),
-          members: teamMembers,
-          formerMembers: formerMembers,
-        },
-        cost: Number(formData.cost) || 0,
-        currency: formData.currency,
-        phases: phases,
-        isPublic: isPublic,
-      });
+      setIsSaving(true);
+      try {
+        await onSave({
+          ...(projectToEdit || {}),
+          id: projectToEdit?.id,
+          name: formData.name,
+          description: formData.description,
+          coreSystem: formData.coreSystem,
+          startDate: new Date(formData.startDate),
+          duration: Number(formData.duration),
+          durationUnit: formData.durationUnit,
+          ownerId: currentOwner.uid || projectToEdit?.ownerId || currentUserId,
+          ownerEmail: currentOwner.email || projectToEdit?.ownerEmail || currentUserEmail,
+          ownerName: currentOwner.displayName ?? projectToEdit?.ownerName,
+          ownerPhotoURL: currentOwner.photoURL ?? projectToEdit?.ownerPhotoURL,
+          team: {
+            ...(projectToEdit?.team || {}),
+            members: teamMembers,
+            formerMembers: formerMembers,
+          },
+          cost: Number(formData.cost) || 0,
+          currency: formData.currency,
+          phases: phases,
+          isPublic: isPublic,
+        });
 
-      // Check for newly added existing members and notify them with project context & timeline
-      // (Exclude users who were already invited via the inline "Send Invite" button in this session)
-      if (projectToEdit) {
-        const originalMembers = projectToEdit.team?.members || [];
-        const newMembers = teamMembers.filter(
-          (tm) =>
-            !originalMembers.some((om) => om.uid === tm.uid) &&
-            !invitedInSessionUids.includes(tm.uid)
-        );
+        // Check for newly added existing members and notify them with project context & timeline
+        // (Exclude users who were already invited via the inline "Send Invite" button in this session)
+        if (projectToEdit) {
+          const originalMembers = projectToEdit.team?.members || [];
+          const newMembers = teamMembers.filter(
+            (tm) =>
+              !originalMembers.some((om) => om.uid === tm.uid) &&
+              !invitedInSessionUids.includes(tm.uid)
+          );
 
-        if (newMembers.length > 0) {
-          const projectContext: any = {
-            id: projectToEdit.id,
-            name: formData.name,
-            description: formData.description,
-            startDate: new Date(formData.startDate),
-            duration: Number(formData.duration),
-            durationUnit: formData.durationUnit,
-            team: { members: teamMembers },
-          };
+          if (newMembers.length > 0) {
+            const projectContext: any = {
+              id: projectToEdit.id,
+              name: formData.name,
+              description: formData.description,
+              startDate: new Date(formData.startDate),
+              duration: Number(formData.duration),
+              durationUnit: formData.durationUnit,
+              team: { members: teamMembers },
+            };
 
-          newMembers.forEach((member) => {
-            notificationService.notifyTeamMemberJoined(projectContext, member);
-          });
+            newMembers.forEach((member) => {
+              notificationService.notifyTeamMemberJoined(projectContext, member);
+            });
+          }
         }
+      } finally {
+        setIsSaving(false);
       }
     }
   };
@@ -536,7 +558,16 @@ const ProjectModal: React.FC<ProjectModalProps> = ({
       setImportText('');
     } catch (error) {
       console.error('Error parsing text:', error);
-      alert('Failed to parse text. Please check the format and try again.');
+      if (showToast) {
+        showToast('Failed to parse text. Please check the format and try again.');
+      } else {
+        setAlertModal({
+          isOpen: true,
+          title: 'Text Import Error',
+          message: 'Failed to parse text. Please check the format and try again.',
+          type: 'error',
+        });
+      }
     }
   };
 
@@ -640,6 +671,16 @@ const ProjectModal: React.FC<ProjectModalProps> = ({
               {/* TAB 1: OVERVIEW */}
               {activeTab === 'overview' && (
                 <div className="space-y-3">
+                  {!canEditDefinitions && (
+                    <div className="p-3 bg-amber-500/10 border border-amber-500/30 rounded-lg text-xs text-amber-200 flex items-start gap-2.5">
+                      <InfoIcon className="w-4 h-4 text-amber-400 shrink-0 mt-0.5" />
+                      <div>
+                        <span className="font-semibold text-white">Project Definitions Read-Only:</span>
+                        <p className="mt-0.5 text-slate-300">Only the Project Owner (1st Lead) and 2nd Leads can modify project definitions, timeline, budget, and privacy.</p>
+                      </div>
+                    </div>
+                  )}
+
                   <div>
                     <label htmlFor="name" className="block mb-1 text-xs font-semibold text-slate-300 uppercase tracking-wider">
                       Project Name <span className="text-red-400">*</span>
@@ -650,8 +691,9 @@ const ProjectModal: React.FC<ProjectModalProps> = ({
                       name="name"
                       value={formData.name}
                       onChange={handleChange}
+                      disabled={!canEditDefinitions}
                       placeholder="e.g. CU Digital Learning Office"
-                      className="bg-slate-700/90 border border-slate-600 text-white text-base font-semibold rounded-lg focus:ring-2 focus:ring-brand-secondary focus:border-transparent block w-full px-3.5 py-2 transition-colors placeholder-slate-400"
+                      className={`bg-slate-700/90 border border-slate-600 text-white text-base font-semibold rounded-lg focus:ring-2 focus:ring-brand-secondary focus:border-transparent block w-full px-3.5 py-2 transition-colors placeholder-slate-400 ${!canEditDefinitions ? 'opacity-60 cursor-not-allowed' : ''}`}
                     />
                     {errors.name && <p className="mt-0.5 text-[11px] text-red-400">{errors.name}</p>}
                   </div>
@@ -666,8 +708,9 @@ const ProjectModal: React.FC<ProjectModalProps> = ({
                       rows={2}
                       value={formData.description}
                       onChange={handleChange}
+                      disabled={!canEditDefinitions}
                       placeholder="Describe project goals, scope, and key deliverables..."
-                      className="bg-slate-700/80 border border-slate-600 text-white text-sm rounded-lg focus:ring-2 focus:ring-brand-secondary focus:border-transparent block w-full px-3 py-1.5 placeholder-slate-400 resize-none"
+                      className={`bg-slate-700/80 border border-slate-600 text-white text-sm rounded-lg focus:ring-2 focus:ring-brand-secondary focus:border-transparent block w-full px-3 py-1.5 placeholder-slate-400 resize-none ${!canEditDefinitions ? 'opacity-60 cursor-not-allowed' : ''}`}
                     />
                     {errors.description && <p className="mt-0.5 text-xs text-red-400">{errors.description}</p>}
                   </div>
@@ -681,8 +724,9 @@ const ProjectModal: React.FC<ProjectModalProps> = ({
                         id="coreSystem"
                         name="coreSystem"
                         value={formData.coreSystem}
+                        disabled={!canEditDefinitions}
                         onChange={(e) => setFormData(prev => ({ ...prev, coreSystem: e.target.value }))}
-                        className="bg-slate-700/80 border border-slate-600 text-white text-sm rounded-lg focus:ring-brand-secondary focus:border-brand-secondary block w-full px-3 py-2"
+                        className={`bg-slate-700/80 border border-slate-600 text-white text-sm rounded-lg focus:ring-brand-secondary focus:border-brand-secondary block w-full px-3 py-2 ${!canEditDefinitions ? 'opacity-60 cursor-not-allowed' : ''}`}
                       >
                         <option value="">Select Type</option>
                         <option value="Technical">Technical</option>
@@ -700,6 +744,7 @@ const ProjectModal: React.FC<ProjectModalProps> = ({
                       type="date"
                       value={formData.startDate}
                       onChange={handleChange}
+                      disabled={!canEditDefinitions}
                       error={errors.startDate}
                       required
                     />
@@ -715,13 +760,15 @@ const ProjectModal: React.FC<ProjectModalProps> = ({
                           name="duration"
                           value={formData.duration}
                           onChange={handleChange}
-                          className="bg-slate-700/80 border border-slate-600 text-white text-sm rounded-lg focus:ring-brand-secondary focus:border-brand-secondary block w-24 px-3 py-2"
+                          disabled={!canEditDefinitions}
+                          className={`bg-slate-700/80 border border-slate-600 text-white text-sm rounded-lg focus:ring-brand-secondary focus:border-brand-secondary block w-24 px-3 py-2 ${!canEditDefinitions ? 'opacity-60 cursor-not-allowed' : ''}`}
                           min="1"
                         />
                         <select
                           value={formData.durationUnit}
+                          disabled={!canEditDefinitions}
                           onChange={(e) => setFormData(prev => ({ ...prev, durationUnit: e.target.value as DurationUnit }))}
-                          className="bg-slate-700/80 border border-slate-600 text-white text-sm rounded-lg focus:ring-brand-secondary focus:border-brand-secondary block flex-1 px-3 py-2"
+                          className={`bg-slate-700/80 border border-slate-600 text-white text-sm rounded-lg focus:ring-brand-secondary focus:border-brand-secondary block flex-1 px-3 py-2 ${!canEditDefinitions ? 'opacity-60 cursor-not-allowed' : ''}`}
                         >
                           <option value={DurationUnit.Hours}>Hours</option>
                           <option value={DurationUnit.Days}>Days</option>
@@ -740,8 +787,9 @@ const ProjectModal: React.FC<ProjectModalProps> = ({
                       <div className="flex gap-2">
                         <select
                           value={formData.currency}
+                          disabled={!canEditDefinitions}
                           onChange={(e) => setFormData(prev => ({ ...prev, currency: e.target.value as Currency }))}
-                          className="bg-slate-700/80 border border-slate-600 text-white text-sm rounded-lg focus:ring-brand-secondary focus:border-brand-secondary block w-24 px-2.5 py-2"
+                          className={`bg-slate-700/80 border border-slate-600 text-white text-sm rounded-lg focus:ring-brand-secondary focus:border-brand-secondary block w-24 px-2.5 py-2 ${!canEditDefinitions ? 'opacity-60 cursor-not-allowed' : ''}`}
                         >
                           <option value={Currency.NGN}>₦ NGN</option>
                           <option value={Currency.USD}>$ USD</option>
@@ -751,8 +799,9 @@ const ProjectModal: React.FC<ProjectModalProps> = ({
                           name="cost"
                           value={formData.cost}
                           onChange={handleChange}
+                          disabled={!canEditDefinitions}
                           placeholder="0.00"
-                          className="bg-slate-700/80 border border-slate-600 text-white text-sm rounded-lg focus:ring-brand-secondary focus:border-brand-secondary block flex-1 px-3 py-2"
+                          className={`bg-slate-700/80 border border-slate-600 text-white text-sm rounded-lg focus:ring-brand-secondary focus:border-brand-secondary block flex-1 px-3 py-2 ${!canEditDefinitions ? 'opacity-60 cursor-not-allowed' : ''}`}
                           min="0"
                           step="0.01"
                         />
@@ -790,7 +839,9 @@ const ProjectModal: React.FC<ProjectModalProps> = ({
                         type="button"
                         role="switch"
                         aria-checked={isPublic}
+                        disabled={!canEditDefinitions}
                         onClick={() => {
+                          if (!canEditDefinitions) return;
                           if (!isPublic) {
                             setShowPrivacyWarning(true);
                           } else {
@@ -832,6 +883,7 @@ const ProjectModal: React.FC<ProjectModalProps> = ({
                     onMemberRemovedWithChoice={handleMemberRemovedWithChoice}
                     onRestoreFormerMember={handleRestoreFormerMember}
                     canInviteUsers={canInviteUsers}
+                    canAddMembers={canAddMembers}
                     canTransferOwnership={canTransferOwnership}
                     onTransferOwnership={handleTransferOwnership}
                     projectContext={{
@@ -869,6 +921,14 @@ const ProjectModal: React.FC<ProjectModalProps> = ({
                       📋 Import from Text
                     </button>
                   </div>
+
+                  {!canDeleteStructure && (
+                    <div className="p-2.5 bg-slate-800/80 border border-slate-700 rounded-lg text-xs text-slate-300 flex items-center gap-2">
+                      <InfoIcon className="w-4 h-4 text-blue-400 shrink-0" />
+                      <span>Deleting sections, tasks, or subtasks is restricted to Project Leads (1st Lead, 2nd Lead) and Admins.</span>
+                    </div>
+                  )}
+
                   <div className="space-y-3">
                     {phases.length === 0 && (
                       <div className="bg-slate-900/40 border border-slate-700/70 rounded-lg p-6 text-center text-sm text-slate-400">
@@ -879,7 +939,9 @@ const ProjectModal: React.FC<ProjectModalProps> = ({
                       <div key={phase.id} className="bg-slate-700/50 p-3 rounded-lg">
                         <div className="flex items-center gap-2">
                           <input value={phase.name} onChange={(e) => handleUpdatePhase(phase.id, e.target.value)} className="flex-grow bg-transparent text-white font-semibold text-sm p-1 rounded-md focus:bg-slate-600" />
-                          <button type="button" onClick={() => handleDeletePhase(phase.id)} className="text-slate-500 hover:text-red-500"><TrashIcon className="w-4 h-4" /></button>
+                          {canDeleteStructure && (
+                            <button type="button" onClick={() => handleDeletePhase(phase.id)} className="text-slate-500 hover:text-red-500" title="Delete Section"><TrashIcon className="w-4 h-4" /></button>
+                          )}
                         </div>
                         <div className="pl-4 mt-2 space-y-2">
                           {phase.tasks.map(task => (
@@ -887,13 +949,17 @@ const ProjectModal: React.FC<ProjectModalProps> = ({
                               <div className="flex items-center gap-2 group">
                                 <input value={task.name} onChange={(e) => handleUpdateTask(phase.id, task.id, e.target.value)} className="flex-grow bg-transparent text-slate-200 text-sm p-1 rounded-md focus:bg-slate-600" />
                                 <button type="button" onClick={() => handleAddSubtask(phase.id, task.id)} className="text-slate-500 hover:text-brand-light opacity-0 group-hover:opacity-100 transition-opacity"><PlusCircleIcon className="w-4 h-4" /></button>
-                                <button type="button" onClick={() => handleDeleteTask(phase.id, task.id)} className="text-slate-500 hover:text-red-500"><TrashIcon className="w-4 h-4" /></button>
+                                {canDeleteStructure && (
+                                  <button type="button" onClick={() => handleDeleteTask(phase.id, task.id)} className="text-slate-500 hover:text-red-500" title="Delete Task"><TrashIcon className="w-4 h-4" /></button>
+                                )}
                               </div>
                               <div className="pl-6 mt-1 space-y-1">
                                 {(task.subTasks || []).map(subtask => (
                                   <div key={subtask.id} className="flex items-center gap-2">
                                     <input value={subtask.name} onChange={(e) => handleUpdateSubtask(phase.id, task.id, subtask.id, e.target.value)} className="flex-grow bg-transparent text-slate-400 text-sm p-1 rounded-md focus:bg-slate-600" />
-                                    <button type="button" onClick={() => handleDeleteSubtask(phase.id, task.id, subtask.id)} className="text-slate-500 hover:text-red-500"><TrashIcon className="w-4 h-4" /></button>
+                                    {canDeleteStructure && (
+                                      <button type="button" onClick={() => handleDeleteSubtask(phase.id, task.id, subtask.id)} className="text-slate-500 hover:text-red-500" title="Delete Subtask"><TrashIcon className="w-4 h-4" /></button>
+                                    )}
                                   </div>
                                 ))}
                               </div>
@@ -913,11 +979,27 @@ const ProjectModal: React.FC<ProjectModalProps> = ({
               )}
             </div>
             <div className="flex justify-end items-center px-6 py-3.5 bg-slate-800 border-t border-slate-700 sticky bottom-0 space-x-3 rounded-b-xl">
-              <button type="button" onClick={onClose} className="px-4 py-2 text-sm font-medium text-slate-300 bg-slate-700 rounded-lg hover:bg-slate-600">
+              <button
+                type="button"
+                onClick={onClose}
+                disabled={isSaving}
+                className="px-4 py-2 text-sm font-medium text-slate-300 bg-slate-700 rounded-lg hover:bg-slate-600 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+              >
                 Cancel
               </button>
-              <button type="submit" className="px-5 py-2 text-sm font-semibold text-white bg-brand-secondary rounded-lg hover:bg-blue-500 transition-colors shadow-md">
-                {projectToEdit ? 'Save Changes' : 'Save Project'}
+              <button
+                type="submit"
+                disabled={isSaving}
+                className="px-5 py-2 text-sm font-semibold text-white bg-brand-secondary rounded-lg hover:bg-blue-500 transition-colors shadow-md flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer"
+              >
+                {isSaving && (
+                  <div className="animate-spin rounded-full h-4 w-4 border-2 border-white border-t-transparent" />
+                )}
+                <span>
+                  {isSaving
+                    ? (projectToEdit ? 'Saving Changes...' : 'Creating Project...')
+                    : (projectToEdit ? 'Save Changes' : 'Save Project')}
+                </span>
               </button>
             </div>
           </form>
@@ -1037,6 +1119,16 @@ const ProjectModal: React.FC<ProjectModalProps> = ({
               </div>
             </div>
           </div>
+        )}
+        {/* Aesthetic Alert Modal */}
+        {alertModal && (
+          <AlertModal
+            isOpen={alertModal.isOpen}
+            onClose={() => setAlertModal(null)}
+            title={alertModal.title}
+            message={alertModal.message}
+            type={alertModal.type}
+          />
         )}
       </div>
     </>

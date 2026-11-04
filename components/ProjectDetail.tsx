@@ -1040,6 +1040,7 @@ interface TaskRowProps {
   setEditingField: (field: { taskId: string; field: string } | null) => void;
   handleUpdateTaskField: (taskId: string, field: keyof Task, value: any) => void;
   onRequestDelete: (taskId: string) => void;
+  canDeleteTask?: boolean;
   phaseId: string;
   parentId?: string;
   onDragStart: (e: React.DragEvent, task: Task, phaseId: string, parentId?: string) => void;
@@ -1067,7 +1068,7 @@ interface TaskRowProps {
   isLastChild?: boolean;
 }
 
-const TaskRow: React.FC<TaskRowProps> = ({ task, level, isExpanded, onToggleExpand, addingSubtaskTo, setAddingSubtaskTo, canEdit, handleSaveSubtask, editingField, setEditingField, handleUpdateTaskField, onRequestDelete, phaseId, parentId, onDragStart, onDragOver, onDrop, onDragEnd, onDragLeave, draggedItemId, dropTarget, checkPermission, checkTaskPermission, onAssign, projectTeam, formerMembers, getUserDisplayName, getUserPhotoURL, onImageUpload, onRemoveImage, onViewImage, onOpenFeedback, onOpenImpediment, onRequestComplete, expandedTasks, highlightedTaskId, isLastChild }) => {
+const TaskRow: React.FC<TaskRowProps> = ({ task, level, isExpanded, onToggleExpand, addingSubtaskTo, setAddingSubtaskTo, canEdit, handleSaveSubtask, editingField, setEditingField, handleUpdateTaskField, onRequestDelete, canDeleteTask = true, phaseId, parentId, onDragStart, onDragOver, onDrop, onDragEnd, onDragLeave, draggedItemId, dropTarget, checkPermission, checkTaskPermission, onAssign, projectTeam, formerMembers, getUserDisplayName, getUserPhotoURL, onImageUpload, onRemoveImage, onViewImage, onOpenFeedback, onOpenImpediment, onRequestComplete, expandedTasks, highlightedTaskId, isLastChild }) => {
   const isSubtask = level > 0;
   const effectivePriority = getEffectivePriority(task);
   const priorityColor = PRIORITY_COLORS[effectivePriority];
@@ -1496,9 +1497,11 @@ const TaskRow: React.FC<TaskRowProps> = ({ task, level, isExpanded, onToggleExpa
                 <button onClick={() => setAddingSubtaskTo(task.id)} className="text-slate-500 hover:text-brand-light transition-colors p-1 rounded-full" title="Add Subtask">
                   <PlusCircleIcon className="w-5 h-5" />
                 </button>
-                <button onClick={() => onRequestDelete(task.id)} className="text-slate-500 hover:text-red-500 transition-colors p-1 rounded-full" title="Delete Task">
-                  <TrashIcon className="w-5 h-5" />
-                </button>
+                {canDeleteTask && (
+                  <button onClick={() => onRequestDelete(task.id)} className="text-slate-500 hover:text-red-500 transition-colors p-1 rounded-full" title="Delete Task">
+                    <TrashIcon className="w-5 h-5" />
+                  </button>
+                )}
               </>
             )}
           </div>
@@ -1537,6 +1540,7 @@ const TaskRow: React.FC<TaskRowProps> = ({ task, level, isExpanded, onToggleExpa
             setEditingField={setEditingField}
             handleUpdateTaskField={handleUpdateTaskField}
             onRequestDelete={onRequestDelete}
+            canDeleteTask={canDeleteTask}
             phaseId={phaseId}
             parentId={task.id}
             onDragStart={onDragStart}
@@ -2414,6 +2418,23 @@ const ProjectDetail: React.FC<ProjectDetailProps> = ({ project, onBack, canEdit,
     return itemOwnerId === currentUserId;
   };
 
+  const [isDeletingTask, setIsDeletingTask] = useState(false);
+  const [isDeletingPhase, setIsDeletingPhase] = useState(false);
+  const [isArchiving, setIsArchiving] = useState(false);
+
+  // Deletion in Structure (sections and tasks) is restricted to Admins, 1st Lead (Project Owner), and 2nd Lead
+  const canDeleteStructure = useMemo(() => {
+    if (!effectiveCanEdit || !currentUserId) return false;
+    const isAdminOrSuperAdmin =
+      currentUserEmail?.toLowerCase() === 'talgans@gmail.com' ||
+      userRole === 'admin';
+    if (isAdminOrSuperAdmin) return true;
+    if (project.ownerId === currentUserId || (project.ownerEmail && currentUserEmail && project.ownerEmail.toLowerCase() === currentUserEmail.toLowerCase())) return true;
+    const member = project.team?.members?.find(m => m.uid === currentUserId || (currentUserEmail && m.email?.toLowerCase() === currentUserEmail.toLowerCase()));
+    if (member && (member.leadRole === 'primary' || member.leadRole === 'secondary')) return true;
+    return false;
+  }, [effectiveCanEdit, currentUserId, currentUserEmail, userRole, project.ownerId, project.ownerEmail, project.team?.members]);
+
   // --- Drag and Drop Handlers ---
 
   const handleDragStart = (e: React.DragEvent, task: Task, phaseId: string, parentId?: string) => {
@@ -2592,12 +2613,17 @@ const ProjectDetail: React.FC<ProjectDetailProps> = ({ project, onBack, canEdit,
     setPhaseToDelete(phase);
   };
 
-  const handleConfirmDeletePhase = () => {
+  const handleConfirmDeletePhase = async () => {
     if (!phaseToDelete) return;
-    const updatedProject = JSON.parse(JSON.stringify(project), reviveDates);
-    updatedProject.phases = updatedProject.phases.filter((p: Phase) => p.id !== phaseToDelete.id);
-    onUpdateProject(updatedProject);
-    setPhaseToDelete(null);
+    setIsDeletingPhase(true);
+    try {
+      const updatedProject = JSON.parse(JSON.stringify(project), reviveDates);
+      updatedProject.phases = updatedProject.phases.filter((p: Phase) => p.id !== phaseToDelete.id);
+      await onUpdateProject(updatedProject);
+      setPhaseToDelete(null);
+    } finally {
+      setIsDeletingPhase(false);
+    }
   };
 
   const handleSaveTask = (phaseId: string, data: TaskFormData | string) => {
@@ -2901,30 +2927,34 @@ const ProjectDetail: React.FC<ProjectDetailProps> = ({ project, onBack, canEdit,
     setTaskToDeleteId(taskId);
   };
 
-  const handleConfirmDeleteTask = () => {
+  const handleConfirmDeleteTask = async () => {
     if (!taskToDeleteId) return;
+    setIsDeletingTask(true);
+    try {
+      const updatedProject = JSON.parse(JSON.stringify(project), reviveDates);
 
-    const updatedProject = JSON.parse(JSON.stringify(project), reviveDates);
+      const findAndRemove = (tasks: Task[], id: string): Task[] => {
+        return tasks.filter(task => {
+          if (task.id === id) {
+            return false; // remove this task
+          }
+          if (task.subTasks) {
+            task.subTasks = findAndRemove(task.subTasks, id);
+          }
+          return true;
+        });
+      };
 
-    const findAndRemove = (tasks: Task[], id: string): Task[] => {
-      return tasks.filter(task => {
-        if (task.id === id) {
-          return false; // remove this task
-        }
-        if (task.subTasks) {
-          task.subTasks = findAndRemove(task.subTasks, id);
-        }
-        return true;
+      updatedProject.phases.forEach((phase: Phase) => {
+        phase.tasks = findAndRemove(phase.tasks, taskToDeleteId);
       });
-    };
 
-    updatedProject.phases.forEach((phase: Phase) => {
-      phase.tasks = findAndRemove(phase.tasks, taskToDeleteId);
-    });
-
-    const syncedProject = syncProjectTaskDates(updatedProject);
-    onUpdateProject(syncedProject);
-    setTaskToDeleteId(null);
+      const syncedProject = syncProjectTaskDates(updatedProject);
+      await onUpdateProject(syncedProject);
+      setTaskToDeleteId(null);
+    } finally {
+      setIsDeletingTask(false);
+    }
   };
 
   const handleUpdateDuration = (duration: string, unit: DurationUnit) => {
@@ -3087,18 +3117,23 @@ const ProjectDetail: React.FC<ProjectDetailProps> = ({ project, onBack, canEdit,
   };
 
   // --- Archive Functionality ---
-  const handleArchive = (archive: boolean) => {
-    const updatedProject = JSON.parse(JSON.stringify(project), reviveDates);
-    updatedProject.isArchived = archive;
-    if (archive) {
-      updatedProject.archivedAt = new Date();
-      updatedProject.archivedBy = currentUserId;
-    } else {
-      // When unarchiving, keep archivedAt for history but clear archivedBy
-      delete updatedProject.archivedBy;
+  const handleArchive = async (archive: boolean) => {
+    setIsArchiving(true);
+    try {
+      const updatedProject = JSON.parse(JSON.stringify(project), reviveDates);
+      updatedProject.isArchived = archive;
+      if (archive) {
+        updatedProject.archivedAt = new Date();
+        updatedProject.archivedBy = currentUserId;
+      } else {
+        // When unarchiving, keep archivedAt for history but clear archivedBy
+        delete updatedProject.archivedBy;
+      }
+      await onUpdateProject(updatedProject);
+      showToast(archive ? 'Project archived' : 'Project unarchived');
+    } finally {
+      setIsArchiving(false);
     }
-    onUpdateProject(updatedProject);
-    showToast(archive ? 'Project archived' : 'Project unarchived');
   };
 
   return (
@@ -4120,8 +4155,8 @@ const ProjectDetail: React.FC<ProjectDetailProps> = ({ project, onBack, canEdit,
                         )}
                       </div>
 
-                      {checkPermission(phase.ownerId) && (
-                        <button onClick={() => handleRequestDeletePhase(phase)} className="text-slate-500 hover:text-red-500 opacity-0 group-hover:opacity-100 transition-opacity">
+                      {canDeleteStructure && (
+                        <button onClick={() => handleRequestDeletePhase(phase)} className="text-slate-500 hover:text-red-500 opacity-0 group-hover:opacity-100 transition-opacity" title="Delete Section">
                           <TrashIcon className="w-4 h-4" />
                         </button>
                       )}
@@ -4186,6 +4221,7 @@ const ProjectDetail: React.FC<ProjectDetailProps> = ({ project, onBack, canEdit,
                             setEditingField={setEditingField}
                             handleUpdateTaskField={handleUpdateTaskField}
                             onRequestDelete={handleRequestDeleteTask}
+                            canDeleteTask={canDeleteStructure}
                             checkPermission={checkPermission}
                             checkTaskPermission={checkTaskPermission}
                             phaseId={phase.id}
@@ -4270,6 +4306,10 @@ const ProjectDetail: React.FC<ProjectDetailProps> = ({ project, onBack, canEdit,
         onConfirm={handleConfirmDeleteTask}
         title="Delete Task"
         message="Are you sure you want to delete this task and all its sub-tasks? This action cannot be undone."
+        confirmText="Delete Task"
+        confirmVariant="danger"
+        isLoading={isDeletingTask}
+        loadingText="Deleting..."
       />
 
       <ConfirmationModal
@@ -4278,13 +4318,17 @@ const ProjectDetail: React.FC<ProjectDetailProps> = ({ project, onBack, canEdit,
         onConfirm={handleConfirmDeletePhase}
         title="Delete Section"
         message={<>Are you sure you want to delete the section "<strong>{phaseToDelete?.name}</strong>"? All tasks and sub-tasks within this section will also be deleted. This action cannot be undone.</>}
+        confirmText="Delete Section"
+        confirmVariant="danger"
+        isLoading={isDeletingPhase}
+        loadingText="Deleting..."
       />
 
       <ConfirmationModal
         isOpen={archiveConfirm.show}
         onClose={() => setArchiveConfirm({ show: false, action: 'archive' })}
-        onConfirm={() => {
-          handleArchive(archiveConfirm.action === 'archive');
+        onConfirm={async () => {
+          await handleArchive(archiveConfirm.action === 'archive');
           setArchiveConfirm({ show: false, action: 'archive' });
         }}
         title={archiveConfirm.action === 'archive' ? 'Archive Project' : 'Unarchive Project'}
@@ -4292,6 +4336,10 @@ const ProjectDetail: React.FC<ProjectDetailProps> = ({ project, onBack, canEdit,
           ? <>Are you sure you want to archive "<strong>{project.name}</strong>"? Team members will no longer be able to make edits until the project is unarchived.</>
           : <>Are you sure you want to unarchive "<strong>{project.name}</strong>"? Team members will be able to resume making edits.</>
         }
+        confirmText={archiveConfirm.action === 'archive' ? 'Archive' : 'Unarchive'}
+        confirmVariant="warning"
+        isLoading={isArchiving}
+        loadingText={archiveConfirm.action === 'archive' ? 'Archiving...' : 'Unarchiving...'}
       />
 
       {assigningTo && (
