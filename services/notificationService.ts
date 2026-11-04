@@ -1,6 +1,7 @@
 import { getFunctions, httpsCallable } from 'firebase/functions';
 import { app, auth } from './firebaseConfig';
 import { Project, TeamMember, Task, Phase } from '../types';
+import { formatProjectTimeline } from './userService';
 
 const LIVE_APP_URL = 'https://vantageflow.vercel.app';
 
@@ -47,6 +48,8 @@ export const notificationService = {
             await notifyProjectMemberAdded({
                 projectId: project.id,
                 projectName: project.name,
+                projectDescription: project.description || '',
+                projectTimeline: formatProjectTimeline(project.startDate, project.duration, project.durationUnit),
                 newMemberEmail: newMember.email,
                 newMemberName: newMember.displayName,
                 teamEmails: project.team.members.map(m => m.email),

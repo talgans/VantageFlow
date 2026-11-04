@@ -23,10 +23,35 @@ exports.footerStyle = `
   border-top: 1px solid #e2e8f0;
   padding-top: 20px;
 `;
-const getInvitationEmail = (role, setupLink) => `
+const renderProjectContextCard = (projectContext) => {
+    if (!(projectContext === null || projectContext === void 0 ? void 0 : projectContext.projectName))
+        return '';
+    const hasDesc = Boolean(projectContext.projectDescription && projectContext.projectDescription.trim());
+    const hasTimeline = Boolean(projectContext.projectTimeline && projectContext.projectTimeline.trim());
+    if (!hasDesc && !hasTimeline)
+        return '';
+    return `
+  <div style="background-color: #f8fafc; border: 1px solid #e2e8f0; border-left: 4px solid #3b82f6; padding: 14px 16px; margin: 20px 0; border-radius: 6px;">
+    <p style="margin: 0 0 6px 0; font-size: 12px; color: #3b82f6; text-transform: uppercase; font-weight: bold; letter-spacing: 0.04em;">
+      Project Context — ${projectContext.projectName}
+    </p>
+    ${hasDesc ? `
+    <p style="margin: 0 0 ${hasTimeline ? '10px' : '0'} 0; color: #1e293b; font-size: 14px; line-height: 1.5;">
+      ${projectContext.projectDescription}
+    </p>` : ''}
+    ${hasTimeline ? `
+    <p style="margin: 0; font-size: 13px; color: #475569; background-color: #f1f5f9; padding: 6px 10px; border-radius: 4px; display: inline-block;">
+      📅 <strong>Timeline:</strong> ${projectContext.projectTimeline}
+    </p>` : ''}
+  </div>`;
+};
+const getInvitationEmail = (role, setupLink, projectContext) => `
 <div style="${exports.commonStyles}">
   <h2 style="color: #3b82f6;">Welcome to VantageFlow</h2>
-  <p>You have been invited to join <strong>VantageFlow</strong> as a <strong>${role}</strong>.</p>
+  ${(projectContext === null || projectContext === void 0 ? void 0 : projectContext.projectName)
+    ? `<p><strong>${projectContext.inviterName || 'A Project Lead'}</strong> has invited you to join <strong>VantageFlow</strong> as a <strong>${role}</strong> to collaborate on <strong>${projectContext.projectName}</strong>.</p>
+       ${renderProjectContextCard(projectContext)}`
+    : `<p>You have been invited to join <strong>VantageFlow</strong> as a <strong>${role}</strong>.</p>`}
   <p>To get started, please set your password by clicking the button below:</p>
   <div style="margin: 30px 0;">
     <a href="${setupLink}" style="${exports.buttonStyle}">
@@ -42,10 +67,13 @@ const getInvitationEmail = (role, setupLink) => `
 </div>
 `;
 exports.getInvitationEmail = getInvitationEmail;
-const getReminderEmail = (role, setupLink) => `
+const getReminderEmail = (role, setupLink, projectContext) => `
 <div style="${exports.commonStyles}">
   <h2 style="color: #3b82f6;">Action Required: Complete Account Setup</h2>
-  <p>You were invited to join <strong>VantageFlow</strong> as a <strong>${role}</strong>, but haven't set your password yet.</p>
+  ${(projectContext === null || projectContext === void 0 ? void 0 : projectContext.projectName)
+    ? `<p><strong>${projectContext.inviterName || 'A Project Lead'}</strong> sent you a reminder to complete your <strong>VantageFlow</strong> account setup and join the project <strong>${projectContext.projectName}</strong>.</p>
+       ${renderProjectContextCard(projectContext)}`
+    : `<p>You were invited to join <strong>VantageFlow</strong> as a <strong>${role}</strong>, but haven't set your password yet.</p>`}
   <p>To get started, please set your password by clicking the button below:</p>
   <div style="margin: 30px 0;">
     <a href="${setupLink}" style="${exports.buttonStyle}">
@@ -66,10 +94,16 @@ const getReminderEmail = (role, setupLink) => `
 </div>
 `;
 exports.getReminderEmail = getReminderEmail;
-const getNewMemberEmail = (newMemberName, projectName, inviterName, link) => `
+const getNewMemberEmail = (newMemberName, projectName, inviterName, link, projectDescription, projectTimeline) => `
 <div style="${exports.commonStyles}">
   <h2 style="color: #3b82f6;">New Project Member</h2>
-  <p><strong>${newMemberName}</strong> has been added to project <strong>${projectName}</strong> by ${inviterName}.</p>
+  <p><strong>${newMemberName}</strong> has been added to project <strong>${projectName}</strong> by <strong>${inviterName}</strong>.</p>
+  ${renderProjectContextCard({
+    projectName,
+    projectDescription,
+    projectTimeline,
+    inviterName
+})}
   <div style="margin: 20px 0;">
     <a href="${link}" style="${exports.buttonStyle}">
       View Project

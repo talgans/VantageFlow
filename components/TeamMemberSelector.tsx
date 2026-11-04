@@ -1,10 +1,9 @@
 import React, { useState, useEffect, useMemo } from 'react';
-import { TeamMember } from '../types';
-import { XMarkIcon, UserIcon, MagnifyingGlassIcon, StarIcon } from './icons';
+import { TeamMember, Phase } from '../types';
+import { XMarkIcon, UserIcon, MagnifyingGlassIcon, StarIcon, EnvelopeIcon, PlusCircleIcon } from './icons';
 import { getFunctions, httpsCallable } from 'firebase/functions';
 import UserAchievementBadge from './UserAchievementBadge';
-
-import { Phase } from '../types';
+import { inviteUserByEmail, sendUserReminderEmail, ProjectInviteContext } from '../services/userService';
 
 interface User {
     uid: string;
@@ -12,6 +11,8 @@ interface User {
     displayName?: string;
     photoURL?: string;
     role: string;
+    createdAt?: string;
+    lastSignIn?: string;
 }
 
 interface TeamMemberSelectorProps {
@@ -23,6 +24,14 @@ interface TeamMemberSelectorProps {
     formerMembers?: TeamMember[];
     onMemberRemovedWithChoice?: (member: TeamMember, choice: 'former' | 'clear') => void;
     onRestoreFormerMember?: (member: TeamMember) => void;
+    canInviteUsers?: boolean;
+    canTransferOwnership?: boolean;
+    onTransferOwnership?: (newOwner: TeamMember) => void;
+    projectContext?: ProjectInviteContext;
+    onRequireProjectContext?: () => void;
+    onUserInvited?: (member: TeamMember) => void;
+    showToast?: (message: string) => void;
+    defaultExpanded?: boolean;
 }
 
 const TeamMemberSelector: React.FC<TeamMemberSelectorProps> = ({
@@ -34,18 +43,35 @@ const TeamMemberSelector: React.FC<TeamMemberSelectorProps> = ({
     formerMembers = [],
     onMemberRemovedWithChoice,
     onRestoreFormerMember,
+    canInviteUsers = false,
+    canTransferOwnership = false,
+    onTransferOwnership,
+    projectContext,
+    onRequireProjectContext,
+    onUserInvited,
+    showToast,
+    defaultExpanded = true,
 }) => {
     const [users, setUsers] = useState<User[]>([]);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState<string | null>(null);
     const [searchQuery, setSearchQuery] = useState('');
-    const [isExpanded, setIsExpanded] = useState(false);
+    const [isExpanded, setIsExpanded] = useState(defaultExpanded);
     const [isFormerExpanded, setIsFormerExpanded] = useState(false);
     const [pendingRemoval, setPendingRemoval] = useState<{
         member: TeamMember;
         taskCount: number;
     } | null>(null);
     const [removalChoice, setRemovalChoice] = useState<'former' | 'clear'>('former');
+
+    // Invite state (reusing shared inviteUserByEmail from userService)
+    const [inviteEmail, setInviteEmail] = useState('');
+    const [inviting, setInviting] = useState(false);
+    const [remindingEmail, setRemindingEmail] = useState<string | null>(null);
+
+    // Ownership transfer state (1st Lead -> 2nd Lead)
+    const [selectedTransferTargetUid, setSelectedTransferTargetUid] = useState<string>('');
+    const [pendingOwnershipTransfer, setPendingOwnershipTransfer] = useState<TeamMember | null>(null);
 
     useEffect(() => {
         fetchUsers();
@@ -183,6 +209,149 @@ const TeamMemberSelector: React.FC<TeamMemberSelectorProps> = ({
     const secondaryLeads = selectedMembers.filter((m) => m.leadRole === 'secondary');
     const totalLeads = primaryLeads.length + secondaryLeads.length;
 
+    // Keep selectedTransferTargetUid defaulted to the 2nd Lead (or first available 2nd Lead)
+    useEffect(() => {
+        if (secondaryLeads.length > 0) {
+            if (!selectedTransferTargetUid || !secondaryLeads.some((m) => m.uid === selectedTransferTargetUid)) {
+                setSelectedTransferTargetUid(secondaryLeads[0].uid);
+            }
+        } else {
+            setSelectedTransferTargetUid('');
+        }
+    }, [secondaryLeads, selectedTransferTargetUid]);
+
+    const notify = (msg: string) => {
+        if (showToast) {
+            showToast(msg);
+        } else {
+            alert(msg);
+        }
+    };
+
+    const isUserPendingSetup = (uid?: string, email?: string): boolean => {
+        if (loading || users.length === 0) return false;
+        const found = users.find(
+            (u) => (uid && u.uid === uid) || (email && u.email.toLowerCase() === email.toLowerCase())
+        );
+        if (!found) return false;
+        return !found.lastSignIn;
+    };
+
+    const handleSendReminder = async (email: string, e?: React.MouseEvent) => {
+        if (e) e.stopPropagation();
+        if (!email || remindingEmail) return;
+        if (!confirm(`Send an account setup reminder email to ${email}?`)) return;
+
+        setRemindingEmail(email);
+        try {
+            await sendUserReminderEmail(email, projectContext);
+            notify(`Reminder email sent to ${email}!`);
+        } catch (err: any) {
+            console.error('Error sending reminder:', err);
+            notify(`Failed to send reminder: ${err.message}`);
+        } finally {
+            setRemindingEmail(null);
+        }
+    };
+
+    const executeInviteEmail = async (rawEmail: string) => {
+        const targetEmail = rawEmail.trim().toLowerCase();
+        if (!targetEmail || !targetEmail.includes('@')) {
+            notify('Please enter a valid email address');
+            return;
+        }
+
+        // Require project name & description so the invitation email includes project context
+        if (!projectContext?.projectName?.trim() || !projectContext?.projectDescription?.trim()) {
+            notify('Please enter a Project Name and Description in the Overview tab before inviting users.');
+            onRequireProjectContext?.();
+            return;
+        }
+
+        // Check if this email already belongs to an existing user in the directory
+        const existingUser = users.find((u) => u.email.toLowerCase() === targetEmail);
+        if (existingUser) {
+            if (isSelected(existingUser.uid)) {
+                notify(`${existingUser.email} is already on this project team.`);
+            } else {
+                const newMember: TeamMember = {
+                    uid: existingUser.uid,
+                    email: existingUser.email,
+                    displayName: existingUser.displayName,
+                    photoURL: existingUser.photoURL,
+                    leadRole: undefined,
+                };
+                onChange([...selectedMembers, newMember]);
+                notify(`${existingUser.email} is already registered on VantageFlow and has been added to the team!`);
+            }
+            setInviteEmail('');
+            setSearchQuery('');
+            return;
+        }
+
+        setInviting(true);
+        try {
+            const result = await inviteUserByEmail(targetEmail, 'member', projectContext);
+            const createdUser: User = result.user || {
+                uid: `invited-${Date.now()}`,
+                email: targetEmail,
+                role: 'member',
+                createdAt: new Date().toISOString(),
+                lastSignIn: undefined,
+            };
+
+            setUsers((prev) => {
+                if (prev.some((u) => u.email.toLowerCase() === targetEmail)) return prev;
+                return [createdUser, ...prev];
+            });
+
+            const newMember: TeamMember = {
+                uid: createdUser.uid,
+                email: createdUser.email,
+                displayName: createdUser.displayName,
+                leadRole: undefined, // Regular Team Member by default
+            };
+
+            if (!selectedMembers.some((m) => m.email.toLowerCase() === targetEmail)) {
+                onChange([...selectedMembers, newMember]);
+            }
+            onUserInvited?.(newMember);
+
+            notify(`Invitation sent to ${targetEmail} with project details and added to the team!`);
+            setInviteEmail('');
+            setSearchQuery('');
+        } catch (err: any) {
+            console.error('Error inviting user from project modal:', err);
+            notify(`Failed to invite user: ${err.message}`);
+        } finally {
+            setInviting(false);
+        }
+    };
+
+    const handleConfirmOwnershipTransfer = () => {
+        if (!pendingOwnershipTransfer) return;
+        if (pendingOwnershipTransfer.leadRole !== 'secondary') {
+            notify('Ownership can only be transferred to a 2nd Lead.');
+            setPendingOwnershipTransfer(null);
+            return;
+        }
+
+        const updatedMembers = selectedMembers.map((m) => {
+            if (m.uid === pendingOwnershipTransfer.uid) {
+                return { ...m, leadRole: 'primary' as const };
+            }
+            if (m.leadRole === 'primary' || isPrimaryLead(m.uid)) {
+                return { ...m, leadRole: 'secondary' as const };
+            }
+            return m;
+        });
+
+        onChange(updatedMembers);
+        onTransferOwnership?.({ ...pendingOwnershipTransfer, leadRole: 'primary' });
+        notify(`Project ownership (1st Lead) transferred to ${pendingOwnershipTransfer.displayName || pendingOwnershipTransfer.email}.`);
+        setPendingOwnershipTransfer(null);
+    };
+
     const getLeadBadgeStyle = (member: TeamMember) => {
         if (member.leadRole === 'primary') {
             return 'bg-blue-500/20 border-blue-500/40 text-blue-300';
@@ -206,36 +375,166 @@ const TeamMemberSelector: React.FC<TeamMemberSelectorProps> = ({
     });
 
     return (
-        <div className="space-y-3">
+        <div className="space-y-4">
             {/* Selected Members Display */}
             {sortedSelectedMembers.length > 0 && (
                 <div className="flex flex-wrap gap-2">
-                    {sortedSelectedMembers.map((member) => (
-                        <div
-                            key={member.uid}
-                            className={`flex items-center gap-2 px-3 py-1.5 rounded-full text-sm border ${getLeadBadgeStyle(member)}`}
-                        >
-                            {member.leadRole && <StarIcon className="w-3.5 h-3.5" />}
-                            <span className="truncate max-w-[120px]">
-                                {member.displayName || member.email}
-                            </span>
-                            {member.leadRole && (
-                                <span className={`text-xs px-1.5 py-0.5 rounded ${member.leadRole === 'primary' ? 'bg-blue-500/30' : 'bg-amber-500/30'
-                                    }`}>
-                                    {member.leadRole === 'primary' ? '1st Lead' : '2nd Lead'}
+                    {sortedSelectedMembers.map((member) => {
+                        const pendingSetup = isUserPendingSetup(member.uid, member.email);
+                        return (
+                            <div
+                                key={member.uid}
+                                className={`flex items-center gap-2 px-3 py-1.5 rounded-full text-sm border ${getLeadBadgeStyle(member)}`}
+                            >
+                                {member.leadRole && <StarIcon className="w-3.5 h-3.5" />}
+                                <span className="truncate max-w-[140px]">
+                                    {member.displayName || member.email}
                                 </span>
-                            )}
-                            {!disabled && !isPrimaryLead(member.uid) && (
+                                {member.leadRole && (
+                                    <span className={`text-xs px-1.5 py-0.5 rounded ${member.leadRole === 'primary' ? 'bg-blue-500/30' : 'bg-amber-500/30'
+                                        }`}>
+                                        {member.leadRole === 'primary' ? '1st Lead' : '2nd Lead'}
+                                    </span>
+                                )}
+                                {pendingSetup && (
+                                    <span className="text-[10px] px-1.5 py-0.5 rounded bg-yellow-500/20 text-yellow-300 border border-yellow-500/30" title="User has not completed account setup yet">
+                                        Pending
+                                    </span>
+                                )}
+                                {canInviteUsers && pendingSetup && !disabled && (
+                                    <button
+                                        type="button"
+                                        onClick={(e) => handleSendReminder(member.email, e)}
+                                        disabled={remindingEmail === member.email}
+                                        className="text-yellow-400 hover:text-yellow-200 transition-colors disabled:opacity-50"
+                                        title={`Send setup reminder email to ${member.email}`}
+                                    >
+                                        <EnvelopeIcon className="w-3.5 h-3.5" />
+                                    </button>
+                                )}
+                                {canTransferOwnership && !disabled && member.leadRole === 'secondary' && (
+                                    <button
+                                        type="button"
+                                        onClick={(e) => {
+                                            e.stopPropagation();
+                                            setPendingOwnershipTransfer(member);
+                                        }}
+                                        className="text-[10px] px-1.5 py-0.5 rounded bg-blue-500/25 hover:bg-blue-500/40 text-blue-200 border border-blue-400/30 transition-colors"
+                                        title="Transfer 1st Lead (Project Ownership) to this 2nd Lead"
+                                    >
+                                        Make 1st Lead
+                                    </button>
+                                )}
+                                {!disabled && !isPrimaryLead(member.uid) && (
+                                    <button
+                                        type="button"
+                                        onClick={(e) => handleRemoveMember(member.uid, e)}
+                                        className="text-slate-400 hover:text-red-400 transition-colors"
+                                    >
+                                        <XMarkIcon className="w-4 h-4" />
+                                    </button>
+                                )}
+                            </div>
+                        );
+                    })}
+                </div>
+            )}
+
+            {/* Project Lead / Ownership Transfer Section (Visible to 1st Lead / Admin) */}
+            {canTransferOwnership && !disabled && (
+                <div className="bg-slate-900/60 border border-slate-700/80 rounded-lg p-3 space-y-2">
+                    <div className="flex items-center justify-between flex-wrap gap-2">
+                        <div>
+                            <h4 className="text-xs font-semibold text-slate-200 uppercase tracking-wider flex items-center gap-1.5">
+                                <StarIcon className="w-3.5 h-3.5 text-blue-400" />
+                                Project Lead / Ownership Transfer
+                            </h4>
+                            <p className="text-xs text-slate-400 mt-0.5">
+                                {secondaryLeads.length > 0
+                                    ? 'Transfer 1st Lead ownership to your 2nd Lead. You will remain on the project as a 2nd Lead.'
+                                    : 'To transfer project ownership to another member, first set them as a 2nd Lead (click ⭐ next to their name below).'}
+                            </p>
+                        </div>
+                        {secondaryLeads.length > 0 && (
+                            <div className="flex items-center gap-2">
+                                {secondaryLeads.length > 1 ? (
+                                    <select
+                                        value={selectedTransferTargetUid}
+                                        onChange={(e) => setSelectedTransferTargetUid(e.target.value)}
+                                        className="bg-slate-800 border border-slate-600 text-white text-xs rounded-lg px-2.5 py-1.5 focus:ring-brand-secondary focus:border-brand-secondary"
+                                    >
+                                        {secondaryLeads.map((sl) => (
+                                            <option key={sl.uid} value={sl.uid}>
+                                                {sl.displayName || sl.email} (2nd Lead)
+                                            </option>
+                                        ))}
+                                    </select>
+                                ) : (
+                                    <span className="text-xs px-2.5 py-1 rounded bg-amber-500/15 border border-amber-500/30 text-amber-300 font-medium">
+                                        2nd Lead: {secondaryLeads[0].displayName || secondaryLeads[0].email}
+                                    </span>
+                                )}
                                 <button
                                     type="button"
-                                    onClick={(e) => handleRemoveMember(member.uid, e)}
-                                    className="text-slate-400 hover:text-red-400 transition-colors"
+                                    onClick={() => {
+                                        const target = secondaryLeads.find((m) => m.uid === selectedTransferTargetUid) || secondaryLeads[0];
+                                        if (target) setPendingOwnershipTransfer(target);
+                                    }}
+                                    className="px-3 py-1.5 text-xs font-semibold bg-blue-600 hover:bg-blue-500 text-white rounded-lg transition-colors shrink-0"
                                 >
-                                    <XMarkIcon className="w-4 h-4" />
+                                    Transfer 1st Lead
                                 </button>
+                            </div>
+                        )}
+                    </div>
+                </div>
+            )}
+
+            {/* Invite New Member by Email (Visible to Project Leads: 1st Lead, 2nd Lead, Admin/SuperAdmin) */}
+            {canInviteUsers && !disabled && (
+                <div className="bg-slate-900/60 border border-slate-700/80 rounded-lg p-3 space-y-2">
+                    <div className="flex items-center justify-between">
+                        <label className="text-xs font-semibold text-slate-200 uppercase tracking-wider flex items-center gap-1.5">
+                            <EnvelopeIcon className="w-3.5 h-3.5 text-brand-secondary" />
+                            Invite User by Email
+                        </label>
+                        <span className="text-[11px] text-slate-400">
+                            Includes project description & timeline in email
+                        </span>
+                    </div>
+                    <div className="flex gap-2">
+                        <input
+                            type="email"
+                            value={inviteEmail}
+                            onChange={(e) => setInviteEmail(e.target.value)}
+                            onKeyDown={(e) => {
+                                if (e.key === 'Enter') {
+                                    e.preventDefault();
+                                    executeInviteEmail(inviteEmail);
+                                }
+                            }}
+                            placeholder="colleague@example.com"
+                            className="flex-1 px-3 py-2 bg-slate-800 border border-slate-600 rounded-lg text-sm text-white placeholder-slate-400 focus:ring-2 focus:ring-brand-secondary focus:border-transparent"
+                        />
+                        <button
+                            type="button"
+                            disabled={inviting || !inviteEmail.trim()}
+                            onClick={() => executeInviteEmail(inviteEmail)}
+                            className="px-4 py-2 bg-brand-secondary hover:bg-blue-500 text-white text-sm font-medium rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-1.5 shrink-0"
+                        >
+                            {inviting ? (
+                                <>
+                                    <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white"></div>
+                                    <span>Inviting...</span>
+                                </>
+                            ) : (
+                                <>
+                                    <PlusCircleIcon className="w-4 h-4" />
+                                    <span>Send Invite</span>
+                                </>
                             )}
-                        </div>
-                    ))}
+                        </button>
+                    </div>
                 </div>
             )}
 
@@ -256,7 +555,7 @@ const TeamMemberSelector: React.FC<TeamMemberSelectorProps> = ({
                     disabled={disabled}
                     className="text-sm text-brand-light hover:text-white transition-colors disabled:opacity-50"
                 >
-                    {isExpanded ? 'Hide' : 'Select Members'}
+                    {isExpanded ? 'Hide Directory' : 'Select Members'}
                 </button>
             </div>
 
@@ -271,7 +570,7 @@ const TeamMemberSelector: React.FC<TeamMemberSelectorProps> = ({
                                 type="text"
                                 value={searchQuery}
                                 onChange={(e) => setSearchQuery(e.target.value)}
-                                placeholder="Search users by name or email..."
+                                placeholder="Search existing users by name or email..."
                                 className="w-full pl-9 pr-4 py-2 bg-slate-800 border border-slate-600 rounded-lg text-sm text-white placeholder-slate-400 focus:ring-2 focus:ring-brand-secondary focus:border-transparent"
                             />
                         </div>
@@ -287,14 +586,28 @@ const TeamMemberSelector: React.FC<TeamMemberSelectorProps> = ({
                         ) : error ? (
                             <div className="p-4 text-center text-red-400 text-sm">{error}</div>
                         ) : filteredUsers.length === 0 ? (
-                            <div className="p-4 text-center text-slate-400 text-sm">
-                                {searchQuery ? 'No users match your search' : 'No users available'}
+                            <div className="p-5 text-center space-y-3">
+                                <p className="text-slate-400 text-sm">
+                                    {searchQuery ? 'No existing users match your search' : 'No users available'}
+                                </p>
+                                {canInviteUsers && searchQuery.trim().includes('@') && (
+                                    <button
+                                        type="button"
+                                        disabled={inviting}
+                                        onClick={() => executeInviteEmail(searchQuery)}
+                                        className="inline-flex items-center gap-1.5 px-3.5 py-2 bg-brand-secondary hover:bg-blue-500 text-white text-xs font-semibold rounded-lg transition-colors disabled:opacity-50"
+                                    >
+                                        <EnvelopeIcon className="w-4 h-4" />
+                                        <span>Invite "{searchQuery.trim()}" to Project</span>
+                                    </button>
+                                )}
                             </div>
                         ) : (
                             filteredUsers.map((user) => {
                                 const selected = isSelected(user.uid);
                                 const member = getSelectedMember(user.uid);
                                 const isOwner = isPrimaryLead(user.uid);
+                                const pendingSetup = !user.lastSignIn;
                                 return (
                                     <div
                                         key={user.uid}
@@ -326,6 +639,11 @@ const TeamMemberSelector: React.FC<TeamMemberSelectorProps> = ({
                                                             Project Owner
                                                         </span>
                                                     )}
+                                                    {pendingSetup && (
+                                                        <span className="text-[10px] bg-yellow-500/20 text-yellow-300 border border-yellow-500/30 px-1.5 py-0.5 rounded">
+                                                            Pending Setup
+                                                        </span>
+                                                    )}
                                                 </p>
                                                 <div className="flex items-center gap-2">
                                                     <p className="text-xs text-slate-400">{user.email}</p>
@@ -334,6 +652,17 @@ const TeamMemberSelector: React.FC<TeamMemberSelectorProps> = ({
                                             </div>
                                         </div>
                                         <div className="flex items-center gap-2">
+                                            {canInviteUsers && pendingSetup && !disabled && (
+                                                <button
+                                                    type="button"
+                                                    onClick={(e) => handleSendReminder(user.email, e)}
+                                                    disabled={remindingEmail === user.email}
+                                                    className="p-1.5 rounded text-yellow-400 hover:text-yellow-200 hover:bg-slate-700 transition-colors disabled:opacity-50"
+                                                    title={`Send reminder email to ${user.email}`}
+                                                >
+                                                    <EnvelopeIcon className="w-4 h-4" />
+                                                </button>
+                                            )}
                                             {selected && !isOwner && (
                                                 <button
                                                     type="button"
@@ -502,6 +831,49 @@ const TeamMemberSelector: React.FC<TeamMemberSelectorProps> = ({
                                 className="flex-1 px-4 py-2 bg-brand-primary hover:bg-brand-primary/90 text-white rounded-lg text-sm font-medium transition-colors"
                             >
                                 Confirm Removal
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            {/* Ownership Transfer Confirmation Dialog */}
+            {pendingOwnershipTransfer && (
+                <div className="fixed inset-0 bg-black/75 z-50 flex items-center justify-center p-4" onClick={() => setPendingOwnershipTransfer(null)}>
+                    <div className="bg-slate-800 border border-blue-500/40 rounded-xl max-w-md w-full p-6 shadow-2xl space-y-4" onClick={(e) => e.stopPropagation()}>
+                        <div className="flex items-center gap-3 border-b border-slate-700 pb-3">
+                            <div className="w-10 h-10 rounded-full bg-blue-500/20 text-blue-300 flex items-center justify-center shrink-0">
+                                <StarIcon className="w-5 h-5" />
+                            </div>
+                            <div>
+                                <h3 className="text-base font-semibold text-white">Transfer Project Ownership (1st Lead)</h3>
+                                <p className="text-xs text-slate-400">
+                                    New 1st Lead: {pendingOwnershipTransfer.displayName || pendingOwnershipTransfer.email}
+                                </p>
+                            </div>
+                        </div>
+
+                        <div className="bg-blue-500/10 border border-blue-500/30 rounded-lg p-3 text-xs text-blue-200 leading-relaxed">
+                            You are about to transfer <strong className="text-white">1st Lead (Project Ownership)</strong> to{' '}
+                            <strong className="text-white">{pendingOwnershipTransfer.displayName || pendingOwnershipTransfer.email}</strong> (currently a 2nd Lead).
+                            <br /><br />
+                            The previous 1st Lead will remain on the project as a <strong className="text-amber-300">2nd Lead</strong>. Remember to click <strong className="text-white">Save Changes</strong> to persist this ownership transfer.
+                        </div>
+
+                        <div className="flex gap-3 pt-2">
+                            <button
+                                type="button"
+                                onClick={() => setPendingOwnershipTransfer(null)}
+                                className="flex-1 px-4 py-2 bg-slate-700 hover:bg-slate-600 text-slate-200 rounded-lg text-sm font-medium transition-colors"
+                            >
+                                Cancel
+                            </button>
+                            <button
+                                type="button"
+                                onClick={handleConfirmOwnershipTransfer}
+                                className="flex-1 px-4 py-2 bg-blue-600 hover:bg-blue-500 text-white rounded-lg text-sm font-semibold transition-colors"
+                            >
+                                Confirm Transfer
                             </button>
                         </div>
                     </div>

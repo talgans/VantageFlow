@@ -412,7 +412,7 @@ interface ProjectDetailProps {
   currentUserId?: string;  // Current user's ID for creator tracking
   currentUserEmail?: string; // Current user's email
   userRole?: 'admin' | 'manager' | 'member'; // Current user's role
-  onEditProject?: () => void;
+  onEditProject?: (initialTab?: 'overview' | 'team' | 'structure' | 'privacy') => void;
   initialTarget?: InitialTargetItem;
   onClearInitialTarget?: () => void;
   isScrolled?: boolean;
@@ -3504,7 +3504,7 @@ const ProjectDetail: React.FC<ProjectDetailProps> = ({ project, onBack, canEdit,
               {/* Team Card - Expanded to 2 columns */}
               <div
                 className={`md:col-span-2 bg-slate-800/50 p-4 rounded-xl border ${effectiveCanEdit && onEditProject ? 'border-slate-700 hover:border-brand-secondary cursor-pointer transition-colors' : 'border-slate-700'}`}
-                onClick={() => effectiveCanEdit && onEditProject && onEditProject()}
+                onClick={() => effectiveCanEdit && onEditProject && onEditProject('team')}
               >
                 <div className="flex items-center space-x-3 text-slate-400 mb-3">
                   <TeamIcon className="w-5 h-5" />
