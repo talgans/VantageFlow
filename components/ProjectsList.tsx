@@ -18,6 +18,7 @@ interface ProjectsListProps {
     onRestoreProject?: (project: Project) => void;
     onPermanentDeleteProject?: (project: Project) => void;
     canModify: boolean;
+    canManageProject?: (project: Project) => boolean;
     canDeleteProject?: (project: Project) => boolean;
     isProjectDeleteProtected?: (project: Project) => boolean;
 }
@@ -32,6 +33,7 @@ const ProjectsList: React.FC<ProjectsListProps> = ({
     onRestoreProject,
     onPermanentDeleteProject,
     canModify,
+    canManageProject,
     canDeleteProject,
     isProjectDeleteProtected
 }) => {
@@ -526,7 +528,7 @@ const ProjectsList: React.FC<ProjectsListProps> = ({
                                                 </button>
                                             ) : null}
                                         </div>
-                                    ) : canModify ? (
+                                    ) : (canManageProject ? canManageProject(project) : canModify) ? (
                                         <>
                                             <button onClick={(e) => { e.stopPropagation(); onEditProject(project); }} className="p-2 text-slate-400 hover:text-white rounded-full hover:bg-slate-700 transition-colors" title="Edit project">
                                                 <PencilIcon className="w-5 h-5" />

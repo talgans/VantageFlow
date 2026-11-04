@@ -482,7 +482,38 @@ exports.configureCors = functions.https.onCall(async (data, context) => {
     }
 });
 /**
- * Invite user via email (Admin or SuperAdmin only)
+ * Helper to check if a caller is a Project Lead (1st Lead / Owner or 2nd Lead) for a project,
+ * or a Manager creating a new project.
+ */
+const isProjectLeadOrCreator = async (callerToken, projectId, hasProjectContext) => {
+    var _a, _b, _c, _d;
+    if (isAdminUser(callerToken))
+        return true;
+    if (!hasProjectContext)
+        return false;
+    const callerUid = callerToken.uid;
+    const callerEmail = (_a = callerToken.email) === null || _a === void 0 ? void 0 : _a.toLowerCase();
+    if (projectId) {
+        const projectDoc = await admin.firestore().collection('projects').doc(projectId).get();
+        if (!projectDoc.exists)
+            return false;
+        const projectData = projectDoc.data() || {};
+        if (projectData.ownerId === callerUid)
+            return true;
+        if (callerEmail && ((_b = projectData.ownerEmail) === null || _b === void 0 ? void 0 : _b.toLowerCase()) === callerEmail)
+            return true;
+        const members = ((_c = projectData.team) === null || _c === void 0 ? void 0 : _c.members) || [];
+        return members.some((m) => {
+            var _a;
+            const isMe = (m.uid && m.uid === callerUid) || (callerEmail && ((_a = m.email) === null || _a === void 0 ? void 0 : _a.toLowerCase()) === callerEmail);
+            return isMe && (m.leadRole === 'primary' || m.leadRole === 'secondary');
+        });
+    }
+    // Creating a new project (no projectId yet) — allow managers (project creators)
+    return ((_d = callerToken.customClaims) === null || _d === void 0 ? void 0 : _d.role) === 'manager';
+};
+/**
+ * Invite user via email (Admin, SuperAdmin, or Project Lead)
  * Creates a user account with specified role
  */
 exports.inviteUser = functions
@@ -497,17 +528,21 @@ exports.inviteUser = functions
         console.error('inviteUser called without authentication');
         throw new functions.https.HttpsError('unauthenticated', 'User must be authenticated');
     }
-    console.log(`inviteUser called by: ${context.auth.uid}`);
-    // Check if user is admin or superadmin
-    const callerToken = await admin.auth().getUser(context.auth.uid);
+    const callerUid = context.auth.uid;
+    console.log(`inviteUser called by: ${callerUid}`);
+    const { email, role, projectId, projectName, projectDescription, projectTimeline } = data || {};
+    const callerToken = await admin.auth().getUser(callerUid);
     console.log(`Caller role: ${(_a = callerToken.customClaims) === null || _a === void 0 ? void 0 : _a.role}`);
-    if (!isAdminUser(callerToken)) {
-        throw new functions.https.HttpsError('permission-denied', 'Only admins can invite users');
+    const isAdmin = isAdminUser(callerToken);
+    const isProjectLead = await isProjectLeadOrCreator(callerToken, projectId, Boolean(projectName));
+    if (!isAdmin && !isProjectLead) {
+        throw new functions.https.HttpsError('permission-denied', 'Only admins and project leads can invite users');
     }
-    const { email, role } = data;
-    console.log(`Attempting to invite: ${email} with role: ${role}`);
+    // Non-admin project leads always invite users with the default 'member' system role
+    const effectiveRole = isAdmin ? role : 'member';
+    console.log(`Attempting to invite: ${email} with role: ${effectiveRole}`);
     // Validate role: admin or superadmin must be assigned after signup
-    if (!role || typeof role !== 'string' || role.trim().length === 0 || role === 'admin' || role === 'superadmin') {
+    if (!effectiveRole || typeof effectiveRole !== 'string' || effectiveRole.trim().length === 0 || effectiveRole === 'admin' || effectiveRole === 'superadmin') {
         throw new functions.https.HttpsError('invalid-argument', 'Invalid role. Administrative roles must be assigned after signup from Users & Roles');
     }
     // Validate email
@@ -537,20 +572,71 @@ exports.inviteUser = functions
         });
         console.log(`User created successfully: ${userRecord.uid}`);
         // Set custom claims for role
-        console.log(`Setting custom claims: role=${role}`);
-        await admin.auth().setCustomUserClaims(userRecord.uid, { role });
+        console.log(`Setting custom claims: role=${effectiveRole}`);
+        await admin.auth().setCustomUserClaims(userRecord.uid, { role: effectiveRole });
+        // If invited directly from an existing project, also add them to the project's team & memberUids
+        if (projectId) {
+            try {
+                const projectRef = admin.firestore().collection('projects').doc(projectId);
+                const projectSnap = await projectRef.get();
+                if (projectSnap.exists) {
+                    const projectData = projectSnap.data() || {};
+                    const currentMembers = ((_b = projectData.team) === null || _b === void 0 ? void 0 : _b.members) || [];
+                    const currentMemberUids = projectData.memberUids || [];
+                    const alreadyMember = currentMembers.some((m) => { var _a; return m.uid === userRecord.uid || ((_a = m.email) === null || _a === void 0 ? void 0 : _a.toLowerCase()) === email.toLowerCase().trim(); });
+                    if (!alreadyMember) {
+                        const updatedMembers = [
+                            ...currentMembers,
+                            {
+                                uid: userRecord.uid,
+                                email: userRecord.email || email.trim(),
+                            }
+                        ];
+                        const updatedMemberUids = Array.from(new Set([...currentMemberUids, userRecord.uid]));
+                        await projectRef.update({
+                            'team.members': updatedMembers,
+                            memberUids: updatedMemberUids,
+                            updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+                        });
+                    }
+                }
+            }
+            catch (projErr) {
+                console.warn('[inviteUser] Could not auto-append invited user to project doc:', projErr);
+            }
+        }
         // Generate secure 48-hour invitation token and setup link
         console.log('Generating 48-hour secure invitation token...');
-        const setupToken = await createInviteToken(email, role, (_b = context.auth) === null || _b === void 0 ? void 0 : _b.uid);
+        const setupToken = await createInviteToken(email, effectiveRole, callerUid);
         const setupLink = `${APP_URL}/?setupToken=${setupToken}&email=${encodeURIComponent(email)}`;
-        const html = (0, emailTemplates_1.getInvitationEmail)(role, setupLink);
-        const emailSent = await sendEmail(email, 'Vantage: Your Account Setup Link', html);
+        const inviterName = callerToken.displayName || callerToken.email || 'A Project Lead';
+        const projectContext = projectName
+            ? {
+                projectName,
+                projectDescription,
+                projectTimeline,
+                inviterName,
+            }
+            : undefined;
+        const html = (0, emailTemplates_1.getInvitationEmail)(effectiveRole, setupLink, projectContext);
+        const subject = projectName
+            ? `Vantage: Invitation to join "${projectName}"`
+            : 'Vantage: Your Account Setup Link';
+        const emailSent = await sendEmail(email, subject, html);
         if (!emailSent) {
             throw new functions.https.HttpsError('internal', `User account was created, but failed to send invitation email to ${email}. Please check SMTP configuration or use the Send Reminder button.`);
         }
         return {
             success: true,
             message: `Invitation email sent to ${email}`,
+            user: {
+                uid: userRecord.uid,
+                email: userRecord.email || email.trim(),
+                displayName: userRecord.displayName,
+                role: effectiveRole,
+                createdAt: userRecord.metadata.creationTime,
+                lastSignIn: userRecord.metadata.lastSignInTime,
+            },
         };
     }
     catch (error) {
@@ -563,7 +649,7 @@ exports.inviteUser = functions
     }
 });
 /**
- * Send reminder email to existing user who hasn't logged in (Admin or SuperAdmin only)
+ * Send reminder email to existing user who hasn't logged in (Admin, SuperAdmin, or Project Lead)
  * Generates a new password reset link and sends it
  */
 exports.sendReminderEmail = functions
@@ -572,17 +658,20 @@ exports.sendReminderEmail = functions
     memory: '256MB'
 })
     .https.onCall(async (data, context) => {
-    var _a, _b;
+    var _a;
     // Check if user is authenticated
     if (!context.auth) {
         throw new functions.https.HttpsError('unauthenticated', 'User must be authenticated');
     }
-    // Check if user is admin or superadmin
-    const callerToken = await admin.auth().getUser(context.auth.uid);
-    if (!isAdminUser(callerToken)) {
-        throw new functions.https.HttpsError('permission-denied', 'Only admins can send reminder emails');
+    const callerUid = context.auth.uid;
+    const { email, projectId, projectName, projectDescription, projectTimeline } = data || {};
+    // Check if user is admin, superadmin, or project lead
+    const callerToken = await admin.auth().getUser(callerUid);
+    const isAdmin = isAdminUser(callerToken);
+    const isProjectLead = await isProjectLeadOrCreator(callerToken, projectId, Boolean(projectName));
+    if (!isAdmin && !isProjectLead) {
+        throw new functions.https.HttpsError('permission-denied', 'Only admins and project leads can send reminder emails');
     }
-    const { email } = data;
     if (!email || !email.includes('@')) {
         throw new functions.https.HttpsError('invalid-argument', 'Invalid email address');
     }
@@ -596,10 +685,22 @@ exports.sendReminderEmail = functions
         const role = ((_a = existingUser.customClaims) === null || _a === void 0 ? void 0 : _a.role) || 'member';
         // Generate fresh 48-hour invitation token for reminder
         console.log('Generating fresh 48-hour secure invitation token for reminder...');
-        const setupToken = await createInviteToken(email, role, (_b = context.auth) === null || _b === void 0 ? void 0 : _b.uid);
+        const setupToken = await createInviteToken(email, role, callerUid);
         const setupLink = `${APP_URL}/?setupToken=${setupToken}&email=${encodeURIComponent(email)}`;
-        const html = (0, emailTemplates_1.getReminderEmail)(role, setupLink);
-        const emailSent = await sendEmail(email, 'Vantage: Action Required - Complete Your Account Setup', html);
+        const inviterName = callerToken.displayName || callerToken.email || 'A Project Lead';
+        const projectContext = projectName
+            ? {
+                projectName,
+                projectDescription,
+                projectTimeline,
+                inviterName,
+            }
+            : undefined;
+        const html = (0, emailTemplates_1.getReminderEmail)(role, setupLink, projectContext);
+        const subject = projectName
+            ? `Vantage: Reminder - Join "${projectName}" & Complete Account Setup`
+            : 'Vantage: Action Required - Complete Your Account Setup';
+        const emailSent = await sendEmail(email, subject, html);
         if (!emailSent) {
             throw new functions.https.HttpsError('internal', `Failed to deliver reminder email to ${email}. Please check SMTP configuration.`);
         }
@@ -629,11 +730,11 @@ exports.notifyProjectMemberAdded = functions
     if (!context.auth) {
         throw new functions.https.HttpsError('unauthenticated', 'Authenticated user required');
     }
-    const { projectId, projectName, newMemberEmail, newMemberName, teamEmails, origin } = data;
+    const { projectId, projectName, projectDescription, projectTimeline, newMemberEmail, newMemberName, teamEmails, origin } = data;
     const inviterName = context.auth.token.name || context.auth.token.email;
     const subject = `Vantage: New Team Member: ${newMemberName || newMemberEmail}`;
     const link = `${resolveBaseUrl(origin)}/project/${projectId}`;
-    const html = (0, emailTemplates_1.getNewMemberEmail)(newMemberName || newMemberEmail, projectName, inviterName, link);
+    const html = (0, emailTemplates_1.getNewMemberEmail)(newMemberName || newMemberEmail, projectName, inviterName, link, projectDescription, projectTimeline);
     const validEmails = (teamEmails || []).filter(e => e && e.includes('@'));
     // Note: For large teams, consider individual sending or BCC to avoid exposing all emails if privacy is concern
     // For internal teams, iterating is fine

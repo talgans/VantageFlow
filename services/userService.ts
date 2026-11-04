@@ -1,6 +1,97 @@
 import { updateProfile } from 'firebase/auth';
 import { getFunctions, httpsCallable } from 'firebase/functions';
-import { auth } from './firebaseConfig';
+import { app, auth } from './firebaseConfig';
+
+export interface ProjectInviteContext {
+    projectId?: string;
+    projectName?: string;
+    projectDescription?: string;
+    projectTimeline?: string;
+}
+
+/**
+ * Format project startDate and duration into a readable timeline string for emails
+ */
+export const formatProjectTimeline = (
+    startDate?: Date | string,
+    duration?: number | string,
+    durationUnit?: string
+): string => {
+    const parts: string[] = [];
+    if (startDate) {
+        const d = startDate instanceof Date ? startDate : new Date(startDate);
+        if (!isNaN(d.getTime())) {
+            parts.push(`Start: ${d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}`);
+        }
+    }
+    if (duration && Number(duration) > 0) {
+        const unit = durationUnit || 'weeks';
+        parts.push(`Duration: ${duration} ${unit}`);
+    }
+    return parts.join(' • ');
+};
+
+/**
+ * Shared user invitation function (used by both UserAdministrationPage and Project Management Modal)
+ */
+export const inviteUserByEmail = async (
+    email: string,
+    role: string = 'member',
+    projectContext?: ProjectInviteContext
+): Promise<{
+    success: boolean;
+    message: string;
+    user?: {
+        uid: string;
+        email: string;
+        displayName?: string;
+        role: string;
+        createdAt?: string;
+        lastSignIn?: string;
+    };
+}> => {
+    const currentUser = auth.currentUser;
+    if (!currentUser) {
+        throw new Error('You must be signed in to invite users. Please refresh the page and sign in again.');
+    }
+
+    await currentUser.getIdToken(true);
+
+    const functions = getFunctions(app, 'us-central1');
+    const inviteUserFunction = httpsCallable(functions, 'inviteUser');
+    const result = await inviteUserFunction({
+        email: email.trim(),
+        role,
+        ...(projectContext || {}),
+    });
+
+    return result.data as any;
+};
+
+/**
+ * Shared reminder email function for pending users who haven't completed account setup
+ * (used by both UserAdministrationPage and Project Management Modal)
+ */
+export const sendUserReminderEmail = async (
+    email: string,
+    projectContext?: ProjectInviteContext
+): Promise<{ success: boolean; message: string }> => {
+    const currentUser = auth.currentUser;
+    if (!currentUser) {
+        throw new Error('You must be signed in to send reminder emails.');
+    }
+
+    await currentUser.getIdToken(true);
+
+    const functions = getFunctions(app, 'us-central1');
+    const sendReminderEmailFunction = httpsCallable(functions, 'sendReminderEmail');
+    const result = await sendReminderEmailFunction({
+        email: email.trim(),
+        ...(projectContext || {}),
+    });
+
+    return result.data as any;
+};
 
 /**
  * Update user profile (display name and/or photo URL)

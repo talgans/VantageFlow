@@ -7,7 +7,7 @@ import ProjectsList from './components/ProjectsList';
 import ProjectDetail from './components/ProjectDetail';
 import Header from './components/Header';
 import SideNav from './components/SideNav';
-import ProjectModal from './components/ProjectModal';
+import ProjectModal, { ProjectModalTab } from './components/ProjectModal';
 import ConfirmationModal from './components/ConfirmationModal';
 import DeleteProjectModal from './components/DeleteProjectModal';
 import Toast from './components/Toast';
@@ -132,6 +132,7 @@ const App: React.FC = () => {
 
     const [isProjectModalOpen, setIsProjectModalOpen] = useState(false);
     const [editingProject, setEditingProject] = useState<Project | null>(null);
+    const [projectModalInitialTab, setProjectModalInitialTab] = useState<ProjectModalTab>('overview');
     const [openWithTextImport, setOpenWithTextImport] = useState(false);
     const [projectToDelete, setProjectToDelete] = useState<Project | null>(null);
     const [deleteModalMode, setDeleteModalMode] = useState<'soft' | 'permanent'>('soft');
@@ -304,26 +305,47 @@ const App: React.FC = () => {
         }
     };
 
+    const canManageProject = (project: Project): boolean => {
+        if (!user) return false;
+        if (canModify(currentUserRole)) return true;
+        if (project.ownerId === user.uid || (project.ownerEmail && user.email && project.ownerEmail.toLowerCase() === user.email.toLowerCase())) {
+            return true;
+        }
+        if (project.team?.members) {
+            return project.team.members.some(
+                (m) =>
+                    ((m.uid && m.uid === user.uid) ||
+                        (m.email && user.email && m.email.toLowerCase() === user.email.toLowerCase())) &&
+                    (m.leadRole === 'primary' || m.leadRole === 'secondary')
+            );
+        }
+        return false;
+    };
+
     const handleShowCreateProjectModal = () => {
         setEditingProject(null);
+        setProjectModalInitialTab('overview');
         setOpenWithTextImport(false);
         setIsProjectModalOpen(true);
     };
 
     const handleShowPasteModal = () => {
         setEditingProject(null);
+        setProjectModalInitialTab('overview');
         setOpenWithTextImport(true);
         setIsProjectModalOpen(true);
     };
 
-    const handleShowEditProjectModal = (project: Project) => {
+    const handleShowEditProjectModal = (project: Project, initialTab: ProjectModalTab = 'overview') => {
         setEditingProject(project);
+        setProjectModalInitialTab(initialTab);
         setIsProjectModalOpen(true);
     };
 
     const handleCloseProjectModal = () => {
         setIsProjectModalOpen(false);
         setEditingProject(null);
+        setProjectModalInitialTab('overview');
         setOpenWithTextImport(false);
     };
 
@@ -597,7 +619,7 @@ const App: React.FC = () => {
                             currentUserId={user?.uid}
                             currentUserEmail={user?.email || undefined}
                             userRole={normalizedUserRole}
-                            onEditProject={() => handleShowEditProjectModal(selectedProject)}
+                            onEditProject={(tab) => handleShowEditProjectModal(selectedProject, tab)}
                             initialTarget={activeDeepLink?.projectId === selectedProject.id ? activeDeepLink : undefined}
                             onClearInitialTarget={() => setActiveDeepLink(null)}
                             isScrolled={isProjectScrolled}
@@ -626,6 +648,7 @@ const App: React.FC = () => {
                             onRestoreProject={handleRestoreProject}
                             onPermanentDeleteProject={handleRequestPermanentDeleteProject}
                             canModify={canModify(currentUserRole)}
+                            canManageProject={canManageProject}
                             canDeleteProject={canDeleteProject}
                             isProjectDeleteProtected={isProjectDeleteProtected}
                         />
@@ -638,6 +661,7 @@ const App: React.FC = () => {
                             onEditProject={handleShowEditProjectModal}
                             onDeleteProject={handleRequestDeleteProject}
                             canModify={canModify(currentUserRole)}
+                            canManageProject={canManageProject}
                             canDeleteProject={canDeleteProject}
                             isProjectDeleteProtected={isProjectDeleteProtected}
                             onSelectTask={(projectId, taskId) => {
@@ -682,6 +706,9 @@ const App: React.FC = () => {
                     openWithTextImport={openWithTextImport}
                     currentUserId={user?.uid}
                     currentUserEmail={user?.email || undefined}
+                    currentUserRole={currentUserRole}
+                    showToast={showToast}
+                    initialTab={projectModalInitialTab}
                 />
             )}
             {projectToDelete && (

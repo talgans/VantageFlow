@@ -14,6 +14,7 @@ import {
   PermissionConfig
 } from '../services/permissionsService';
 import { uploadProfilePhoto } from '../services/storageService';
+import { inviteUserByEmail, sendUserReminderEmail } from '../services/userService';
 
 interface User {
   uid: string;
@@ -286,15 +287,10 @@ const UserAdministrationPage: React.FC<UserAdministrationPageProps> = ({
       return;
     }
 
-    // Set a loading state locally if needed, or just show toast
     showToast(`Sending reminder to ${user.email}...`);
 
     try {
-      const functions = getFunctions(app, 'us-central1');
-      const sendReminderEmailFunction = httpsCallable(functions, 'sendReminderEmail');
-
-      await sendReminderEmailFunction({ email: user.email });
-
+      await sendUserReminderEmail(user.email);
       showToast(`Reminder sent to ${user.email}!`);
     } catch (err: any) {
       console.error('Error sending reminder:', err);
@@ -312,23 +308,7 @@ const UserAdministrationPage: React.FC<UserAdministrationPageProps> = ({
 
     setInviting(true);
     try {
-      // Debug: Check if user is authenticated
-      const { auth } = await import('../services/firebaseConfig');
-      const currentUser = auth.currentUser;
-      console.log('Current user:', currentUser?.email);
-      console.log('Auth token available:', !!currentUser);
-
-      if (!currentUser) {
-        throw new Error('You must be signed in to invite users. Please refresh the page and sign in again.');
-      }
-
-      // Force token refresh to ensure it's valid
-      await currentUser.getIdToken(true);
-
-      const functions = getFunctions(app, 'us-central1');
-      const inviteUserFunction = httpsCallable(functions, 'inviteUser');
-      const result = await inviteUserFunction({ email: inviteEmail, role: inviteRole });
-
+      const result = await inviteUserByEmail(inviteEmail, inviteRole);
       console.log('Invite result:', result);
       showToast(`Invitation sent to ${inviteEmail}!`);
       setInviteEmail('');

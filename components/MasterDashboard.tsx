@@ -25,6 +25,7 @@ interface MasterDashboardProps {
   onEditProject: (project: Project) => void;
   onDeleteProject: (project: Project) => void;
   canModify: boolean;
+  canManageProject?: (project: Project) => boolean;
   canDeleteProject?: (project: Project) => boolean;
   isProjectDeleteProtected?: (project: Project) => boolean;
   onSelectTask?: (projectId: string, taskId: string) => void;
@@ -38,6 +39,7 @@ const MasterDashboard: React.FC<MasterDashboardProps> = ({
   onEditProject,
   onDeleteProject,
   canModify,
+  canManageProject,
   canDeleteProject,
   isProjectDeleteProtected,
   onSelectTask,
@@ -353,7 +355,7 @@ const MasterDashboard: React.FC<MasterDashboardProps> = ({
                             <span>Details</span>
                             <ChevronRightIcon className="w-3 h-3" />
                           </button>
-                          {canModify && (
+                          {(canManageProject ? canManageProject(project) : canModify) && (
                             <div className="flex items-center space-x-1">
                               <button onClick={(e) => { e.stopPropagation(); onEditProject(project); }} className="p-1.5 text-slate-400 hover:text-white rounded hover:bg-slate-700 transition-colors" title="Edit project">
                                 <PencilIcon className="w-4 h-4" />

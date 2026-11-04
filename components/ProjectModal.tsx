@@ -1,10 +1,13 @@
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { Project, Phase, Task, TaskStatus, DurationUnit, Currency, TeamMember } from '../types';
 import { XMarkIcon, PlusCircleIcon, TrashIcon } from './icons';
 import { parseProjectText } from '../utils/projectParser';
 import TeamMemberSelector from './TeamMemberSelector';
 import { notificationService } from '../services/notificationService';
+import { formatProjectTimeline } from '../services/userService';
+
+export type ProjectModalTab = 'overview' | 'team' | 'structure' | 'privacy';
 
 interface ProjectModalProps {
   onClose: () => void;
@@ -13,6 +16,9 @@ interface ProjectModalProps {
   openWithTextImport?: boolean;
   currentUserId?: string; // The current user's ID - will be primary lead for new projects
   currentUserEmail?: string; // The current user's email
+  currentUserRole?: string;
+  showToast?: (message: string) => void;
+  initialTab?: ProjectModalTab;
 }
 
 type FormData = {
@@ -53,9 +59,33 @@ const InputField: React.FC<InputFieldProps> = ({ name, label, value, onChange, e
   </div>
 );
 
-const ProjectModal: React.FC<ProjectModalProps> = ({ onClose, onSave, projectToEdit, openWithTextImport = false, currentUserId, currentUserEmail }) => {
-  // Determine the owner ID - for existing projects use ownerId, for new use currentUserId
-  const projectOwnerId = projectToEdit?.ownerId || currentUserId;
+const ProjectModal: React.FC<ProjectModalProps> = ({
+  onClose,
+  onSave,
+  projectToEdit,
+  openWithTextImport = false,
+  currentUserId,
+  currentUserEmail,
+  currentUserRole,
+  showToast,
+  initialTab = 'overview',
+}) => {
+  const [activeTab, setActiveTab] = useState<ProjectModalTab>(initialTab);
+  const [currentOwner, setCurrentOwner] = useState<{
+    uid?: string;
+    email?: string;
+    displayName?: string;
+    photoURL?: string;
+  }>({
+    uid: projectToEdit?.ownerId || currentUserId,
+    email: projectToEdit?.ownerEmail || currentUserEmail,
+    displayName: projectToEdit?.ownerName,
+    photoURL: projectToEdit?.ownerPhotoURL,
+  });
+
+  const projectOwnerId = currentOwner.uid || projectToEdit?.ownerId || currentUserId;
+  const [invitedInSessionUids, setInvitedInSessionUids] = useState<string[]>([]);
+
   const [formData, setFormData] = useState<FormData>({
     name: '',
     description: '',
@@ -91,6 +121,12 @@ const ProjectModal: React.FC<ProjectModalProps> = ({ onClose, onSave, projectToE
         currency: projectToEdit.currency || Currency.NGN,
       });
       setIsPublic(projectToEdit.isPublic === true);
+      setCurrentOwner({
+        uid: projectToEdit.ownerId,
+        email: projectToEdit.ownerEmail,
+        displayName: projectToEdit.ownerName,
+        photoURL: projectToEdit.ownerPhotoURL,
+      });
       // Load team members or use legacy format
       if (projectToEdit.team?.members) {
         setTeamMembers(projectToEdit.team.members);
@@ -100,6 +136,10 @@ const ProjectModal: React.FC<ProjectModalProps> = ({ onClose, onSave, projectToE
     } else if (currentUserId && currentUserEmail) {
       setIsPublic(false);
       setFormerMembers([]);
+      setCurrentOwner({
+        uid: currentUserId,
+        email: currentUserEmail,
+      });
       // For new projects, auto-add creator as primary lead
       setTeamMembers([{
         uid: currentUserId,
@@ -108,6 +148,47 @@ const ProjectModal: React.FC<ProjectModalProps> = ({ onClose, onSave, projectToE
       }]);
     }
   }, [projectToEdit, currentUserId, currentUserEmail]);
+
+  // Determine if the current user is a Project Lead (1st Lead, 2nd Lead) or Admin/SuperAdmin
+  const { canInviteUsers, canTransferOwnership } = useMemo(() => {
+    const isAdminOrSuperAdmin =
+      currentUserEmail?.toLowerCase() === 'talgans@gmail.com' ||
+      currentUserRole === 'superadmin' ||
+      currentUserRole === 'admin';
+
+    const isPrimary = Boolean(
+      (currentUserId && projectOwnerId === currentUserId) ||
+      teamMembers.some(
+        (m) =>
+          ((currentUserId && m.uid === currentUserId) ||
+            (currentUserEmail && m.email?.toLowerCase() === currentUserEmail.toLowerCase())) &&
+          m.leadRole === 'primary'
+      )
+    );
+
+    const isSecondary = Boolean(
+      teamMembers.some(
+        (m) =>
+          ((currentUserId && m.uid === currentUserId) ||
+            (currentUserEmail && m.email?.toLowerCase() === currentUserEmail.toLowerCase())) &&
+          m.leadRole === 'secondary'
+      )
+    );
+
+    return {
+      canInviteUsers: !projectToEdit || isAdminOrSuperAdmin || isPrimary || isSecondary,
+      canTransferOwnership: Boolean(isAdminOrSuperAdmin || isPrimary),
+    };
+  }, [projectToEdit, currentUserId, currentUserEmail, currentUserRole, projectOwnerId, teamMembers]);
+
+  const handleTransferOwnership = (newOwner: TeamMember) => {
+    setCurrentOwner({
+      uid: newOwner.uid,
+      email: newOwner.email,
+      displayName: newOwner.displayName,
+      photoURL: newOwner.photoURL,
+    });
+  };
 
   const handleSelectPublic = () => {
     if (!isPublic) {
@@ -163,7 +244,17 @@ const ProjectModal: React.FC<ProjectModalProps> = ({ onClose, onSave, projectToE
     }
 
     setErrors(newErrors);
-    return Object.keys(newErrors).length === 0 && teamMembers.length > 0;
+
+    if (Object.keys(newErrors).length > 0) {
+      setActiveTab('overview');
+      return false;
+    }
+    if (teamMembers.length === 0) {
+      setActiveTab('team');
+      return false;
+    }
+
+    return true;
   };
 
   const handleMemberRemovedWithChoice = (member: TeamMember, choice: 'former' | 'clear') => {
@@ -236,6 +327,10 @@ const ProjectModal: React.FC<ProjectModalProps> = ({ onClose, onSave, projectToE
         startDate: new Date(formData.startDate),
         duration: Number(formData.duration),
         durationUnit: formData.durationUnit,
+        ownerId: currentOwner.uid || projectToEdit?.ownerId || currentUserId,
+        ownerEmail: currentOwner.email || projectToEdit?.ownerEmail || currentUserEmail,
+        ownerName: currentOwner.displayName ?? projectToEdit?.ownerName,
+        ownerPhotoURL: currentOwner.photoURL ?? projectToEdit?.ownerPhotoURL,
         team: {
           ...(projectToEdit?.team || {}),
           members: teamMembers,
@@ -247,21 +342,28 @@ const ProjectModal: React.FC<ProjectModalProps> = ({ onClose, onSave, projectToE
         isPublic: isPublic,
       });
 
-      // Check for new members and notify
+      // Check for newly added existing members and notify them with project context & timeline
+      // (Exclude users who were already invited via the inline "Send Invite" button in this session)
       if (projectToEdit) {
         const originalMembers = projectToEdit.team?.members || [];
-        const newMembers = teamMembers.filter(tm => !originalMembers.some(om => om.uid === tm.uid));
+        const newMembers = teamMembers.filter(
+          (tm) =>
+            !originalMembers.some((om) => om.uid === tm.uid) &&
+            !invitedInSessionUids.includes(tm.uid)
+        );
 
         if (newMembers.length > 0) {
-          // We need the project object to pass to the notification service
-          // Since projectToEdit might be stale, we use the ID and current name
           const projectContext: any = {
             id: projectToEdit.id,
             name: formData.name,
-            team: { members: teamMembers } // Send updated team list for email recipients
+            description: formData.description,
+            startDate: new Date(formData.startDate),
+            duration: Number(formData.duration),
+            durationUnit: formData.durationUnit,
+            team: { members: teamMembers },
           };
 
-          newMembers.forEach(member => {
+          newMembers.forEach((member) => {
             notificationService.notifyTeamMemberJoined(projectContext, member);
           });
         }
@@ -448,8 +550,13 @@ const ProjectModal: React.FC<ProjectModalProps> = ({ onClose, onSave, projectToE
           className="bg-slate-800 rounded-xl border border-slate-700 w-full max-w-2xl max-h-[90vh] flex flex-col"
           onClick={(e) => e.stopPropagation()}
         >
-          <div className="flex justify-between items-center p-4 border-b border-slate-700 sticky top-0 bg-slate-800 z-10">
-            <h2 className="text-xl font-bold text-white">{projectToEdit ? 'Edit Project' : 'Create New Project'}</h2>
+          <div className="flex justify-between items-center p-4 border-b border-slate-700 sticky top-0 bg-slate-800 z-10 rounded-t-xl">
+            <div>
+              <h2 className="text-xl font-bold text-white">{projectToEdit ? 'Edit Project' : 'Create New Project'}</h2>
+              {formData.name && (
+                <p className="text-xs text-slate-400 truncate max-w-md mt-0.5">{formData.name}</p>
+              )}
+            </div>
             <div className="flex items-center gap-3">
               {!projectToEdit && (
                 <button
@@ -457,7 +564,6 @@ const ProjectModal: React.FC<ProjectModalProps> = ({ onClose, onSave, projectToE
                   onClick={(e) => {
                     e.preventDefault();
                     e.stopPropagation();
-                    console.log('Import from Text clicked');
                     setShowTextImport(true);
                   }}
                   className="text-sm px-3 py-1.5 bg-slate-700 hover:bg-slate-600 text-slate-300 hover:text-white rounded-lg transition-colors"
@@ -471,229 +577,348 @@ const ProjectModal: React.FC<ProjectModalProps> = ({ onClose, onSave, projectToE
             </div>
           </div>
 
-          <form onSubmit={handleSubmit} className="flex-grow overflow-y-auto">
-            <div className="p-6 space-y-4">
-              <InputField
-                name="name"
-                label="Project Name"
-                value={formData.name}
-                onChange={handleChange}
-                error={errors.name}
-                required
-              />
-              <div>
-                <label htmlFor="description" className="block mb-2 text-sm font-medium text-slate-300">
-                  Description <span className="text-red-500">*</span>
-                </label>
-                <textarea
-                  id="description"
-                  name="description"
-                  rows={3}
-                  value={formData.description}
-                  onChange={handleChange}
-                  className="bg-slate-700 border border-slate-600 text-white text-sm rounded-lg focus:ring-blue-500 focus:border-blue-500 block w-full p-2.5"
-                />
-                {errors.description && <p className="mt-1 text-xs text-red-500">{errors.description}</p>}
-              </div>
+          {/* Tab Bar */}
+          <div className="border-b border-slate-700 bg-slate-800/95 px-4 flex overflow-x-auto no-scrollbar shrink-0">
+            <button
+              type="button"
+              onClick={() => setActiveTab('overview')}
+              className={`px-4 py-3 text-sm font-medium border-b-2 transition-colors whitespace-nowrap flex items-center gap-2 ${
+                activeTab === 'overview'
+                  ? 'border-brand-secondary text-white'
+                  : 'border-transparent text-slate-400 hover:text-white'
+              }`}
+            >
+              <span>Overview</span>
+              {Object.keys(errors).length > 0 && (
+                <span className="w-2 h-2 rounded-full bg-red-500" title="Validation errors in Overview" />
+              )}
+            </button>
 
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <div>
-                  <label htmlFor="coreSystem" className="block mb-2 text-sm font-medium text-slate-300">
-                    Project Type <span className="text-red-500">*</span>
-                  </label>
-                  <select
-                    id="coreSystem"
-                    name="coreSystem"
-                    value={formData.coreSystem}
-                    onChange={(e) => setFormData(prev => ({ ...prev, coreSystem: e.target.value }))}
-                    className="bg-slate-700 border border-slate-600 text-white text-sm rounded-lg focus:ring-blue-500 focus:border-blue-500 block w-full p-2.5"
-                  >
-                    <option value="">Select Type</option>
-                    <option value="Technical">Technical</option>
-                    <option value="Business">Business</option>
-                    <option value="Creative">Creative</option>
-                    <option value="Research">Research</option>
-                    <option value="Compliance">Compliance</option>
-                  </select>
-                  {errors.coreSystem && <p className="mt-1 text-xs text-red-500">{errors.coreSystem}</p>}
-                </div>
-                <InputField
-                  name="startDate"
-                  label="Start Date"
-                  type="date"
-                  value={formData.startDate}
-                  onChange={handleChange}
-                  error={errors.startDate}
-                  required
-                />
-                {/* Duration with Unit */}
-                <div>
-                  <label className="block mb-2 text-sm font-medium text-slate-300">
-                    Duration <span className="text-red-500">*</span>
-                  </label>
-                  <div className="flex gap-2">
-                    <input
-                      type="number"
-                      name="duration"
-                      value={formData.duration}
-                      onChange={handleChange}
-                      className="bg-slate-700 border border-slate-600 text-white text-sm rounded-lg focus:ring-blue-500 focus:border-blue-500 block w-24 p-2.5"
-                      min="1"
-                    />
-                    <select
-                      value={formData.durationUnit}
-                      onChange={(e) => setFormData(prev => ({ ...prev, durationUnit: e.target.value as DurationUnit }))}
-                      className="bg-slate-700 border border-slate-600 text-white text-sm rounded-lg focus:ring-blue-500 focus:border-blue-500 block flex-1 p-2.5"
-                    >
-                      <option value={DurationUnit.Hours}>Hours</option>
-                      <option value={DurationUnit.Days}>Days</option>
-                      <option value={DurationUnit.Weeks}>Weeks</option>
-                      <option value={DurationUnit.Months}>Months</option>
-                    </select>
-                  </div>
-                  {errors.duration && <p className="mt-1 text-xs text-red-500">{errors.duration}</p>}
-                </div>
+            <button
+              type="button"
+              onClick={() => setActiveTab('team')}
+              className={`px-4 py-3 text-sm font-medium border-b-2 transition-colors whitespace-nowrap flex items-center gap-2 ${
+                activeTab === 'team'
+                  ? 'border-brand-secondary text-white'
+                  : 'border-transparent text-slate-400 hover:text-white'
+              }`}
+            >
+              <span>Team, Access & Invites</span>
+              <span className="text-xs px-1.5 py-0.5 rounded-full bg-slate-700 text-slate-300">
+                {teamMembers.length}
+              </span>
+              {teamError && (
+                <span className="w-2 h-2 rounded-full bg-red-500" title={teamError} />
+              )}
+            </button>
 
-                {/* Cost with Currency */}
-                <div>
-                  <label className="block mb-2 text-sm font-medium text-slate-300">
-                    Cost / Funding
-                  </label>
-                  <div className="flex gap-2">
-                    <select
-                      value={formData.currency}
-                      onChange={(e) => setFormData(prev => ({ ...prev, currency: e.target.value as Currency }))}
-                      className="bg-slate-700 border border-slate-600 text-white text-sm rounded-lg focus:ring-blue-500 focus:border-blue-500 block w-24 p-2.5"
-                    >
-                      <option value={Currency.NGN}>₦ NGN</option>
-                      <option value={Currency.USD}>$ USD</option>
-                    </select>
-                    <input
-                      type="number"
-                      name="cost"
-                      value={formData.cost}
-                      onChange={handleChange}
-                      placeholder="0.00"
-                      className="bg-slate-700 border border-slate-600 text-white text-sm rounded-lg focus:ring-blue-500 focus:border-blue-500 block flex-1 p-2.5"
-                      min="0"
-                      step="0.01"
-                    />
-                  </div>
-                  {errors.cost && <p className="mt-1 text-xs text-red-500">{errors.cost}</p>}
-                </div>
-              </div>
+            <button
+              type="button"
+              onClick={() => setActiveTab('structure')}
+              className={`px-4 py-3 text-sm font-medium border-b-2 transition-colors whitespace-nowrap flex items-center gap-2 ${
+                activeTab === 'structure'
+                  ? 'border-brand-secondary text-white'
+                  : 'border-transparent text-slate-400 hover:text-white'
+              }`}
+            >
+              <span>Structure</span>
+              <span className="text-xs px-1.5 py-0.5 rounded-full bg-slate-700 text-slate-300">
+                {phases.length}
+              </span>
+            </button>
 
-              {/* Project Privacy & Visibility Section */}
-              <div className="pt-4 border-t border-slate-600 space-y-3">
-                <div className="flex items-center justify-between">
+            <button
+              type="button"
+              onClick={() => setActiveTab('privacy')}
+              className={`px-4 py-3 text-sm font-medium border-b-2 transition-colors whitespace-nowrap flex items-center gap-2 ${
+                activeTab === 'privacy'
+                  ? 'border-brand-secondary text-white'
+                  : 'border-transparent text-slate-400 hover:text-white'
+              }`}
+            >
+              <span>Privacy</span>
+              <span className="text-xs">
+                {isPublic ? '🌐' : '🔒'}
+              </span>
+            </button>
+          </div>
+
+          <form onSubmit={handleSubmit} className="flex-grow overflow-y-auto flex flex-col">
+            <div className="p-6 space-y-4 flex-grow">
+              {/* TAB 1: OVERVIEW */}
+              {activeTab === 'overview' && (
+                <div className="space-y-4">
+                  <InputField
+                    name="name"
+                    label="Project Name"
+                    value={formData.name}
+                    onChange={handleChange}
+                    error={errors.name}
+                    required
+                  />
                   <div>
-                    <h3 className="text-sm font-semibold text-white">Project Privacy</h3>
-                    <p className="text-xs text-slate-400">Control who can see and collaborate on this project</p>
+                    <label htmlFor="description" className="block mb-2 text-sm font-medium text-slate-300">
+                      Description <span className="text-red-500">*</span>
+                    </label>
+                    <textarea
+                      id="description"
+                      name="description"
+                      rows={4}
+                      value={formData.description}
+                      onChange={handleChange}
+                      placeholder="Describe the project goals, scope, and context (included in team invitation emails)..."
+                      className="bg-slate-700 border border-slate-600 text-white text-sm rounded-lg focus:ring-blue-500 focus:border-blue-500 block w-full p-2.5"
+                    />
+                    {errors.description && <p className="mt-1 text-xs text-red-500">{errors.description}</p>}
                   </div>
-                  <span className={`text-xs px-2.5 py-1 rounded-full font-medium ${
-                    isPublic
-                      ? 'bg-blue-500/20 text-blue-300 border border-blue-500/30'
-                      : 'bg-slate-700 text-slate-300 border border-slate-600'
-                  }`}>
-                    {isPublic ? '🌐 Public Project' : '🔒 Private Project'}
-                  </span>
-                </div>
 
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                  <button
-                    type="button"
-                    onClick={handleSelectPrivate}
-                    className={`flex items-start gap-3 p-3 rounded-lg border text-left transition-all ${
-                      !isPublic
-                        ? 'bg-slate-700/80 border-brand-secondary ring-1 ring-brand-secondary text-white'
-                        : 'bg-slate-800/40 border-slate-700 text-slate-300 hover:bg-slate-700/50 hover:border-slate-600'
-                    }`}
-                  >
-                    <span className="text-lg">🔒</span>
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                     <div>
-                      <div className="text-sm font-medium">Private (Recommended)</div>
-                      <div className="text-xs text-slate-400 mt-0.5">
-                        Only the project owner and designated team members can view this project.
-                      </div>
+                      <label htmlFor="coreSystem" className="block mb-2 text-sm font-medium text-slate-300">
+                        Project Type <span className="text-red-500">*</span>
+                      </label>
+                      <select
+                        id="coreSystem"
+                        name="coreSystem"
+                        value={formData.coreSystem}
+                        onChange={(e) => setFormData(prev => ({ ...prev, coreSystem: e.target.value }))}
+                        className="bg-slate-700 border border-slate-600 text-white text-sm rounded-lg focus:ring-blue-500 focus:border-blue-500 block w-full p-2.5"
+                      >
+                        <option value="">Select Type</option>
+                        <option value="Technical">Technical</option>
+                        <option value="Business">Business</option>
+                        <option value="Creative">Creative</option>
+                        <option value="Research">Research</option>
+                        <option value="Compliance">Compliance</option>
+                      </select>
+                      {errors.coreSystem && <p className="mt-1 text-xs text-red-500">{errors.coreSystem}</p>}
                     </div>
-                  </button>
+                    <InputField
+                      name="startDate"
+                      label="Start Date"
+                      type="date"
+                      value={formData.startDate}
+                      onChange={handleChange}
+                      error={errors.startDate}
+                      required
+                    />
+                    {/* Duration with Unit */}
+                    <div>
+                      <label className="block mb-2 text-sm font-medium text-slate-300">
+                        Duration <span className="text-red-500">*</span>
+                      </label>
+                      <div className="flex gap-2">
+                        <input
+                          type="number"
+                          name="duration"
+                          value={formData.duration}
+                          onChange={handleChange}
+                          className="bg-slate-700 border border-slate-600 text-white text-sm rounded-lg focus:ring-blue-500 focus:border-blue-500 block w-24 p-2.5"
+                          min="1"
+                        />
+                        <select
+                          value={formData.durationUnit}
+                          onChange={(e) => setFormData(prev => ({ ...prev, durationUnit: e.target.value as DurationUnit }))}
+                          className="bg-slate-700 border border-slate-600 text-white text-sm rounded-lg focus:ring-blue-500 focus:border-blue-500 block flex-1 p-2.5"
+                        >
+                          <option value={DurationUnit.Hours}>Hours</option>
+                          <option value={DurationUnit.Days}>Days</option>
+                          <option value={DurationUnit.Weeks}>Weeks</option>
+                          <option value={DurationUnit.Months}>Months</option>
+                        </select>
+                      </div>
+                      {errors.duration && <p className="mt-1 text-xs text-red-500">{errors.duration}</p>}
+                    </div>
 
-                  <button
-                    type="button"
-                    onClick={handleSelectPublic}
-                    className={`flex items-start gap-3 p-3 rounded-lg border text-left transition-all ${
+                    {/* Cost with Currency */}
+                    <div>
+                      <label className="block mb-2 text-sm font-medium text-slate-300">
+                        Cost / Funding
+                      </label>
+                      <div className="flex gap-2">
+                        <select
+                          value={formData.currency}
+                          onChange={(e) => setFormData(prev => ({ ...prev, currency: e.target.value as Currency }))}
+                          className="bg-slate-700 border border-slate-600 text-white text-sm rounded-lg focus:ring-blue-500 focus:border-blue-500 block w-24 p-2.5"
+                        >
+                          <option value={Currency.NGN}>₦ NGN</option>
+                          <option value={Currency.USD}>$ USD</option>
+                        </select>
+                        <input
+                          type="number"
+                          name="cost"
+                          value={formData.cost}
+                          onChange={handleChange}
+                          placeholder="0.00"
+                          className="bg-slate-700 border border-slate-600 text-white text-sm rounded-lg focus:ring-blue-500 focus:border-blue-500 block flex-1 p-2.5"
+                          min="0"
+                          step="0.01"
+                        />
+                      </div>
+                      {errors.cost && <p className="mt-1 text-xs text-red-500">{errors.cost}</p>}
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {/* TAB 2: TEAM, ACCESS & INVITES */}
+              {activeTab === 'team' && (
+                <div className="space-y-4">
+                  <div>
+                    <h3 className="text-base font-semibold text-white">
+                      Team Members <span className="text-red-500">*</span>
+                    </h3>
+                    <p className="text-xs text-slate-400 mt-0.5">
+                      Manage active team members, assign 2nd Leads, transfer 1st Lead ownership, or invite users via email.
+                    </p>
+                  </div>
+                  <TeamMemberSelector
+                    selectedMembers={teamMembers}
+                    onChange={setTeamMembers}
+                    projectOwnerId={projectOwnerId}
+                    phases={phases}
+                    formerMembers={formerMembers}
+                    onMemberRemovedWithChoice={handleMemberRemovedWithChoice}
+                    onRestoreFormerMember={handleRestoreFormerMember}
+                    canInviteUsers={canInviteUsers}
+                    canTransferOwnership={canTransferOwnership}
+                    onTransferOwnership={handleTransferOwnership}
+                    projectContext={{
+                      projectId: projectToEdit?.id,
+                      projectName: formData.name.trim(),
+                      projectDescription: formData.description.trim(),
+                      projectTimeline: formatProjectTimeline(formData.startDate, formData.duration, formData.durationUnit),
+                    }}
+                    onRequireProjectContext={() => setActiveTab('overview')}
+                    onUserInvited={(newMember) => {
+                      setInvitedInSessionUids((prev) => [...prev, newMember.uid]);
+                    }}
+                    showToast={showToast}
+                    defaultExpanded={true}
+                  />
+                  {teamError && <p className="mt-2 text-xs text-red-500">{teamError}</p>}
+                </div>
+              )}
+
+              {/* TAB 3: STRUCTURE */}
+              {activeTab === 'structure' && (
+                <div className="space-y-4">
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <h3 className="text-base font-semibold text-white">Project Structure</h3>
+                      <p className="text-xs text-slate-400 mt-0.5">
+                        Organize your project into sections, tasks, and subtasks.
+                      </p>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => setShowTextImport(true)}
+                      className="text-xs px-3 py-1.5 bg-slate-700 hover:bg-slate-600 text-slate-300 hover:text-white rounded-lg transition-colors"
+                    >
+                      📋 Import from Text
+                    </button>
+                  </div>
+                  <div className="space-y-3">
+                    {phases.length === 0 && (
+                      <div className="bg-slate-900/40 border border-slate-700/70 rounded-lg p-6 text-center text-sm text-slate-400">
+                        No sections added yet. Click <strong className="text-white">Add Section</strong> below or use <strong className="text-white">Import from Text</strong> to build your project structure.
+                      </div>
+                    )}
+                    {phases.map(phase => (
+                      <div key={phase.id} className="bg-slate-700/50 p-3 rounded-lg">
+                        <div className="flex items-center gap-2">
+                          <input value={phase.name} onChange={(e) => handleUpdatePhase(phase.id, e.target.value)} className="flex-grow bg-transparent text-white font-semibold text-sm p-1 rounded-md focus:bg-slate-600" />
+                          <button type="button" onClick={() => handleDeletePhase(phase.id)} className="text-slate-500 hover:text-red-500"><TrashIcon className="w-4 h-4" /></button>
+                        </div>
+                        <div className="pl-4 mt-2 space-y-2">
+                          {phase.tasks.map(task => (
+                            <div key={task.id}>
+                              <div className="flex items-center gap-2 group">
+                                <input value={task.name} onChange={(e) => handleUpdateTask(phase.id, task.id, e.target.value)} className="flex-grow bg-transparent text-slate-200 text-sm p-1 rounded-md focus:bg-slate-600" />
+                                <button type="button" onClick={() => handleAddSubtask(phase.id, task.id)} className="text-slate-500 hover:text-brand-light opacity-0 group-hover:opacity-100 transition-opacity"><PlusCircleIcon className="w-4 h-4" /></button>
+                                <button type="button" onClick={() => handleDeleteTask(phase.id, task.id)} className="text-slate-500 hover:text-red-500"><TrashIcon className="w-4 h-4" /></button>
+                              </div>
+                              <div className="pl-6 mt-1 space-y-1">
+                                {(task.subTasks || []).map(subtask => (
+                                  <div key={subtask.id} className="flex items-center gap-2">
+                                    <input value={subtask.name} onChange={(e) => handleUpdateSubtask(phase.id, task.id, subtask.id, e.target.value)} className="flex-grow bg-transparent text-slate-400 text-sm p-1 rounded-md focus:bg-slate-600" />
+                                    <button type="button" onClick={() => handleDeleteSubtask(phase.id, task.id, subtask.id)} className="text-slate-500 hover:text-red-500"><TrashIcon className="w-4 h-4" /></button>
+                                  </div>
+                                ))}
+                              </div>
+                            </div>
+                          ))}
+                          <button type="button" onClick={() => handleAddTask(phase.id)} className="flex items-center gap-1 text-sm text-brand-light hover:text-white mt-2">
+                            <PlusCircleIcon className="w-4 h-4" /> Add Task
+                          </button>
+                        </div>
+                      </div>
+                    ))}
+                    <button type="button" onClick={handleAddPhase} className="flex items-center gap-2 text-sm font-semibold text-white bg-slate-700 hover:bg-slate-600 px-3 py-2 rounded-lg">
+                      <PlusCircleIcon className="w-5 h-5" /> Add Section
+                    </button>
+                  </div>
+                </div>
+              )}
+
+              {/* TAB 4: PRIVACY */}
+              {activeTab === 'privacy' && (
+                <div className="space-y-4">
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <h3 className="text-base font-semibold text-white">Project Privacy</h3>
+                      <p className="text-xs text-slate-400 mt-0.5">Control who can see and collaborate on this project</p>
+                    </div>
+                    <span className={`text-xs px-2.5 py-1 rounded-full font-medium ${
                       isPublic
-                        ? 'bg-blue-500/10 border-blue-500 ring-1 ring-blue-500 text-white'
-                        : 'bg-slate-800/40 border-slate-700 text-slate-300 hover:bg-slate-700/50 hover:border-slate-600'
-                    }`}
-                  >
-                    <span className="text-lg">🌐</span>
-                    <div>
-                      <div className="text-sm font-medium">Public</div>
-                      <div className="text-xs text-slate-400 mt-0.5">
-                        Visible to all authenticated team members across the organization.
-                      </div>
-                    </div>
-                  </button>
-                </div>
-              </div>
+                        ? 'bg-blue-500/20 text-blue-300 border border-blue-500/30'
+                        : 'bg-slate-700 text-slate-300 border border-slate-600'
+                    }`}>
+                      {isPublic ? '🌐 Public Project' : '🔒 Private Project'}
+                    </span>
+                  </div>
 
-              {/* Team Selection Section */}
-              <div className="pt-4 border-t border-slate-600">
-                <h3 className="text-lg font-semibold text-white mb-3">Team Members <span className="text-red-500">*</span></h3>
-                <TeamMemberSelector
-                  selectedMembers={teamMembers}
-                  onChange={setTeamMembers}
-                  projectOwnerId={projectOwnerId}
-                  phases={phases}
-                  formerMembers={formerMembers}
-                  onMemberRemovedWithChoice={handleMemberRemovedWithChoice}
-                  onRestoreFormerMember={handleRestoreFormerMember}
-                />
-                {teamError && <p className="mt-2 text-xs text-red-500">{teamError}</p>}
-              </div>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    <button
+                      type="button"
+                      onClick={handleSelectPrivate}
+                      className={`flex items-start gap-3 p-4 rounded-lg border text-left transition-all ${
+                        !isPublic
+                          ? 'bg-slate-700/80 border-brand-secondary ring-1 ring-brand-secondary text-white'
+                          : 'bg-slate-800/40 border-slate-700 text-slate-300 hover:bg-slate-700/50 hover:border-slate-600'
+                      }`}
+                    >
+                      <span className="text-xl">🔒</span>
+                      <div>
+                        <div className="text-sm font-medium">Private (Recommended)</div>
+                        <div className="text-xs text-slate-400 mt-1 leading-relaxed">
+                          Only the project owner and designated team members can view this project.
+                        </div>
+                      </div>
+                    </button>
 
-              {/* --- Project Structure --- */}
-              <div className="pt-4 border-t border-slate-600">
-                <h3 className="text-lg font-semibold text-white mb-3">Project Structure</h3>
-                <div className="space-y-3">
-                  {phases.map(phase => (
-                    <div key={phase.id} className="bg-slate-700/50 p-3 rounded-lg">
-                      <div className="flex items-center gap-2">
-                        <input value={phase.name} onChange={(e) => handleUpdatePhase(phase.id, e.target.value)} className="flex-grow bg-transparent text-white font-semibold text-sm p-1 rounded-md focus:bg-slate-600" />
-                        <button type="button" onClick={() => handleDeletePhase(phase.id)} className="text-slate-500 hover:text-red-500"><TrashIcon className="w-4 h-4" /></button>
+                    <button
+                      type="button"
+                      onClick={handleSelectPublic}
+                      className={`flex items-start gap-3 p-4 rounded-lg border text-left transition-all ${
+                        isPublic
+                          ? 'bg-blue-500/10 border-blue-500 ring-1 ring-blue-500 text-white'
+                          : 'bg-slate-800/40 border-slate-700 text-slate-300 hover:bg-slate-700/50 hover:border-slate-600'
+                      }`}
+                    >
+                      <span className="text-xl">🌐</span>
+                      <div>
+                        <div className="text-sm font-medium">Public</div>
+                        <div className="text-xs text-slate-400 mt-1 leading-relaxed">
+                          Visible to all authenticated team members across the organization.
+                        </div>
                       </div>
-                      <div className="pl-4 mt-2 space-y-2">
-                        {phase.tasks.map(task => (
-                          <div key={task.id}>
-                            <div className="flex items-center gap-2 group">
-                              <input value={task.name} onChange={(e) => handleUpdateTask(phase.id, task.id, e.target.value)} className="flex-grow bg-transparent text-slate-200 text-sm p-1 rounded-md focus:bg-slate-600" />
-                              <button type="button" onClick={() => handleAddSubtask(phase.id, task.id)} className="text-slate-500 hover:text-brand-light opacity-0 group-hover:opacity-100 transition-opacity"><PlusCircleIcon className="w-4 h-4" /></button>
-                              <button type="button" onClick={() => handleDeleteTask(phase.id, task.id)} className="text-slate-500 hover:text-red-500"><TrashIcon className="w-4 h-4" /></button>
-                            </div>
-                            <div className="pl-6 mt-1 space-y-1">
-                              {(task.subTasks || []).map(subtask => (
-                                <div key={subtask.id} className="flex items-center gap-2">
-                                  <input value={subtask.name} onChange={(e) => handleUpdateSubtask(phase.id, task.id, subtask.id, e.target.value)} className="flex-grow bg-transparent text-slate-400 text-sm p-1 rounded-md focus:bg-slate-600" />
-                                  <button type="button" onClick={() => handleDeleteSubtask(phase.id, task.id, subtask.id)} className="text-slate-500 hover:text-red-500"><TrashIcon className="w-4 h-4" /></button>
-                                </div>
-                              ))}
-                            </div>
-                          </div>
-                        ))}
-                        <button type="button" onClick={() => handleAddTask(phase.id)} className="flex items-center gap-1 text-sm text-brand-light hover:text-white mt-2">
-                          <PlusCircleIcon className="w-4 h-4" /> Add Task
-                        </button>
-                      </div>
-                    </div>
-                  ))}
-                  <button type="button" onClick={handleAddPhase} className="flex items-center gap-2 text-sm font-semibold text-white bg-slate-700 hover:bg-slate-600 px-3 py-2 rounded-lg">
-                    <PlusCircleIcon className="w-5 h-5" /> Add Section
-                  </button>
+                    </button>
+                  </div>
                 </div>
-              </div>
+              )}
             </div>
-            <div className="flex justify-end items-center p-4 bg-slate-800 border-t border-slate-700 sticky bottom-0 space-x-3">
+            <div className="flex justify-end items-center p-4 bg-slate-800 border-t border-slate-700 sticky bottom-0 space-x-3 rounded-b-xl">
               <button type="button" onClick={onClose} className="px-4 py-2 text-sm font-medium text-slate-300 bg-slate-700 rounded-lg hover:bg-slate-600">
                 Cancel
               </button>
