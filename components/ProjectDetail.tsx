@@ -1813,10 +1813,22 @@ const ProjectDetail: React.FC<ProjectDetailProps> = ({ project, onBack, canEdit,
   // Reset summary row state whenever a different project is opened
   useEffect(() => {
     setIsTopBandCollapsed(false);
-    setIsTopBandPinned(false);
     setIsTopBandHovered(false);
     setAutoCloseRemainingMs(AUTO_CLOSE_DURATION_MS);
-  }, [project.id]);
+
+    // If this is the user's first time visiting this project, do not activate the 5s auto-collapse timer
+    const visitKey = currentUserId ? `vf_visited_project_${project.id}_${currentUserId}` : null;
+    if (visitKey && !localStorage.getItem(visitKey)) {
+      setIsTopBandPinned(true);
+      try {
+        localStorage.setItem(visitKey, 'true');
+      } catch (err) {
+        // Ignore storage errors if localStorage is disabled or restricted
+      }
+    } else {
+      setIsTopBandPinned(false);
+    }
+  }, [project.id, currentUserId]);
 
   // Auto-collapse the summary row after 5s countdown unless it has been clicked/pinned or is currently hovered
   useEffect(() => {

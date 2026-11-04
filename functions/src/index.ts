@@ -46,7 +46,12 @@ if (admin.apps.length === 0) {
  * Creates a cryptographically secure 48-hour invitation token in Firestore (`invites/{token}`)
  * and invalidates any previous pending invite tokens for the same email.
  */
-const createInviteToken = async (email: string, role: string, createdBy?: string): Promise<string> => {
+const createInviteToken = async (
+  email: string,
+  role: string,
+  createdBy?: string,
+  projectId?: string
+): Promise<string> => {
   const normalizedEmail = email.toLowerCase().trim();
   const db = admin.firestore();
 
@@ -75,6 +80,7 @@ const createInviteToken = async (email: string, role: string, createdBy?: string
     token,
     email: normalizedEmail,
     role,
+    projectId: projectId || null,
     createdBy: createdBy || 'admin',
     createdAt: admin.firestore.FieldValue.serverTimestamp(),
     expiresAt: admin.firestore.Timestamp.fromDate(expiresAt),
@@ -684,7 +690,7 @@ export const inviteUser = functions
 
       // Generate secure 48-hour invitation token and setup link
       console.log('Generating 48-hour secure invitation token...');
-      const setupToken = await createInviteToken(email, effectiveRole, callerUid);
+      const setupToken = await createInviteToken(email, effectiveRole, callerUid, projectId);
       const setupLink = `${APP_URL}/?setupToken=${setupToken}&email=${encodeURIComponent(email)}`;
 
       const inviterName = callerToken.displayName || callerToken.email || 'A Project Lead';
@@ -699,7 +705,7 @@ export const inviteUser = functions
 
       const html = getInvitationEmail(effectiveRole, setupLink, projectContext);
       const subject = projectName
-        ? `Vantage: Invitation to join "${projectName}"`
+        ? `Vantage: ${projectName}`
         : 'Vantage: Your Account Setup Link';
 
       const emailSent = await sendEmail(email, subject, html);
@@ -778,7 +784,7 @@ export const sendReminderEmail = functions
 
       // Generate fresh 48-hour invitation token for reminder
       console.log('Generating fresh 48-hour secure invitation token for reminder...');
-      const setupToken = await createInviteToken(email, role, callerUid);
+      const setupToken = await createInviteToken(email, role, callerUid, projectId);
       const setupLink = `${APP_URL}/?setupToken=${setupToken}&email=${encodeURIComponent(email)}`;
 
       const inviterName = callerToken.displayName || callerToken.email || 'A Project Lead';
@@ -793,7 +799,7 @@ export const sendReminderEmail = functions
 
       const html = getReminderEmail(role, setupLink, projectContext);
       const subject = projectName
-        ? `Vantage: Reminder - Join "${projectName}" & Complete Account Setup`
+        ? `Vantage: ${projectName}`
         : 'Vantage: Action Required - Complete Your Account Setup';
 
       const emailSent = await sendEmail(email, subject, html);
@@ -1243,6 +1249,7 @@ export const validateInviteToken = functions
         valid: true,
         email: invite.email,
         role: invite.role,
+        projectId: invite.projectId || null,
         expiresAt: expiresAt.toISOString(),
       };
     } catch (error: any) {
@@ -1320,6 +1327,55 @@ export const completeAccountSetup = functions
         await admin.auth().setCustomUserClaims(userRecord.uid, { role: invite.role });
       }
 
+      // If invite has an assigned projectId, automatically ensure genuine UID is in memberUids and team.members
+      const targetProjectId = invite.projectId;
+      if (targetProjectId) {
+        try {
+          const projectRef = db.collection('projects').doc(targetProjectId);
+          const projectSnap = await projectRef.get();
+          if (projectSnap.exists) {
+            const projectData = projectSnap.data() || {};
+            const currentMembers: any[] = projectData.team?.members || [];
+            const currentMemberUids: string[] = projectData.memberUids || [];
+
+            let found = false;
+            const updatedMembers = currentMembers.map((m) => {
+              if (
+                (m.email && m.email.toLowerCase() === invite.email.toLowerCase()) ||
+                m.uid === userRecord.uid
+              ) {
+                found = true;
+                return {
+                  ...m,
+                  uid: userRecord.uid,
+                  email: userRecord.email || invite.email,
+                  displayName: displayName?.trim() || m.displayName || undefined,
+                };
+              }
+              return m;
+            });
+
+            if (!found) {
+              updatedMembers.push({
+                uid: userRecord.uid,
+                email: userRecord.email || invite.email,
+                displayName: displayName?.trim() || undefined,
+              });
+            }
+
+            const updatedMemberUids = Array.from(new Set([...currentMemberUids, userRecord.uid]));
+            await projectRef.update({
+              'team.members': updatedMembers,
+              memberUids: updatedMemberUids,
+              updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+            });
+            console.log(`[completeAccountSetup] Successfully attached user ${userRecord.uid} to project ${targetProjectId}`);
+          }
+        } catch (projSyncErr) {
+          console.warn('[completeAccountSetup] Failed to sync user to assigned project:', projSyncErr);
+        }
+      }
+
       // Try to generate custom token if IAM permission exists, but do not fail account setup if signBlob is not configured
       let customToken: string | null = null;
       try {
@@ -1343,6 +1399,7 @@ export const completeAccountSetup = functions
         customToken,
         email: invite.email,
         role: invite.role,
+        projectId: invite.projectId || null,
       };
     } catch (error: any) {
       console.error('Error completing account setup:', error);

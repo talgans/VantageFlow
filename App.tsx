@@ -205,6 +205,8 @@ const App: React.FC = () => {
         }
     }, [projects]);
 
+    const [pendingRouteProjectId, setPendingRouteProjectId] = useState<string | null>(null);
+
     const handleSelectProject = (project: Project) => {
         // Record recent project access
         recordProjectAccess(project.id, user?.uid);
@@ -213,6 +215,32 @@ const App: React.FC = () => {
         setSelectedProject(currentProject);
         setCurrentPage('projects'); // Ensure we're on the projects page
     };
+
+    const handleAccountSetupSuccess = (assignedProjectId?: string) => {
+        setSetupToken(null);
+        setIsSetupModalOpen(false);
+        if (assignedProjectId) {
+            setPendingRouteProjectId(assignedProjectId);
+            const targetProj = projects.find(p => p.id === assignedProjectId);
+            if (targetProj) {
+                handleSelectProject(targetProj);
+                setPendingRouteProjectId(null);
+            }
+        } else {
+            setCurrentPage('dashboard');
+        }
+    };
+
+    // Auto-navigate to assigned project once projects list syncs after account setup
+    useEffect(() => {
+        if (pendingRouteProjectId && projects.length > 0) {
+            const target = projects.find(p => p.id === pendingRouteProjectId);
+            if (target) {
+                handleSelectProject(target);
+                setPendingRouteProjectId(null);
+            }
+        }
+    }, [pendingRouteProjectId, projects]);
 
     const handleGoBack = () => {
         setSelectedProject(null);
@@ -524,10 +552,7 @@ const App: React.FC = () => {
                         initialEmail={setupEmail}
                         onClose={() => setIsSetupModalOpen(false)}
                         showToast={showToast}
-                        onSuccess={() => {
-                            setSetupToken(null);
-                            setIsSetupModalOpen(false);
-                        }}
+                        onSuccess={handleAccountSetupSuccess}
                     />
                 )}
                 {toast && <Toast message={toast} />}
@@ -691,11 +716,7 @@ const App: React.FC = () => {
                     initialEmail={setupEmail}
                     onClose={() => setIsSetupModalOpen(false)}
                     showToast={showToast}
-                    onSuccess={() => {
-                        setSetupToken(null);
-                        setIsSetupModalOpen(false);
-                        setCurrentPage('dashboard');
-                    }}
+                    onSuccess={handleAccountSetupSuccess}
                 />
             )}
             {isProjectModalOpen && (

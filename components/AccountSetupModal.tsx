@@ -10,13 +10,14 @@ interface AccountSetupModalProps {
   isOpen: boolean;
   onClose: () => void;
   showToast: (message: string) => void;
-  onSuccess?: () => void;
+  onSuccess?: (projectId?: string) => void;
 }
 
 interface ValidateTokenResponse {
   valid: boolean;
   email?: string;
   role?: string;
+  projectId?: string;
   expiresAt?: string;
   reason?: string;
   message?: string;
@@ -28,6 +29,7 @@ interface CompleteSetupResponse {
   customToken?: string;
   email: string;
   role: string;
+  projectId?: string;
 }
 
 const AccountSetupModal: React.FC<AccountSetupModalProps> = ({
@@ -42,6 +44,7 @@ const AccountSetupModal: React.FC<AccountSetupModalProps> = ({
   const [validationError, setValidationError] = useState<string | null>(null);
   const [email, setEmail] = useState(initialEmail || '');
   const [role, setRole] = useState<string>('member');
+  const [assignedProjectId, setAssignedProjectId] = useState<string | null>(null);
   const [expiresAt, setExpiresAt] = useState<string | null>(null);
 
   const [displayName, setDisplayName] = useState('');
@@ -70,6 +73,7 @@ const AccountSetupModal: React.FC<AccountSetupModalProps> = ({
         if (result.data.valid) {
           if (result.data.email) setEmail(result.data.email);
           if (result.data.role) setRole(result.data.role);
+          if (result.data.projectId) setAssignedProjectId(result.data.projectId);
           if (result.data.expiresAt) setExpiresAt(result.data.expiresAt);
           // Set initial display name default from email prefix
           const defaultName = result.data.email?.split('@')[0] || '';
@@ -161,8 +165,9 @@ const AccountSetupModal: React.FC<AccountSetupModalProps> = ({
         url.searchParams.delete('email');
         window.history.replaceState({}, document.title, url.pathname + (url.search ? url.search : ''));
 
+        const targetProjectId = result.data.projectId || assignedProjectId || undefined;
         showToast(`Welcome to VantageFlow, ${displayName || targetEmail}! Your account is ready.`);
-        onSuccess?.();
+        onSuccess?.(targetProjectId);
         onClose();
       } else {
         throw new Error(result.data.message || 'Account setup could not be completed.');
@@ -196,7 +201,7 @@ const AccountSetupModal: React.FC<AccountSetupModalProps> = ({
           url.searchParams.delete('email');
           window.history.replaceState({}, document.title, url.pathname + (url.search ? url.search : ''));
           showToast(`Welcome to VantageFlow, ${displayName || email}! Your account is ready.`);
-          onSuccess?.();
+          onSuccess?.(assignedProjectId || undefined);
           onClose();
           return;
         } catch (signInErr) {

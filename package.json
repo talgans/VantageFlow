@@ -7,7 +7,8 @@
     "dev": "vite",
     "build": "vite build",
     "preview": "vite preview",
-    "deploy:rules": "firebase deploy --only firestore:rules --project vantageflow"
+    "deploy:rules": "firebase deploy --only firestore:rules --project vantageflow",
+    "deploy:functions": "firebase deploy --only functions --project vantageflow"
   },
   "dependencies": {
     "@google/genai": "^1.29.0",

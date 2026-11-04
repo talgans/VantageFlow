@@ -32,23 +32,23 @@ export interface EmailProjectContext {
 
 const renderProjectContextCard = (projectContext?: EmailProjectContext) => {
   if (!projectContext?.projectName) return '';
-  const hasDesc = Boolean(projectContext.projectDescription && projectContext.projectDescription.trim());
-  const hasTimeline = Boolean(projectContext.projectTimeline && projectContext.projectTimeline.trim());
-  if (!hasDesc && !hasTimeline) return '';
+  const desc = projectContext.projectDescription && projectContext.projectDescription.trim();
+  const timeline = projectContext.projectTimeline && projectContext.projectTimeline.trim();
+  const inviter = projectContext.inviterName && projectContext.inviterName.trim();
 
   return `
-  <div style="background-color: #f8fafc; border: 1px solid #e2e8f0; border-left: 4px solid #3b82f6; padding: 14px 16px; margin: 20px 0; border-radius: 6px;">
-    <p style="margin: 0 0 6px 0; font-size: 12px; color: #3b82f6; text-transform: uppercase; font-weight: bold; letter-spacing: 0.04em;">
-      Project Context — ${projectContext.projectName}
+  <div style="background-color: #f8fafc; border: 1px solid #e2e8f0; border-left: 4px solid #3b82f6; padding: 16px; margin: 20px 0; border-radius: 6px;">
+    <p style="margin: 0 0 6px 0; font-size: 11px; color: #3b82f6; text-transform: uppercase; font-weight: bold; letter-spacing: 0.05em;">
+      Project Assignment
     </p>
-    ${hasDesc ? `
-    <p style="margin: 0 0 ${hasTimeline ? '10px' : '0'} 0; color: #1e293b; font-size: 14px; line-height: 1.5;">
-      ${projectContext.projectDescription}
-    </p>` : ''}
-    ${hasTimeline ? `
-    <p style="margin: 0; font-size: 13px; color: #475569; background-color: #f1f5f9; padding: 6px 10px; border-radius: 4px; display: inline-block;">
-      📅 <strong>Timeline:</strong> ${projectContext.projectTimeline}
-    </p>` : ''}
+    <h3 style="margin: 0 0 8px 0; font-size: 16px; color: #0f172a; font-weight: bold;">
+      ${projectContext.projectName}
+    </h3>
+    ${desc ? `<p style="margin: 0 0 10px 0; color: #334155; font-size: 14px; line-height: 1.5;">${desc}</p>` : ''}
+    <div style="font-size: 13px; color: #475569; margin-top: 8px;">
+      ${timeline ? `<div style="margin-bottom: 4px;">📅 <strong>Timeline:</strong> ${timeline}</div>` : ''}
+      ${inviter ? `<div>👤 <strong>Invited by:</strong> ${inviter}</div>` : ''}
+    </div>
   </div>`;
 };
 
