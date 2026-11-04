@@ -7,7 +7,7 @@ import TeamMemberSelector from './TeamMemberSelector';
 import { notificationService } from '../services/notificationService';
 import { formatProjectTimeline } from '../services/userService';
 
-export type ProjectModalTab = 'overview' | 'team' | 'structure' | 'privacy';
+export type ProjectModalTab = 'overview' | 'team' | 'structure';
 
 interface ProjectModalProps {
   onClose: () => void;
@@ -44,8 +44,8 @@ interface InputFieldProps {
 
 const InputField: React.FC<InputFieldProps> = ({ name, label, value, onChange, error, required, type = "text" }) => (
   <div>
-    <label htmlFor={name} className="block mb-2 text-sm font-medium text-slate-300">
-      {label} {required && <span className="text-red-500">*</span>}
+    <label htmlFor={name} className="block mb-1 text-xs font-semibold text-slate-300">
+      {label} {required && <span className="text-red-400">*</span>}
     </label>
     <input
       type={type}
@@ -53,9 +53,9 @@ const InputField: React.FC<InputFieldProps> = ({ name, label, value, onChange, e
       name={name}
       value={value}
       onChange={onChange}
-      className="bg-slate-700 border border-slate-600 text-white text-sm rounded-lg focus:ring-blue-500 focus:border-blue-500 block w-full p-2.5"
+      className="bg-slate-700/80 border border-slate-600 text-white text-sm rounded-lg focus:ring-brand-secondary focus:border-brand-secondary block w-full px-3 py-2"
     />
-    {error && <p className="mt-1 text-xs text-red-500">{error}</p>}
+    {error && <p className="mt-0.5 text-[11px] text-red-400">{error}</p>}
   </div>
 );
 
@@ -547,17 +547,28 @@ const ProjectModal: React.FC<ProjectModalProps> = ({
         onClick={onClose}
       >
         <div
-          className="bg-slate-800 rounded-xl border border-slate-700 w-full max-w-2xl max-h-[90vh] flex flex-col"
+          className="bg-slate-800 rounded-xl border border-slate-700 w-full max-w-3xl max-h-[92vh] flex flex-col shadow-2xl"
           onClick={(e) => e.stopPropagation()}
         >
-          <div className="flex justify-between items-center p-4 border-b border-slate-700 sticky top-0 bg-slate-800 z-10 rounded-t-xl">
-            <div>
-              <h2 className="text-xl font-bold text-white">{projectToEdit ? 'Edit Project' : 'Create New Project'}</h2>
-              {formData.name && (
-                <p className="text-xs text-slate-400 truncate max-w-md mt-0.5">{formData.name}</p>
-              )}
+          <div className="flex justify-between items-center px-6 py-3.5 border-b border-slate-700 sticky top-0 bg-slate-800 z-10 rounded-t-xl">
+            <div className="min-w-0 pr-4">
+              <div className="flex items-center gap-2 mb-0.5">
+                <span className="text-[10px] font-bold uppercase tracking-wider text-brand-secondary bg-brand-secondary/15 px-2 py-0.5 rounded border border-brand-secondary/30">
+                  {projectToEdit ? 'Edit Project' : 'Create New Project'}
+                </span>
+                <span className={`text-[10px] px-2 py-0.5 rounded-full font-medium inline-flex items-center gap-1 ${
+                  isPublic
+                    ? 'bg-blue-500/15 text-blue-300 border border-blue-500/30'
+                    : 'bg-slate-700/80 text-slate-300 border border-slate-600'
+                }`}>
+                  {isPublic ? '🌐 Public' : '🔒 Private'}
+                </span>
+              </div>
+              <h2 className="text-xl sm:text-2xl font-extrabold text-white truncate leading-tight">
+                {formData.name || (projectToEdit ? 'Untitled Project' : 'New Project Plan')}
+              </h2>
             </div>
-            <div className="flex items-center gap-3">
+            <div className="flex items-center gap-2 shrink-0">
               {!projectToEdit && (
                 <button
                   type="button"
@@ -566,23 +577,23 @@ const ProjectModal: React.FC<ProjectModalProps> = ({
                     e.stopPropagation();
                     setShowTextImport(true);
                   }}
-                  className="text-sm px-3 py-1.5 bg-slate-700 hover:bg-slate-600 text-slate-300 hover:text-white rounded-lg transition-colors"
+                  className="text-xs px-3 py-1.5 bg-slate-700 hover:bg-slate-600 text-slate-300 hover:text-white rounded-lg transition-colors font-medium"
                 >
                   📋 Import from Text
                 </button>
               )}
-              <button onClick={onClose} className="text-slate-400 hover:text-white">
-                <XMarkIcon className="w-6 h-6" />
+              <button onClick={onClose} className="text-slate-400 hover:text-white p-1 rounded-lg hover:bg-slate-700/60 transition-colors">
+                <XMarkIcon className="w-5 h-5" />
               </button>
             </div>
           </div>
 
           {/* Tab Bar */}
-          <div className="border-b border-slate-700 bg-slate-800/95 px-4 flex overflow-x-auto no-scrollbar shrink-0">
+          <div className="border-b border-slate-700 bg-slate-800/95 px-6 flex overflow-x-auto no-scrollbar shrink-0">
             <button
               type="button"
               onClick={() => setActiveTab('overview')}
-              className={`px-4 py-3 text-sm font-medium border-b-2 transition-colors whitespace-nowrap flex items-center gap-2 ${
+              className={`px-4 py-2.5 text-sm font-semibold border-b-2 transition-colors whitespace-nowrap flex items-center gap-2 ${
                 activeTab === 'overview'
                   ? 'border-brand-secondary text-white'
                   : 'border-transparent text-slate-400 hover:text-white'
@@ -597,7 +608,7 @@ const ProjectModal: React.FC<ProjectModalProps> = ({
             <button
               type="button"
               onClick={() => setActiveTab('team')}
-              className={`px-4 py-3 text-sm font-medium border-b-2 transition-colors whitespace-nowrap flex items-center gap-2 ${
+              className={`px-4 py-2.5 text-sm font-semibold border-b-2 transition-colors whitespace-nowrap flex items-center gap-2 ${
                 activeTab === 'team'
                   ? 'border-brand-secondary text-white'
                   : 'border-transparent text-slate-400 hover:text-white'
@@ -615,7 +626,7 @@ const ProjectModal: React.FC<ProjectModalProps> = ({
             <button
               type="button"
               onClick={() => setActiveTab('structure')}
-              className={`px-4 py-3 text-sm font-medium border-b-2 transition-colors whitespace-nowrap flex items-center gap-2 ${
+              className={`px-4 py-2.5 text-sm font-semibold border-b-2 transition-colors whitespace-nowrap flex items-center gap-2 ${
                 activeTab === 'structure'
                   ? 'border-brand-secondary text-white'
                   : 'border-transparent text-slate-400 hover:text-white'
@@ -626,63 +637,56 @@ const ProjectModal: React.FC<ProjectModalProps> = ({
                 {phases.length}
               </span>
             </button>
-
-            <button
-              type="button"
-              onClick={() => setActiveTab('privacy')}
-              className={`px-4 py-3 text-sm font-medium border-b-2 transition-colors whitespace-nowrap flex items-center gap-2 ${
-                activeTab === 'privacy'
-                  ? 'border-brand-secondary text-white'
-                  : 'border-transparent text-slate-400 hover:text-white'
-              }`}
-            >
-              <span>Privacy</span>
-              <span className="text-xs">
-                {isPublic ? '🌐' : '🔒'}
-              </span>
-            </button>
           </div>
 
           <form onSubmit={handleSubmit} className="flex-grow overflow-y-auto flex flex-col">
-            <div className="p-6 space-y-4 flex-grow">
+            <div className="p-5 space-y-3 flex-grow">
               {/* TAB 1: OVERVIEW */}
               {activeTab === 'overview' && (
-                <div className="space-y-4">
-                  <InputField
-                    name="name"
-                    label="Project Name"
-                    value={formData.name}
-                    onChange={handleChange}
-                    error={errors.name}
-                    required
-                  />
+                <div className="space-y-3">
                   <div>
-                    <label htmlFor="description" className="block mb-2 text-sm font-medium text-slate-300">
-                      Description <span className="text-red-500">*</span>
+                    <label htmlFor="name" className="block mb-1 text-xs font-semibold text-slate-300 uppercase tracking-wider">
+                      Project Name <span className="text-red-400">*</span>
+                    </label>
+                    <input
+                      type="text"
+                      id="name"
+                      name="name"
+                      value={formData.name}
+                      onChange={handleChange}
+                      placeholder="e.g. CU Digital Learning Office"
+                      className="bg-slate-700/90 border border-slate-600 text-white text-base font-semibold rounded-lg focus:ring-2 focus:ring-brand-secondary focus:border-transparent block w-full px-3.5 py-2 transition-colors placeholder-slate-400"
+                    />
+                    {errors.name && <p className="mt-0.5 text-[11px] text-red-400">{errors.name}</p>}
+                  </div>
+
+                  <div>
+                    <label htmlFor="description" className="block mb-1 text-xs font-semibold text-slate-300 uppercase tracking-wider">
+                      Description <span className="text-red-400">*</span>
                     </label>
                     <textarea
                       id="description"
                       name="description"
-                      rows={4}
+                      rows={2}
                       value={formData.description}
                       onChange={handleChange}
-                      placeholder="Describe the project goals, scope, and context (included in team invitation emails)..."
-                      className="bg-slate-700 border border-slate-600 text-white text-sm rounded-lg focus:ring-blue-500 focus:border-blue-500 block w-full p-2.5"
+                      placeholder="Describe project goals, scope, and key deliverables..."
+                      className="bg-slate-700/80 border border-slate-600 text-white text-sm rounded-lg focus:ring-2 focus:ring-brand-secondary focus:border-transparent block w-full px-3 py-1.5 placeholder-slate-400 resize-none"
                     />
-                    {errors.description && <p className="mt-1 text-xs text-red-500">{errors.description}</p>}
+                    {errors.description && <p className="mt-0.5 text-xs text-red-400">{errors.description}</p>}
                   </div>
 
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                     <div>
-                      <label htmlFor="coreSystem" className="block mb-2 text-sm font-medium text-slate-300">
-                        Project Type <span className="text-red-500">*</span>
+                      <label htmlFor="coreSystem" className="block mb-1 text-xs font-semibold text-slate-300">
+                        Project Type <span className="text-red-400">*</span>
                       </label>
                       <select
                         id="coreSystem"
                         name="coreSystem"
                         value={formData.coreSystem}
                         onChange={(e) => setFormData(prev => ({ ...prev, coreSystem: e.target.value }))}
-                        className="bg-slate-700 border border-slate-600 text-white text-sm rounded-lg focus:ring-blue-500 focus:border-blue-500 block w-full p-2.5"
+                        className="bg-slate-700/80 border border-slate-600 text-white text-sm rounded-lg focus:ring-brand-secondary focus:border-brand-secondary block w-full px-3 py-2"
                       >
                         <option value="">Select Type</option>
                         <option value="Technical">Technical</option>
@@ -691,8 +695,9 @@ const ProjectModal: React.FC<ProjectModalProps> = ({
                         <option value="Research">Research</option>
                         <option value="Compliance">Compliance</option>
                       </select>
-                      {errors.coreSystem && <p className="mt-1 text-xs text-red-500">{errors.coreSystem}</p>}
+                      {errors.coreSystem && <p className="mt-0.5 text-[11px] text-red-400">{errors.coreSystem}</p>}
                     </div>
+
                     <InputField
                       name="startDate"
                       label="Start Date"
@@ -702,10 +707,11 @@ const ProjectModal: React.FC<ProjectModalProps> = ({
                       error={errors.startDate}
                       required
                     />
+
                     {/* Duration with Unit */}
                     <div>
-                      <label className="block mb-2 text-sm font-medium text-slate-300">
-                        Duration <span className="text-red-500">*</span>
+                      <label className="block mb-1 text-xs font-semibold text-slate-300">
+                        Duration <span className="text-red-400">*</span>
                       </label>
                       <div className="flex gap-2">
                         <input
@@ -713,13 +719,13 @@ const ProjectModal: React.FC<ProjectModalProps> = ({
                           name="duration"
                           value={formData.duration}
                           onChange={handleChange}
-                          className="bg-slate-700 border border-slate-600 text-white text-sm rounded-lg focus:ring-blue-500 focus:border-blue-500 block w-24 p-2.5"
+                          className="bg-slate-700/80 border border-slate-600 text-white text-sm rounded-lg focus:ring-brand-secondary focus:border-brand-secondary block w-24 px-3 py-2"
                           min="1"
                         />
                         <select
                           value={formData.durationUnit}
                           onChange={(e) => setFormData(prev => ({ ...prev, durationUnit: e.target.value as DurationUnit }))}
-                          className="bg-slate-700 border border-slate-600 text-white text-sm rounded-lg focus:ring-blue-500 focus:border-blue-500 block flex-1 p-2.5"
+                          className="bg-slate-700/80 border border-slate-600 text-white text-sm rounded-lg focus:ring-brand-secondary focus:border-brand-secondary block flex-1 px-3 py-2"
                         >
                           <option value={DurationUnit.Hours}>Hours</option>
                           <option value={DurationUnit.Days}>Days</option>
@@ -727,19 +733,19 @@ const ProjectModal: React.FC<ProjectModalProps> = ({
                           <option value={DurationUnit.Months}>Months</option>
                         </select>
                       </div>
-                      {errors.duration && <p className="mt-1 text-xs text-red-500">{errors.duration}</p>}
+                      {errors.duration && <p className="mt-0.5 text-xs text-red-400">{errors.duration}</p>}
                     </div>
 
                     {/* Cost with Currency */}
                     <div>
-                      <label className="block mb-2 text-sm font-medium text-slate-300">
+                      <label className="block mb-1 text-xs font-semibold text-slate-300">
                         Cost / Funding
                       </label>
                       <div className="flex gap-2">
                         <select
                           value={formData.currency}
                           onChange={(e) => setFormData(prev => ({ ...prev, currency: e.target.value as Currency }))}
-                          className="bg-slate-700 border border-slate-600 text-white text-sm rounded-lg focus:ring-blue-500 focus:border-blue-500 block w-24 p-2.5"
+                          className="bg-slate-700/80 border border-slate-600 text-white text-sm rounded-lg focus:ring-brand-secondary focus:border-brand-secondary block w-24 px-2.5 py-2"
                         >
                           <option value={Currency.NGN}>₦ NGN</option>
                           <option value={Currency.USD}>$ USD</option>
@@ -750,12 +756,64 @@ const ProjectModal: React.FC<ProjectModalProps> = ({
                           value={formData.cost}
                           onChange={handleChange}
                           placeholder="0.00"
-                          className="bg-slate-700 border border-slate-600 text-white text-sm rounded-lg focus:ring-blue-500 focus:border-blue-500 block flex-1 p-2.5"
+                          className="bg-slate-700/80 border border-slate-600 text-white text-sm rounded-lg focus:ring-brand-secondary focus:border-brand-secondary block flex-1 px-3 py-2"
                           min="0"
                           step="0.01"
                         />
                       </div>
-                      {errors.cost && <p className="mt-1 text-xs text-red-500">{errors.cost}</p>}
+                      {errors.cost && <p className="mt-0.5 text-xs text-red-400">{errors.cost}</p>}
+                    </div>
+                  </div>
+
+                  {/* Return Privacy to Overview Tab as a Toggle */}
+                  <div className="pt-0.5">
+                    <div className="flex items-center justify-between p-3 rounded-lg bg-slate-700/40 border border-slate-600/70 hover:border-slate-500/70 transition-colors">
+                      <div className="flex items-center gap-3">
+                        <span className="text-xl select-none">{isPublic ? '🌐' : '🔒'}</span>
+                        <div>
+                          <div className="flex items-center gap-2">
+                            <span className="text-xs font-bold text-white uppercase tracking-wider">
+                              Project Privacy
+                            </span>
+                            <span className={`text-[10px] px-2 py-0.5 rounded-full font-semibold ${
+                              isPublic
+                                ? 'bg-blue-500/20 text-blue-300 border border-blue-500/40'
+                                : 'bg-slate-700 text-slate-300 border border-slate-600'
+                            }`}>
+                              {isPublic ? 'Public Project' : 'Private (Recommended)'}
+                            </span>
+                          </div>
+                          <p className="text-[11px] text-slate-400 mt-0.5">
+                            {isPublic
+                              ? 'Visible to all authenticated team members across the organization'
+                              : 'Only the project owner and designated team members can view this project'}
+                          </p>
+                        </div>
+                      </div>
+
+                      <button
+                        type="button"
+                        role="switch"
+                        aria-checked={isPublic}
+                        onClick={() => {
+                          if (!isPublic) {
+                            setShowPrivacyWarning(true);
+                          } else {
+                            setIsPublic(false);
+                          }
+                        }}
+                        className={`relative inline-flex h-6 w-11 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none focus:ring-2 focus:ring-brand-secondary focus:ring-offset-2 focus:ring-offset-slate-800 ${
+                          isPublic ? 'bg-blue-600' : 'bg-slate-600'
+                        }`}
+                        title={isPublic ? 'Click to make Private' : 'Click to make Public'}
+                      >
+                        <span
+                          aria-hidden="true"
+                          className={`pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow-md ring-0 transition duration-200 ease-in-out ${
+                            isPublic ? 'translate-x-5' : 'translate-x-0'
+                          }`}
+                        />
+                      </button>
                     </div>
                   </div>
                 </div>
@@ -860,69 +918,12 @@ const ProjectModal: React.FC<ProjectModalProps> = ({
                   </div>
                 </div>
               )}
-
-              {/* TAB 4: PRIVACY */}
-              {activeTab === 'privacy' && (
-                <div className="space-y-4">
-                  <div className="flex items-center justify-between">
-                    <div>
-                      <h3 className="text-base font-semibold text-white">Project Privacy</h3>
-                      <p className="text-xs text-slate-400 mt-0.5">Control who can see and collaborate on this project</p>
-                    </div>
-                    <span className={`text-xs px-2.5 py-1 rounded-full font-medium ${
-                      isPublic
-                        ? 'bg-blue-500/20 text-blue-300 border border-blue-500/30'
-                        : 'bg-slate-700 text-slate-300 border border-slate-600'
-                    }`}>
-                      {isPublic ? '🌐 Public Project' : '🔒 Private Project'}
-                    </span>
-                  </div>
-
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                    <button
-                      type="button"
-                      onClick={handleSelectPrivate}
-                      className={`flex items-start gap-3 p-4 rounded-lg border text-left transition-all ${
-                        !isPublic
-                          ? 'bg-slate-700/80 border-brand-secondary ring-1 ring-brand-secondary text-white'
-                          : 'bg-slate-800/40 border-slate-700 text-slate-300 hover:bg-slate-700/50 hover:border-slate-600'
-                      }`}
-                    >
-                      <span className="text-xl">🔒</span>
-                      <div>
-                        <div className="text-sm font-medium">Private (Recommended)</div>
-                        <div className="text-xs text-slate-400 mt-1 leading-relaxed">
-                          Only the project owner and designated team members can view this project.
-                        </div>
-                      </div>
-                    </button>
-
-                    <button
-                      type="button"
-                      onClick={handleSelectPublic}
-                      className={`flex items-start gap-3 p-4 rounded-lg border text-left transition-all ${
-                        isPublic
-                          ? 'bg-blue-500/10 border-blue-500 ring-1 ring-blue-500 text-white'
-                          : 'bg-slate-800/40 border-slate-700 text-slate-300 hover:bg-slate-700/50 hover:border-slate-600'
-                      }`}
-                    >
-                      <span className="text-xl">🌐</span>
-                      <div>
-                        <div className="text-sm font-medium">Public</div>
-                        <div className="text-xs text-slate-400 mt-1 leading-relaxed">
-                          Visible to all authenticated team members across the organization.
-                        </div>
-                      </div>
-                    </button>
-                  </div>
-                </div>
-              )}
             </div>
-            <div className="flex justify-end items-center p-4 bg-slate-800 border-t border-slate-700 sticky bottom-0 space-x-3 rounded-b-xl">
+            <div className="flex justify-end items-center px-6 py-3.5 bg-slate-800 border-t border-slate-700 sticky bottom-0 space-x-3 rounded-b-xl">
               <button type="button" onClick={onClose} className="px-4 py-2 text-sm font-medium text-slate-300 bg-slate-700 rounded-lg hover:bg-slate-600">
                 Cancel
               </button>
-              <button type="submit" className="px-4 py-2 text-sm font-medium text-white bg-brand-secondary rounded-lg hover:bg-blue-500">
+              <button type="submit" className="px-5 py-2 text-sm font-semibold text-white bg-brand-secondary rounded-lg hover:bg-blue-500 transition-colors shadow-md">
                 {projectToEdit ? 'Save Changes' : 'Save Project'}
               </button>
             </div>
