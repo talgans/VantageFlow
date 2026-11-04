@@ -792,19 +792,17 @@ const InlineTaskForm: React.FC<InlineTaskFormProps> = ({
                           setSelectedAssignees([...selectedAssignees, member]);
                         }
                       }}
-                      className={`px-2.5 py-0.5 rounded-full text-xs font-medium border flex items-center gap-1.5 transition-all cursor-pointer ${
-                        isSelected
-                          ? 'bg-blue-500/20 text-blue-300 border-blue-500/60 ring-1 ring-blue-500/40'
-                          : 'bg-slate-800/80 text-slate-400 border-slate-700 hover:text-slate-300 hover:border-slate-600'
-                      }`}
+                      className={`px-2.5 py-0.5 rounded-full text-xs font-medium border flex items-center gap-1.5 transition-all cursor-pointer ${isSelected
+                        ? 'bg-blue-500/20 text-blue-300 border-blue-500/60 ring-1 ring-blue-500/40'
+                        : 'bg-slate-800/80 text-slate-400 border-slate-700 hover:text-slate-300 hover:border-slate-600'
+                        }`}
                       title={member.email ? `${dName} (${member.email})` : dName}
                     >
                       <div
-                        className={`w-4 h-4 rounded-full flex items-center justify-center text-[9px] overflow-hidden flex-shrink-0 ${
-                          isSelected
-                            ? 'bg-blue-600/40 border border-blue-400/60 text-blue-200'
-                            : 'bg-slate-700 border border-slate-600 text-slate-300'
-                        }`}
+                        className={`w-4 h-4 rounded-full flex items-center justify-center text-[9px] overflow-hidden flex-shrink-0 ${isSelected
+                          ? 'bg-blue-600/40 border border-blue-400/60 text-blue-200'
+                          : 'bg-slate-700 border border-slate-600 text-slate-300'
+                          }`}
                       >
                         {photo ? (
                           <img src={photo} alt="" className="w-full h-full object-cover" />
@@ -876,9 +874,8 @@ const InlineTaskForm: React.FC<InlineTaskFormProps> = ({
                         setSelectedAssignees([]);
                         setIsAssignOpen(false);
                       }}
-                      className={`w-full flex items-center gap-2 px-2 py-1.5 rounded-lg text-xs transition-colors text-left ${
-                        selectedAssignees.length === 0 ? 'bg-slate-800 text-brand-secondary font-medium' : 'text-slate-400 hover:bg-slate-800/60 hover:text-slate-200'
-                      }`}
+                      className={`w-full flex items-center gap-2 px-2 py-1.5 rounded-lg text-xs transition-colors text-left ${selectedAssignees.length === 0 ? 'bg-slate-800 text-brand-secondary font-medium' : 'text-slate-400 hover:bg-slate-800/60 hover:text-slate-200'
+                        }`}
                     >
                       <div className="w-5 h-5 rounded-full bg-slate-800 border border-slate-700 flex items-center justify-center">
                         <UserIcon className="w-3 h-3 text-slate-500" />
@@ -904,9 +901,8 @@ const InlineTaskForm: React.FC<InlineTaskFormProps> = ({
                               setIsAssignOpen(false);
                             }
                           }}
-                          className={`w-full flex items-center gap-2 px-2 py-1.5 rounded-lg text-xs transition-colors text-left ${
-                            isSelected ? 'bg-brand-secondary/15 text-white font-medium' : 'text-slate-300 hover:bg-slate-800 hover:text-white'
-                          }`}
+                          className={`w-full flex items-center gap-2 px-2 py-1.5 rounded-lg text-xs transition-colors text-left ${isSelected ? 'bg-brand-secondary/15 text-white font-medium' : 'text-slate-300 hover:bg-slate-800 hover:text-white'
+                            }`}
                         >
                           <div className="w-5 h-5 rounded-full bg-slate-700 border border-slate-600 flex items-center justify-center text-[10px] overflow-hidden flex-shrink-0">
                             {photo ? <img src={photo} alt="" className="w-full h-full object-cover" /> : (dName[0] || '?').toUpperCase()}
@@ -938,9 +934,8 @@ const InlineTaskForm: React.FC<InlineTaskFormProps> = ({
                   key={pill.value}
                   type="button"
                   onClick={() => setPriority(pill.value)}
-                  className={`w-[4.25rem] py-0.5 rounded-full text-xs font-medium border flex items-center justify-center gap-1.5 transition-all cursor-pointer ${
-                    isSelected ? pill.activeClass : pill.inactiveClass
-                  }`}
+                  className={`w-[4.25rem] py-0.5 rounded-full text-xs font-medium border flex items-center justify-center gap-1.5 transition-all cursor-pointer ${isSelected ? pill.activeClass : pill.inactiveClass
+                    }`}
                   title={`${pill.fullName} Priority`}
                 >
                   <span className={`w-2 h-2 rounded-full ${pill.dot} ${isSelected ? 'scale-110' : 'opacity-70'}`} />
@@ -1125,13 +1120,12 @@ const TaskRow: React.FC<TaskRowProps> = ({ task, level, isExpanded, onToggleExpa
       {isDropTargetAbove && <li className="h-0.5 bg-brand-secondary list-none" style={{ marginLeft: `${level * 2}rem` }} />}
       <li
         id={`task-${task.id}`}
-        className={`group/task relative rounded-lg p-2 grid grid-cols-10 gap-4 items-center transition-all duration-300 outline-none focus:ring-1 focus:ring-brand-secondary/50 ${
-          isSubtask
-            ? `bg-slate-800/40 hover:bg-slate-800/60 border border-slate-700/50 text-slate-200 border-l-2 ${priorityColor.border}`
-            : hasSubtasks
+        className={`group/task relative rounded-lg p-2 grid grid-cols-10 gap-4 items-center transition-all duration-300 outline-none focus:ring-1 focus:ring-brand-secondary/50 ${isSubtask
+          ? `bg-slate-800/40 hover:bg-slate-800/60 border border-slate-700/50 text-slate-200 border-l-2 ${priorityColor.border}`
+          : hasSubtasks
             ? `bg-slate-900/90 hover:bg-slate-900 border border-slate-700/80 shadow-md shadow-black/25 text-white border-l-4 ${priorityColor.border} ring-1 ring-slate-700/40`
             : `bg-slate-800 hover:bg-slate-800/90 border border-slate-700/40 text-slate-100 border-l-4 ${priorityColor.border}`
-        } ${isPriorityUnset ? 'border-l-dashed' : ''} ${isBeingDragged ? 'opacity-30' : 'opacity-100'} ${highlightedTaskId === task.id ? 'ring-2 ring-brand-secondary ring-offset-2 ring-offset-slate-900 bg-slate-750 shadow-lg shadow-brand-secondary/20' : ''}`}
+          } ${isPriorityUnset ? 'border-l-dashed' : ''} ${isBeingDragged ? 'opacity-30' : 'opacity-100'} ${highlightedTaskId === task.id ? 'ring-2 ring-brand-secondary ring-offset-2 ring-offset-slate-900 bg-slate-750 shadow-lg shadow-brand-secondary/20' : ''}`}
         style={{ marginLeft: `${level * 2}rem` }}
         tabIndex={0}
         draggable={canEditTask}
@@ -1198,13 +1192,12 @@ const TaskRow: React.FC<TaskRowProps> = ({ task, level, isExpanded, onToggleExpa
               ) : (
                 <>
                   <span
-                    className={`cursor-pointer whitespace-pre-wrap break-words ${
-                      isSubtask
-                        ? 'text-slate-200 text-sm font-normal'
-                        : hasSubtasks
+                    className={`cursor-pointer whitespace-pre-wrap break-words ${isSubtask
+                      ? 'text-slate-200 text-sm font-normal'
+                      : hasSubtasks
                         ? 'text-white font-semibold text-sm sm:text-base tracking-wide'
                         : 'text-slate-100 font-medium text-sm'
-                    }`}
+                      }`}
                     onClick={() => canEditTask && setEditingField({ taskId: task.id, field: 'name' })}
                   >
                     {task.name}
@@ -1442,9 +1435,8 @@ const TaskRow: React.FC<TaskRowProps> = ({ task, level, isExpanded, onToggleExpa
                     const isFormer = a.isFormerMember || (formerMembers && formerMembers.some(fm => fm.uid === a.uid));
 
                     return (
-                      <div key={i} className={`w-6 h-6 shrink-0 rounded-full flex items-center justify-center text-[10px] text-white cursor-help border ${
-                        isFormer ? 'bg-slate-700 border-amber-500/60 ring-1 ring-amber-500/30' : 'bg-slate-600 border-slate-700'
-                      }`}
+                      <div key={i} className={`w-6 h-6 shrink-0 rounded-full flex items-center justify-center text-[10px] text-white cursor-help border ${isFormer ? 'bg-slate-700 border-amber-500/60 ring-1 ring-amber-500/30' : 'bg-slate-600 border-slate-700'
+                        }`}
                         title={`${name} (${a.email})${isFormer ? ' — Former Member' : ''}`}>
                         {photoURL ? <img src={photoURL} className="w-6 h-6 rounded-full" alt="" /> : (displayName?.[0] || a.email[0]).toUpperCase()}
                       </div>
@@ -1466,9 +1458,8 @@ const TaskRow: React.FC<TaskRowProps> = ({ task, level, isExpanded, onToggleExpa
             <button
               type="button"
               onClick={(e) => { e.stopPropagation(); onOpenFeedback?.(task); }}
-              className={`relative text-slate-500 hover:text-brand-light transition-colors p-1 rounded-full ${
-                task.feedbackNotes && task.feedbackNotes.length > 0 ? 'text-blue-400' : ''
-              }`}
+              className={`relative text-slate-500 hover:text-brand-light transition-colors p-1 rounded-full ${task.feedbackNotes && task.feedbackNotes.length > 0 ? 'text-blue-400' : ''
+                }`}
               title={`Task Notes & Feedback (${task.feedbackNotes?.length || 0})`}
             >
               <ChatBubbleBottomCenterTextIcon className="w-5 h-5" />
@@ -1484,9 +1475,8 @@ const TaskRow: React.FC<TaskRowProps> = ({ task, level, isExpanded, onToggleExpa
               <button
                 type="button"
                 onClick={(e) => { e.stopPropagation(); onOpenImpediment?.(task); }}
-                className={`text-slate-500 hover:text-red-400 transition-colors p-1 rounded-full ${
-                  task.impediment && !task.impediment.resolved ? 'text-red-400' : ''
-                }`}
+                className={`text-slate-500 hover:text-red-400 transition-colors p-1 rounded-full ${task.impediment && !task.impediment.resolved ? 'text-red-400' : ''
+                  }`}
                 title={task.impediment && !task.impediment.resolved ? 'View / Resolve Blocker' : 'Report Blocker'}
               >
                 <FlagIcon className="w-5 h-5" />
@@ -1592,11 +1582,10 @@ const SortableHeaderCell: React.FC<SortableHeaderCellProps> = ({ label, sortKey,
     <div className={className}>
       <button
         onClick={() => onSort(sortKey)}
-        className={`flex items-center space-x-1 font-medium transition-colors group ${
-          isSorted
-            ? 'text-brand-light bg-brand-secondary/10 px-2 py-0.5 rounded-md'
-            : 'text-slate-400 hover:text-slate-200'
-        }`}
+        className={`flex items-center space-x-1 font-medium transition-colors group ${isSorted
+          ? 'text-brand-light bg-brand-secondary/10 px-2 py-0.5 rounded-md'
+          : 'text-slate-400 hover:text-slate-200'
+          }`}
       >
         <span className={isSorted ? 'text-brand-light' : 'group-hover:text-white'}>{label}</span>
         {isSorted && (
@@ -2156,7 +2145,7 @@ const ProjectDetail: React.FC<ProjectDetailProps> = ({ project, onBack, canEdit,
     if (targetTask.ownerId || targetTask.ownerEmail) {
       const ownerMember = project.team?.members?.find(
         m => (targetTask.ownerId && m.uid === targetTask.ownerId) ||
-             (targetTask.ownerEmail && m.email?.toLowerCase() === targetTask.ownerEmail.toLowerCase())
+          (targetTask.ownerEmail && m.email?.toLowerCase() === targetTask.ownerEmail.toLowerCase())
       );
       if (ownerMember) {
         addMember(ownerMember);
@@ -2173,7 +2162,7 @@ const ProjectDetail: React.FC<ProjectDetailProps> = ({ project, onBack, canEdit,
     if (project.ownerId || project.ownerEmail) {
       const projOwner = project.team?.members?.find(
         m => (project.ownerId && m.uid === project.ownerId) ||
-             (project.ownerEmail && m.email?.toLowerCase() === project.ownerEmail.toLowerCase())
+          (project.ownerEmail && m.email?.toLowerCase() === project.ownerEmail.toLowerCase())
       );
       if (projOwner) {
         addMember(projOwner);
@@ -3270,26 +3259,26 @@ const ProjectDetail: React.FC<ProjectDetailProps> = ({ project, onBack, canEdit,
                         )}
                       </div>
                       <div className="flex items-center flex-wrap gap-x-3 gap-y-0.5 mt-1">
-                      {project.ownerId && (
-                        <div className="flex items-center gap-1.5 min-w-0">
-                          <span className="text-xs text-slate-400">Owner:</span>
-                          {getUserPhotoURL(project.ownerId, project.ownerEmail) ? (
-                            <img src={getUserPhotoURL(project.ownerId, project.ownerEmail)} alt="Owner" className="w-4 h-4 rounded-full object-cover flex-shrink-0" />
-                          ) : (
-                            <div className="w-4 h-4 rounded-full bg-brand-secondary/30 flex items-center justify-center flex-shrink-0">
-                              <UserIcon className="w-2.5 h-2.5 text-brand-light" />
-                            </div>
-                          )}
-                          <span className="text-xs text-brand-light truncate">{getUserDisplayName(project.ownerId, project.ownerEmail) || project.ownerEmail}</span>
-                        </div>
-                      )}
-                      {projectStartDateLabel && (
-                        <div className="flex items-center gap-1.5 flex-shrink-0" title="Project start date">
-                          <CalendarIcon className="w-3.5 h-3.5 text-slate-400" />
-                          <span className="text-xs text-slate-400">Start:</span>
-                          <span className="text-xs text-slate-200 font-medium">{projectStartDateLabel}</span>
-                        </div>
-                      )}
+                        {project.ownerId && (
+                          <div className="flex items-center gap-1.5 min-w-0">
+                            <span className="text-xs text-slate-400">Owner:</span>
+                            {getUserPhotoURL(project.ownerId, project.ownerEmail) ? (
+                              <img src={getUserPhotoURL(project.ownerId, project.ownerEmail)} alt="Owner" className="w-4 h-4 rounded-full object-cover flex-shrink-0" />
+                            ) : (
+                              <div className="w-4 h-4 rounded-full bg-brand-secondary/30 flex items-center justify-center flex-shrink-0">
+                                <UserIcon className="w-2.5 h-2.5 text-brand-light" />
+                              </div>
+                            )}
+                            <span className="text-xs text-brand-light truncate">{getUserDisplayName(project.ownerId, project.ownerEmail) || project.ownerEmail}</span>
+                          </div>
+                        )}
+                        {projectStartDateLabel && (
+                          <div className="flex items-center gap-1.5 flex-shrink-0" title="Project start date">
+                            <CalendarIcon className="w-3.5 h-3.5 text-slate-400" />
+                            <span className="text-xs text-slate-400">Start:</span>
+                            <span className="text-xs text-slate-200 font-medium">{projectStartDateLabel}</span>
+                          </div>
+                        )}
                       </div>
                     </div>
                   </div>
@@ -3473,205 +3462,205 @@ const ProjectDetail: React.FC<ProjectDetailProps> = ({ project, onBack, canEdit,
             <div onClick={() => setIsTopBandPinned(true)}>
               {/* Header with Project Type, Duration, and Cost inline */}
               <button
-            onClick={() => setIsCardsCollapsed(!isCardsCollapsed)}
-            className="w-full p-4 flex items-center justify-between text-left hover:bg-slate-700/30 transition-colors"
-          >
-            <div className="flex items-center gap-6 flex-wrap">
-              <h3 className="font-semibold text-lg text-white">Project Details</h3>
-              {/* Project Type - inline */}
-              <div className="flex items-center gap-2">
-                <div className="bg-slate-700 p-1.5 rounded-lg text-brand-light">
-                  <InfoIcon className="w-4 h-4" />
-                </div>
-                <div>
-                  <span className="text-xs text-slate-400">Project Type</span>
-                  <p className="text-sm font-semibold text-white">{project.coreSystem}</p>
-                </div>
-              </div>
-              {/* Duration - inline */}
-              <div className="flex items-center gap-2">
-                <div className="bg-slate-700 p-1.5 rounded-lg text-brand-light">
-                  <CalendarIcon className="w-4 h-4" />
-                </div>
-                <div>
-                  <span className="text-xs text-slate-400">Duration</span>
-                  <p className="text-sm font-semibold text-white">{project.duration} {project.durationUnit || 'weeks'}</p>
-                </div>
-              </div>
-              {/* Cost/Funding - inline */}
-              <div className="flex items-center gap-2">
-                <div className="bg-slate-700 p-1.5 rounded-lg text-brand-light">
-                  <MoneyIcon className="w-4 h-4" />
-                </div>
-                <div>
-                  <span className="text-xs text-slate-400">Cost / Funding</span>
-                  <p className="text-sm font-semibold text-white">{project.cost ? `${project.currency === Currency.USD ? '$' : '₦'}${project.cost.toLocaleString()}` : '—'}</p>
-                </div>
-              </div>
-            </div>
-            <ChevronDownIcon className={`w-5 h-5 text-slate-400 transition-transform duration-300 ${isCardsCollapsed ? '-rotate-90' : ''}`} />
-          </button>
-          <div className={`transition-all duration-300 ease-in-out ${isCardsCollapsed ? 'max-h-0 opacity-0' : 'max-h-[1000px] opacity-100'}`}>
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-6 p-4 pt-0">
-              {/* Team Card - Expanded to 2 columns */}
-              <div
-                className={`md:col-span-2 bg-slate-800/50 p-4 rounded-xl border ${effectiveCanEdit && onEditProject ? 'border-slate-700 hover:border-brand-secondary cursor-pointer transition-colors' : 'border-slate-700'}`}
-                onClick={() => effectiveCanEdit && onEditProject && onEditProject('team')}
+                onClick={() => setIsCardsCollapsed(!isCardsCollapsed)}
+                className="w-full p-4 flex items-center justify-between text-left hover:bg-slate-700/30 transition-colors"
               >
-                <div className="flex items-center space-x-3 text-slate-400 mb-3">
-                  <TeamIcon className="w-5 h-5" />
-                  <span className="text-sm font-medium">Team Members</span>
-                  <button type="button" onClick={(e) => { e.stopPropagation(); setViewMode('performance'); }} className="ml-auto inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-semibold bg-yellow-500/15 hover:bg-yellow-500/25 text-yellow-300 border border-yellow-500/30 transition-colors" title="Open Project Team Performance & Leaderboard"><TrophyIcon className="w-3.5 h-3.5 text-yellow-400" /><span>Team Performance</span></button>
-                </div>
-                {project.team?.members && project.team.members.length > 0 ? (
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-4 gap-y-2">
-                    {[...project.team.members].sort((a, b) => {
-                      const getRank = (role?: string) => {
-                        if (role === 'primary') return 1;
-                        if (role === 'secondary') return 2;
-                        return 3;
-                      };
-                      return getRank(a.leadRole) - getRank(b.leadRole);
-                    }).slice(0, 8).map((member) => {
-                      const isPrimary = member.leadRole === 'primary';
-                      const isSecondary = member.leadRole === 'secondary';
-                      const isLead = isPrimary || isSecondary;
-                      const memberPhoto = getUserPhotoURL(member.uid, member.email);
-                      const memberName = getUserDisplayName(member.uid, member.email) || member.displayName || member.email;
-                      return (
-                        <div key={member.uid} className="flex items-center gap-2 min-w-0">
-                          {memberPhoto ? (
-                            <img src={memberPhoto} alt={memberName} className="w-6 h-6 rounded-full object-cover flex-shrink-0" />
-                          ) : (
-                            <div className={`w-6 h-6 rounded-full flex items-center justify-center flex-shrink-0 ${isPrimary ? 'bg-blue-500/20' : isSecondary ? 'bg-amber-500/20' : 'bg-slate-700'
-                              }`}>
-                              {isLead ? <StarIcon className={`w-3 h-3 ${isPrimary ? 'text-blue-400' : 'text-amber-400'}`} /> : <UserIcon className="w-3 h-3 text-slate-400" />}
-                            </div>
-                          )}
-                          <span className={`text-sm ${isPrimary ? 'text-blue-300 font-medium' : isSecondary ? 'text-amber-300 font-medium' : 'text-white'}`}>
-                            {memberName}
-                          </span>
-                          <div className="scale-75 origin-left flex-shrink-0">
-                            <UserAchievementBadge userId={member.uid} />
-                          </div>
-                          {isLead && (
-                            <span className={`text-xs px-1.5 py-0.5 rounded flex-shrink-0 ${isPrimary ? 'bg-blue-500/30 text-blue-300' : 'bg-amber-500/30 text-amber-300'}`}>
-                              {isPrimary ? '1st Lead' : '2nd Lead'}
-                            </span>
-                          )}
-                          {member.phoneNumber && (
-                            <a
-                              href={`https://wa.me/${member.phoneNumber}?text=Hi ${memberName.split(' ')[0]}`}
-                              target="_blank"
-                              rel="noopener noreferrer"
-                              className="text-green-500 hover:text-green-400 p-0.5 rounded-full hover:bg-green-500/10 transition-colors flex-shrink-0"
-                              title={`Chat with ${memberName} on WhatsApp`}
-                              onClick={(e) => e.stopPropagation()}
-                            >
-                              <WhatsAppIcon className="w-4 h-4" />
-                            </a>
-                          )}
-                        </div>
-                      );
-                    })}
-                    {project.team.members.length > 8 && (
-                      <p className="text-xs text-slate-400 col-span-full">+{project.team.members.length - 8} more</p>
-                    )}
-                  </div>
-                ) : project.team?.name ? (
-                  <p className="text-white font-semibold">{project.team.name} / {project.team.size || 0}</p>
-                ) : (
-                  <p className="text-slate-500 text-sm">No team assigned</p>
-                )}
-              </div>
-
-              {/* Project Status Card */}
-              {(() => {
-                const allTasks = (project.phases || []).flatMap(ph => (ph.tasks || []).flatMap(t => t.subTasks ? [t, ...t.subTasks] : [t]));
-                const now = new Date();
-                const atRiskCount = allTasks.filter(t => t.status === TaskStatus.AtRisk).length;
-                const overdueCount = allTasks.filter(t => {
-                  const endDate = new Date(t.endDate);
-                  const progress = (() => {
-                    const statusStr = t.status as string;
-                    if (statusStr === TaskStatus.Hundred || statusStr === 'Completed') return 100;
-                    const pct = parseInt(statusStr.replace('%', ''));
-                    return isNaN(pct) ? 0 : pct;
-                  })();
-                  return endDate < now && progress < 100;
-                }).length;
-                const lateDeliveryCount = allTasks.filter(t => {
-                  const endDate = new Date(t.endDate);
-                  const progress = (() => {
-                    const statusStr = t.status as string;
-                    if (statusStr === TaskStatus.Hundred || statusStr === 'Completed') return 100;
-                    const pct = parseInt(statusStr.replace('%', ''));
-                    return isNaN(pct) ? 0 : pct;
-                  })();
-                  // Late delivery: completed but after end date (simplified: just count overdue for now)
-                  return endDate < now && progress === 100;
-                }).length;
-                const totalIssues = atRiskCount + overdueCount;
-
-                return (
-                  <div className="bg-slate-800/50 p-4 rounded-xl border border-slate-700">
-                    <div className="flex items-center space-x-3 text-slate-400 mb-3">
-                      <ChartBarIcon className="w-5 h-5" />
-                      <span className="text-sm font-medium">Project Status</span>
+                <div className="flex items-center gap-6 flex-wrap">
+                  <h3 className="font-semibold text-lg text-white">Project Details</h3>
+                  {/* Project Type - inline */}
+                  <div className="flex items-center gap-2">
+                    <div className="bg-slate-700 p-1.5 rounded-lg text-brand-light">
+                      <InfoIcon className="w-4 h-4" />
                     </div>
-                    <div className="space-y-3">
-                      {/* At Risk */}
-                      <div className="flex items-center justify-between">
-                        <div className="flex items-center gap-2">
-                          <div className={`w-2 h-2 rounded-full ${atRiskCount > 0 ? 'bg-red-500' : 'bg-green-500'}`} />
-                          <span className="text-sm text-slate-300">At Risk</span>
-                        </div>
-                        <span className={`text-sm font-semibold ${atRiskCount > 0 ? 'text-red-400' : 'text-green-400'}`}>
-                          {atRiskCount} {atRiskCount === 1 ? 'item' : 'items'}
-                        </span>
-                      </div>
-                      {/* Overdue */}
-                      <div className="flex items-center justify-between">
-                        <div className="flex items-center gap-2">
-                          <div className={`w-2 h-2 rounded-full ${overdueCount > 0 ? 'bg-amber-500' : 'bg-green-500'}`} />
-                          <span className="text-sm text-slate-300">Overdue</span>
-                        </div>
-                        <span className={`text-sm font-semibold ${overdueCount > 0 ? 'text-amber-400' : 'text-green-400'}`}>
-                          {overdueCount} {overdueCount === 1 ? 'task' : 'tasks'}
-                        </span>
-                      </div>
-                      {/* Late Deliveries */}
-                      <div className="flex items-center justify-between">
-                        <div className="flex items-center gap-2">
-                          <div className={`w-2 h-2 rounded-full ${lateDeliveryCount > 0 ? 'bg-orange-500' : 'bg-green-500'}`} />
-                          <span className="text-sm text-slate-300">Late Deliveries</span>
-                        </div>
-                        <span className={`text-sm font-semibold ${lateDeliveryCount > 0 ? 'text-orange-400' : 'text-green-400'}`}>
-                          {lateDeliveryCount}
-                        </span>
-                      </div>
-                      {/* Summary */}
-                      <div className="pt-2 border-t border-slate-700">
-                        {totalIssues === 0 ? (
-                          <p className="text-sm text-green-400 font-medium flex items-center gap-2">
-                            <CheckCircleIcon className="w-4 h-4" /> All on track
-                          </p>
-                        ) : (
-                          <p className="text-sm text-amber-400 font-medium">
-                            {totalIssues} {totalIssues === 1 ? 'issue' : 'issues'} need attention
-                          </p>
+                    <div>
+                      <span className="text-xs text-slate-400">Project Type</span>
+                      <p className="text-sm font-semibold text-white">{project.coreSystem}</p>
+                    </div>
+                  </div>
+                  {/* Duration - inline */}
+                  <div className="flex items-center gap-2">
+                    <div className="bg-slate-700 p-1.5 rounded-lg text-brand-light">
+                      <CalendarIcon className="w-4 h-4" />
+                    </div>
+                    <div>
+                      <span className="text-xs text-slate-400">Duration</span>
+                      <p className="text-sm font-semibold text-white">{project.duration} {project.durationUnit || 'weeks'}</p>
+                    </div>
+                  </div>
+                  {/* Cost/Funding - inline */}
+                  <div className="flex items-center gap-2">
+                    <div className="bg-slate-700 p-1.5 rounded-lg text-brand-light">
+                      <MoneyIcon className="w-4 h-4" />
+                    </div>
+                    <div>
+                      <span className="text-xs text-slate-400">Cost / Funding</span>
+                      <p className="text-sm font-semibold text-white">{project.cost ? `${project.currency === Currency.USD ? '$' : '₦'}${project.cost.toLocaleString()}` : '—'}</p>
+                    </div>
+                  </div>
+                </div>
+                <ChevronDownIcon className={`w-5 h-5 text-slate-400 transition-transform duration-300 ${isCardsCollapsed ? '-rotate-90' : ''}`} />
+              </button>
+              <div className={`transition-all duration-300 ease-in-out ${isCardsCollapsed ? 'max-h-0 opacity-0' : 'max-h-[1000px] opacity-100'}`}>
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-6 p-4 pt-0">
+                  {/* Team Card - Expanded to 2 columns */}
+                  <div
+                    className={`md:col-span-2 bg-slate-800/50 p-4 rounded-xl border ${effectiveCanEdit && onEditProject ? 'border-slate-700 hover:border-brand-secondary cursor-pointer transition-colors' : 'border-slate-700'}`}
+                    onClick={() => effectiveCanEdit && onEditProject && onEditProject('team')}
+                  >
+                    <div className="flex items-center space-x-3 text-slate-400 mb-3">
+                      <TeamIcon className="w-5 h-5" />
+                      <span className="text-sm font-medium">Team Members</span>
+                      <button type="button" onClick={(e) => { e.stopPropagation(); setViewMode('performance'); }} className="ml-auto inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-semibold bg-yellow-500/15 hover:bg-yellow-500/25 text-yellow-300 border border-yellow-500/30 transition-colors" title="Open Project Team Performance & Leaderboard"><TrophyIcon className="w-3.5 h-3.5 text-yellow-400" /><span>Team Performance</span></button>
+                    </div>
+                    {project.team?.members && project.team.members.length > 0 ? (
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-4 gap-y-2">
+                        {[...project.team.members].sort((a, b) => {
+                          const getRank = (role?: string) => {
+                            if (role === 'primary') return 1;
+                            if (role === 'secondary') return 2;
+                            return 3;
+                          };
+                          return getRank(a.leadRole) - getRank(b.leadRole);
+                        }).slice(0, 8).map((member) => {
+                          const isPrimary = member.leadRole === 'primary';
+                          const isSecondary = member.leadRole === 'secondary';
+                          const isLead = isPrimary || isSecondary;
+                          const memberPhoto = getUserPhotoURL(member.uid, member.email);
+                          const memberName = getUserDisplayName(member.uid, member.email) || member.displayName || member.email;
+                          return (
+                            <div key={member.uid} className="flex items-center gap-2 min-w-0">
+                              {memberPhoto ? (
+                                <img src={memberPhoto} alt={memberName} className="w-6 h-6 rounded-full object-cover flex-shrink-0" />
+                              ) : (
+                                <div className={`w-6 h-6 rounded-full flex items-center justify-center flex-shrink-0 ${isPrimary ? 'bg-blue-500/20' : isSecondary ? 'bg-amber-500/20' : 'bg-slate-700'
+                                  }`}>
+                                  {isLead ? <StarIcon className={`w-3 h-3 ${isPrimary ? 'text-blue-400' : 'text-amber-400'}`} /> : <UserIcon className="w-3 h-3 text-slate-400" />}
+                                </div>
+                              )}
+                              <span className={`text-sm ${isPrimary ? 'text-blue-300 font-medium' : isSecondary ? 'text-amber-300 font-medium' : 'text-white'}`}>
+                                {memberName}
+                              </span>
+                              <div className="scale-75 origin-left flex-shrink-0">
+                                <UserAchievementBadge userId={member.uid} />
+                              </div>
+                              {isLead && (
+                                <span className={`text-xs px-1.5 py-0.5 rounded flex-shrink-0 ${isPrimary ? 'bg-blue-500/30 text-blue-300' : 'bg-amber-500/30 text-amber-300'}`}>
+                                  {isPrimary ? '1st Lead' : '2nd Lead'}
+                                </span>
+                              )}
+                              {member.phoneNumber && (
+                                <a
+                                  href={`https://wa.me/${member.phoneNumber}?text=Hi ${memberName.split(' ')[0]}`}
+                                  target="_blank"
+                                  rel="noopener noreferrer"
+                                  className="text-green-500 hover:text-green-400 p-0.5 rounded-full hover:bg-green-500/10 transition-colors flex-shrink-0"
+                                  title={`Chat with ${memberName} on WhatsApp`}
+                                  onClick={(e) => e.stopPropagation()}
+                                >
+                                  <WhatsAppIcon className="w-4 h-4" />
+                                </a>
+                              )}
+                            </div>
+                          );
+                        })}
+                        {project.team.members.length > 8 && (
+                          <p className="text-xs text-slate-400 col-span-full">+{project.team.members.length - 8} more</p>
                         )}
                       </div>
-                    </div>
+                    ) : project.team?.name ? (
+                      <p className="text-white font-semibold">{project.team.name} / {project.team.size || 0}</p>
+                    ) : (
+                      <p className="text-slate-500 text-sm">No team assigned</p>
+                    )}
                   </div>
-                );
-              })()}
+
+                  {/* Project Status Card */}
+                  {(() => {
+                    const allTasks = (project.phases || []).flatMap(ph => (ph.tasks || []).flatMap(t => t.subTasks ? [t, ...t.subTasks] : [t]));
+                    const now = new Date();
+                    const atRiskCount = allTasks.filter(t => t.status === TaskStatus.AtRisk).length;
+                    const overdueCount = allTasks.filter(t => {
+                      const endDate = new Date(t.endDate);
+                      const progress = (() => {
+                        const statusStr = t.status as string;
+                        if (statusStr === TaskStatus.Hundred || statusStr === 'Completed') return 100;
+                        const pct = parseInt(statusStr.replace('%', ''));
+                        return isNaN(pct) ? 0 : pct;
+                      })();
+                      return endDate < now && progress < 100;
+                    }).length;
+                    const lateDeliveryCount = allTasks.filter(t => {
+                      const endDate = new Date(t.endDate);
+                      const progress = (() => {
+                        const statusStr = t.status as string;
+                        if (statusStr === TaskStatus.Hundred || statusStr === 'Completed') return 100;
+                        const pct = parseInt(statusStr.replace('%', ''));
+                        return isNaN(pct) ? 0 : pct;
+                      })();
+                      // Late delivery: completed but after end date (simplified: just count overdue for now)
+                      return endDate < now && progress === 100;
+                    }).length;
+                    const totalIssues = atRiskCount + overdueCount;
+
+                    return (
+                      <div className="bg-slate-800/50 p-4 rounded-xl border border-slate-700">
+                        <div className="flex items-center space-x-3 text-slate-400 mb-3">
+                          <ChartBarIcon className="w-5 h-5" />
+                          <span className="text-sm font-medium">Project Status</span>
+                        </div>
+                        <div className="space-y-3">
+                          {/* At Risk */}
+                          <div className="flex items-center justify-between">
+                            <div className="flex items-center gap-2">
+                              <div className={`w-2 h-2 rounded-full ${atRiskCount > 0 ? 'bg-red-500' : 'bg-green-500'}`} />
+                              <span className="text-sm text-slate-300">At Risk</span>
+                            </div>
+                            <span className={`text-sm font-semibold ${atRiskCount > 0 ? 'text-red-400' : 'text-green-400'}`}>
+                              {atRiskCount} {atRiskCount === 1 ? 'item' : 'items'}
+                            </span>
+                          </div>
+                          {/* Overdue */}
+                          <div className="flex items-center justify-between">
+                            <div className="flex items-center gap-2">
+                              <div className={`w-2 h-2 rounded-full ${overdueCount > 0 ? 'bg-amber-500' : 'bg-green-500'}`} />
+                              <span className="text-sm text-slate-300">Overdue</span>
+                            </div>
+                            <span className={`text-sm font-semibold ${overdueCount > 0 ? 'text-amber-400' : 'text-green-400'}`}>
+                              {overdueCount} {overdueCount === 1 ? 'task' : 'tasks'}
+                            </span>
+                          </div>
+                          {/* Late Deliveries */}
+                          <div className="flex items-center justify-between">
+                            <div className="flex items-center gap-2">
+                              <div className={`w-2 h-2 rounded-full ${lateDeliveryCount > 0 ? 'bg-orange-500' : 'bg-green-500'}`} />
+                              <span className="text-sm text-slate-300">Late Deliveries</span>
+                            </div>
+                            <span className={`text-sm font-semibold ${lateDeliveryCount > 0 ? 'text-orange-400' : 'text-green-400'}`}>
+                              {lateDeliveryCount}
+                            </span>
+                          </div>
+                          {/* Summary */}
+                          <div className="pt-2 border-t border-slate-700">
+                            {totalIssues === 0 ? (
+                              <p className="text-sm text-green-400 font-medium flex items-center gap-2">
+                                <CheckCircleIcon className="w-4 h-4" /> All on track
+                              </p>
+                            ) : (
+                              <p className="text-sm text-amber-400 font-medium">
+                                {totalIssues} {totalIssues === 1 ? 'issue' : 'issues'} need attention
+                              </p>
+                            )}
+                          </div>
+                        </div>
+                      </div>
+                    );
+                  })()}
+                </div>
+              </div>
             </div>
           </div>
         </div>
       </div>
-    </div>
-  </div>
 
       <div className="bg-slate-800/50 rounded-xl border border-slate-700">
         <div className="p-4 border-b border-slate-700 flex justify-between items-center">
@@ -3687,11 +3676,10 @@ const ProjectDetail: React.FC<ProjectDetailProps> = ({ project, onBack, canEdit,
             {viewMode === 'list' && (
               <button
                 onClick={() => setShowFilters(prev => !prev)}
-                className={`relative flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm font-medium transition-all ${
-                  showFilters || activeFilterCount > 0
-                    ? 'bg-brand-secondary/20 text-brand-light border border-brand-secondary/40 shadow-sm shadow-brand-secondary/10'
-                    : 'bg-slate-700 text-slate-300 hover:bg-slate-600 border border-transparent'
-                }`}
+                className={`relative flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm font-medium transition-all ${showFilters || activeFilterCount > 0
+                  ? 'bg-brand-secondary/20 text-brand-light border border-brand-secondary/40 shadow-sm shadow-brand-secondary/10'
+                  : 'bg-slate-700 text-slate-300 hover:bg-slate-600 border border-transparent'
+                  }`}
                 title={activeFilterCount > 0 ? `${activeFilterCount} filter${activeFilterCount > 1 ? 's' : ''} active` : 'Filter tasks'}
               >
                 <FilterIcon className="w-4 h-4" />
@@ -3824,11 +3812,10 @@ const ProjectDetail: React.FC<ProjectDetailProps> = ({ project, onBack, canEdit,
                     key={preset.id}
                     type="button"
                     onClick={() => setQuickPreset(preset.id as QuickFilterPreset)}
-                    className={`px-2.5 py-1 rounded-lg text-xs font-medium transition-all border ${
-                      isActive
-                        ? 'bg-brand-secondary text-white border-brand-secondary shadow-sm shadow-brand-secondary/20'
-                        : 'bg-slate-800/80 text-slate-400 border-slate-700/80 hover:bg-slate-700/60 hover:text-slate-200'
-                    }`}
+                    className={`px-2.5 py-1 rounded-lg text-xs font-medium transition-all border ${isActive
+                      ? 'bg-brand-secondary text-white border-brand-secondary shadow-sm shadow-brand-secondary/20'
+                      : 'bg-slate-800/80 text-slate-400 border-slate-700/80 hover:bg-slate-700/60 hover:text-slate-200'
+                      }`}
                   >
                     {preset.label}
                   </button>
@@ -3915,11 +3902,10 @@ const ProjectDetail: React.FC<ProjectDetailProps> = ({ project, onBack, canEdit,
                       <button
                         key={status}
                         onClick={() => toggleStatusFilter(status)}
-                        className={`px-2.5 py-1 rounded-full text-[11px] font-medium transition-all border ${
-                          isActive
-                            ? STATUS_BUTTON_STYLES[status]
-                            : 'bg-slate-800 text-slate-500 border-slate-700 hover:border-slate-600 hover:text-slate-300'
-                        }`}
+                        className={`px-2.5 py-1 rounded-full text-[11px] font-medium transition-all border ${isActive
+                          ? STATUS_BUTTON_STYLES[status]
+                          : 'bg-slate-800 text-slate-500 border-slate-700 hover:border-slate-600 hover:text-slate-300'
+                          }`}
                       >
                         {status}
                       </button>
@@ -3940,11 +3926,10 @@ const ProjectDetail: React.FC<ProjectDetailProps> = ({ project, onBack, canEdit,
                       <button
                         key={p.value}
                         onClick={() => togglePriorityFilter(p.value)}
-                        className={`px-2.5 py-1 rounded-full text-[11px] font-medium transition-all border flex items-center gap-1.5 ${
-                          isActive
-                            ? `${p.colors.bg} ${p.colors.text} border-transparent`
-                            : 'bg-slate-800 text-slate-500 border-slate-700 hover:border-slate-600 hover:text-slate-300'
-                        }`}
+                        className={`px-2.5 py-1 rounded-full text-[11px] font-medium transition-all border flex items-center gap-1.5 ${isActive
+                          ? `${p.colors.bg} ${p.colors.text} border-transparent`
+                          : 'bg-slate-800 text-slate-500 border-slate-700 hover:border-slate-600 hover:text-slate-300'
+                          }`}
                       >
                         <span className={`w-2 h-2 rounded-full ${isActive ? p.colors.dot : 'bg-slate-600'}`} />
                         {p.label}
@@ -3973,16 +3958,14 @@ const ProjectDetail: React.FC<ProjectDetailProps> = ({ project, onBack, canEdit,
                       <button
                         key={member.uid}
                         onClick={() => toggleAssigneeFilter(member.uid)}
-                        className={`flex items-center gap-1.5 px-2 py-1 rounded-full text-[11px] font-medium transition-all border ${
-                          isActive
-                            ? 'bg-brand-secondary/20 text-brand-light border-brand-secondary/40'
-                            : 'bg-slate-800 text-slate-500 border-slate-700 hover:border-slate-600 hover:text-slate-300'
-                        }`}
+                        className={`flex items-center gap-1.5 px-2 py-1 rounded-full text-[11px] font-medium transition-all border ${isActive
+                          ? 'bg-brand-secondary/20 text-brand-light border-brand-secondary/40'
+                          : 'bg-slate-800 text-slate-500 border-slate-700 hover:border-slate-600 hover:text-slate-300'
+                          }`}
                         title={`${name} (${member.email})`}
                       >
-                        <div className={`w-5 h-5 rounded-full flex-shrink-0 flex items-center justify-center text-[9px] overflow-hidden ring-1 ${
-                          isActive ? 'ring-brand-secondary' : 'ring-slate-700'
-                        }`}>
+                        <div className={`w-5 h-5 rounded-full flex-shrink-0 flex items-center justify-center text-[9px] overflow-hidden ring-1 ${isActive ? 'ring-brand-secondary' : 'ring-slate-700'
+                          }`}>
                           {photoURL
                             ? <img src={photoURL} alt="" className="w-5 h-5 rounded-full" />
                             : <span className="bg-slate-700 w-full h-full flex items-center justify-center">{(displayName?.[0] || member.email[0]).toUpperCase()}</span>
@@ -3998,7 +3981,7 @@ const ProjectDetail: React.FC<ProjectDetailProps> = ({ project, onBack, canEdit,
               {/* Active filters summary */}
               {activeFilterCount > 0 && (() => {
                 const totalVisibleTasks = sortedProject.phases.reduce((sum: number, ph: Phase) => {
-                  const countTasks = (tasks: Task[]): number => 
+                  const countTasks = (tasks: Task[]): number =>
                     tasks.reduce((s, t) => s + 1 + (t.subTasks ? countTasks(t.subTasks) : 0), 0);
                   return sum + countTasks(ph.tasks || []);
                 }, 0);
@@ -4021,227 +4004,226 @@ const ProjectDetail: React.FC<ProjectDetailProps> = ({ project, onBack, canEdit,
               const sectionIdLabel = `S${phaseIndex + 1}`;
 
               return (
-              <div key={phase.id} id={`section-${phase.id}`} className="border-b border-slate-700 last:border-b-0 scroll-mt-24 transition-all duration-300 rounded-lg">
-                <div
-                  className="p-4 bg-slate-800 flex justify-between items-center group cursor-pointer hover:bg-slate-700/50 transition-colors"
-                  onClick={(e) => {
-                    // Only toggle if clicking on the header area itself, not on interactive elements
-                    const target = e.target as HTMLElement;
-                    if (target.tagName === 'BUTTON' || target.tagName === 'INPUT' || target.closest('button') || target.closest('input')) {
-                      return;
-                    }
-                    // Don't toggle if clicking on editable text (when not in edit mode, these trigger edit)
-                    if (target.tagName === 'H4' || target.tagName === 'SPAN') {
-                      return;
-                    }
-                    togglePhaseCollapse(phase.id);
-                  }}
-                >
-                  <button
-                    onClick={(e) => { e.stopPropagation(); togglePhaseCollapse(phase.id); }}
-                    className="mr-2 text-slate-400 hover:text-white transition-colors flex-shrink-0"
-                    title={collapsedPhases.has(phase.id) ? "Expand section" : "Collapse section"}
+                <div key={phase.id} id={`section-${phase.id}`} className="border-b border-slate-700 last:border-b-0 scroll-mt-24 transition-all duration-300 rounded-lg">
+                  <div
+                    className="p-4 bg-slate-800 flex justify-between items-center group cursor-pointer hover:bg-slate-700/50 transition-colors"
+                    onClick={(e) => {
+                      // Only toggle if clicking on the header area itself, not on interactive elements
+                      const target = e.target as HTMLElement;
+                      if (target.tagName === 'BUTTON' || target.tagName === 'INPUT' || target.closest('button') || target.closest('input')) {
+                        return;
+                      }
+                      // Don't toggle if clicking on editable text (when not in edit mode, these trigger edit)
+                      if (target.tagName === 'H4' || target.tagName === 'SPAN') {
+                        return;
+                      }
+                      togglePhaseCollapse(phase.id);
+                    }}
                   >
-                    <ChevronDownIcon className={`w-5 h-5 transition-transform duration-300 ${collapsedPhases.has(phase.id) ? '-rotate-90' : ''}`} />
-                  </button>
-
-                  {/* Section ID Badge */}
-                  <span
-                    className={`mr-2.5 px-2 py-0.5 text-xs font-bold rounded border ${phaseConfig.badgeBg} ${phaseConfig.badgeText} ${phaseConfig.badgeBorder} flex-shrink-0`}
-                    title={`${sectionIdLabel} - ${phaseConfig.label} (${phaseConfig.completionPct}% complete)`}
-                  >
-                    {sectionIdLabel}
-                  </span>
-
-                  {/* Section Status Donut Chart */}
-                  <SectionStatusDonut
-                    tasks={phase.tasks}
-                    size={46}
-                    animationKey={phaseAnimationKeys[phase.id] || 0}
-                  />
-
-                  <div className="flex items-center gap-2 flex-grow min-w-0 ml-3">
-                    {editingPhase?.id === phase.id && editingPhase.field === 'name' ? (
-                      <input
-                        type="text"
-                        defaultValue={phase.name}
-                        onBlur={(e) => handleUpdatePhase(phase.id, 'name', e.target.value)}
-                        onKeyDown={(e) => { if (e.key === 'Enter') e.currentTarget.blur(); if (e.key === 'Escape') setEditingPhase(null); }}
-                        className="bg-slate-700 border border-slate-600 text-white font-semibold text-md rounded-md p-1 w-full"
-                        autoFocus
-                        onClick={(e) => e.stopPropagation()}
-                      />
-                    ) : (
-                      <h4 className="font-semibold text-md text-slate-300 cursor-pointer truncate" onClick={(e) => { e.stopPropagation(); checkPermission(phase.ownerId) && setEditingPhase({ id: phase.id, field: 'name' }); }} title={phase.name}>{phase.name}</h4>
-                    )}
-
-                    {editingPhase?.id === phase.id && editingPhase.field === 'weekRange' ? (
-                      <input
-                        type="text"
-                        defaultValue={phase.weekRange}
-                        onBlur={(e) => handleUpdatePhase(phase.id, 'weekRange', e.target.value)}
-                        onKeyDown={(e) => { if (e.key === 'Enter') e.currentTarget.blur(); if (e.key === 'Escape') setEditingPhase(null); }}
-                        className="bg-slate-700 border border-slate-600 text-slate-400 text-sm rounded-md p-1 w-24"
-                        autoFocus
-                        onClick={(e) => e.stopPropagation()}
-                      />
-                    ) : (
-                      <span className="text-sm text-slate-400 font-normal cursor-pointer flex-shrink-0" onClick={(e) => { e.stopPropagation(); checkPermission(phase.ownerId) && setEditingPhase({ id: phase.id, field: 'weekRange' }); }}>{phase.weekRange}</span>
-                    )}
-                  </div>
-
-                  <div className="flex items-center gap-2 pl-2" onClick={(e) => e.stopPropagation()}>
-                    {/* Phase Assignees */}
-                    <div
-                      className="flex -space-x-1 hover:space-x-1 transition-all mr-2 cursor-pointer"
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        if (!effectiveCanEdit) return;
-                        setAssigningTo({
-                          type: 'phase',
-                          id: phase.id,
-                          currentAssignees: phase.assignees || [],
-                          name: phase.name,
-                          hasChildren: phase.tasks && phase.tasks.length > 0
-                        });
-                      }}
+                    <button
+                      onClick={(e) => { e.stopPropagation(); togglePhaseCollapse(phase.id); }}
+                      className="mr-2 text-slate-400 hover:text-white transition-colors flex-shrink-0"
+                      title={collapsedPhases.has(phase.id) ? "Expand section" : "Collapse section"}
                     >
-                      {(phase.assignees && phase.assignees.length > 0) ? (
-                        phase.assignees.slice(0, 3).map((assignee, i) => {
-                          // Dynamic lookup for fresh data
-                          const lookupName = getUserDisplayName(assignee.uid, assignee.email);
-                          const lookupPhoto = getUserPhotoURL(assignee.uid, assignee.email);
-                          const displayName = lookupName || assignee.displayName;
-                          const photoURL = lookupPhoto || assignee.photoURL;
+                      <ChevronDownIcon className={`w-5 h-5 transition-transform duration-300 ${collapsedPhases.has(phase.id) ? '-rotate-90' : ''}`} />
+                    </button>
 
-                          let name = displayName;
-                          if (!name || name.includes('@')) {
-                            name = assignee.email.split('@')[0];
-                            name = name.charAt(0).toUpperCase() + name.slice(1);
-                          }
+                    {/* Section ID Badge */}
+                    <span
+                      className={`mr-2.5 px-2 py-0.5 text-xs font-bold rounded border ${phaseConfig.badgeBg} ${phaseConfig.badgeText} ${phaseConfig.badgeBorder} flex-shrink-0`}
+                      title={`${sectionIdLabel} - ${phaseConfig.label} (${phaseConfig.completionPct}% complete)`}
+                    >
+                      {sectionIdLabel}
+                    </span>
 
-                          const isFormer = assignee.isFormerMember || (project.team?.formerMembers && project.team.formerMembers.some(fm => fm.uid === assignee.uid));
+                    {/* Section Status Donut Chart */}
+                    <SectionStatusDonut
+                      tasks={phase.tasks}
+                      size={46}
+                      animationKey={phaseAnimationKeys[phase.id] || 0}
+                    />
 
-                          return (
-                            <div key={i} className={`w-6 h-6 rounded-full flex items-center justify-center text-xs overflow-hidden border ${
-                              isFormer ? 'bg-slate-700 border-amber-500/60 ring-1 ring-amber-500/30' : 'bg-slate-700 border-slate-800'
-                            }`}
-                              title={`${name} (${assignee.email})${isFormer ? ' — Former Member' : ''}`}>
-                              {photoURL ? <img src={photoURL} alt="" className="w-6 h-6 rounded-full" /> : (displayName?.[0] || assignee.email[0]).toUpperCase()}
-                            </div>
-                          );
-                        })
+                    <div className="flex items-center gap-2 flex-grow min-w-0 ml-3">
+                      {editingPhase?.id === phase.id && editingPhase.field === 'name' ? (
+                        <input
+                          type="text"
+                          defaultValue={phase.name}
+                          onBlur={(e) => handleUpdatePhase(phase.id, 'name', e.target.value)}
+                          onKeyDown={(e) => { if (e.key === 'Enter') e.currentTarget.blur(); if (e.key === 'Escape') setEditingPhase(null); }}
+                          className="bg-slate-700 border border-slate-600 text-white font-semibold text-md rounded-md p-1 w-full"
+                          autoFocus
+                          onClick={(e) => e.stopPropagation()}
+                        />
                       ) : (
-                        <div className="w-6 h-6 rounded-full bg-slate-700/50 border border-slate-600 border-dashed flex items-center justify-center hover:border-brand-secondary hover:text-brand-secondary transition-colors" title="Assign Section">
-                          <UserIcon className="w-3 h-3 text-slate-400" />
-                        </div>
+                        <h4 className="font-semibold text-md text-slate-300 cursor-pointer truncate" onClick={(e) => { e.stopPropagation(); checkPermission(phase.ownerId) && setEditingPhase({ id: phase.id, field: 'name' }); }} title={phase.name}>{phase.name}</h4>
+                      )}
+
+                      {editingPhase?.id === phase.id && editingPhase.field === 'weekRange' ? (
+                        <input
+                          type="text"
+                          defaultValue={phase.weekRange}
+                          onBlur={(e) => handleUpdatePhase(phase.id, 'weekRange', e.target.value)}
+                          onKeyDown={(e) => { if (e.key === 'Enter') e.currentTarget.blur(); if (e.key === 'Escape') setEditingPhase(null); }}
+                          className="bg-slate-700 border border-slate-600 text-slate-400 text-sm rounded-md p-1 w-24"
+                          autoFocus
+                          onClick={(e) => e.stopPropagation()}
+                        />
+                      ) : (
+                        <span className="text-sm text-slate-400 font-normal cursor-pointer flex-shrink-0" onClick={(e) => { e.stopPropagation(); checkPermission(phase.ownerId) && setEditingPhase({ id: phase.id, field: 'weekRange' }); }}>{phase.weekRange}</span>
                       )}
                     </div>
 
-                    {checkPermission(phase.ownerId) && (
-                      <button onClick={() => handleRequestDeletePhase(phase)} className="text-slate-500 hover:text-red-500 opacity-0 group-hover:opacity-100 transition-opacity">
-                        <TrashIcon className="w-4 h-4" />
-                      </button>
-                    )}
-                    {effectiveCanEdit && (
-                      <button
-                        onClick={() => {
-                          if (collapsedPhases.has(phase.id)) {
-                            togglePhaseCollapse(phase.id);
-                          }
-                          setAddingTaskToPhase(phase.id);
+                    <div className="flex items-center gap-2 pl-2" onClick={(e) => e.stopPropagation()}>
+                      {/* Phase Assignees */}
+                      <div
+                        className="flex -space-x-1 hover:space-x-1 transition-all mr-2 cursor-pointer"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          if (!effectiveCanEdit) return;
+                          setAssigningTo({
+                            type: 'phase',
+                            id: phase.id,
+                            currentAssignees: phase.assignees || [],
+                            name: phase.name,
+                            hasChildren: phase.tasks && phase.tasks.length > 0
+                          });
                         }}
-                        className="flex items-center space-x-2 bg-slate-700 hover:bg-slate-600 text-slate-200 font-semibold py-1 px-3 rounded-lg transition-colors text-sm shadow-sm"
-                        title={`Add task to ${sectionIdLabel}`}
                       >
-                        <span className="text-[11px] font-mono font-bold px-1.5 py-0.5 rounded bg-slate-800 text-brand-secondary border border-slate-600/60 leading-none">
-                          {sectionIdLabel}
-                        </span>
-                        <PlusCircleIcon className="w-4 h-4 text-slate-300" />
-                        <span>Add Task</span>
-                      </button>
-                    )}
-                  </div>
-                </div>
+                        {(phase.assignees && phase.assignees.length > 0) ? (
+                          phase.assignees.slice(0, 3).map((assignee, i) => {
+                            // Dynamic lookup for fresh data
+                            const lookupName = getUserDisplayName(assignee.uid, assignee.email);
+                            const lookupPhoto = getUserPhotoURL(assignee.uid, assignee.email);
+                            const displayName = lookupName || assignee.displayName;
+                            const photoURL = lookupPhoto || assignee.photoURL;
 
-                <div className={`transition-all duration-300 ease-in-out overflow-hidden ${collapsedPhases.has(phase.id) ? 'max-h-0 opacity-0' : 'max-h-[5000px] opacity-100'}`}>
-                  {addingTaskToPhase === phase.id && (
-                    <div className="p-4 pb-0">
-                      <InlineTaskForm
-                        onSave={(data) => handleSaveTask(phase.id, data)}
-                        onCancel={() => setAddingTaskToPhase(null)}
-                        placeholder={`New task in ${sectionIdLabel}...`}
-                        teamMembers={availableTeamMembers}
-                        getUserDisplayName={getUserDisplayName}
-                        getUserPhotoURL={getUserPhotoURL}
-                        sectionLabel={sectionIdLabel}
-                      />
-                    </div>
-                  )}
-                  <div className="p-4">
-                    <div className="grid grid-cols-10 gap-4 text-sm mb-2 px-2" style={{ paddingLeft: '2.5rem' }}>
-                      <SortableHeaderCell label="Task" sortKey="name" sortConfig={sortConfig} onSort={handleSort} className="col-span-4" />
-                      <SortableHeaderCell label="Timeline" sortKey="startDate" sortConfig={sortConfig} onSort={handleSort} className="col-span-2" />
-                      <SortableHeaderCell label="Status" sortKey="status" sortConfig={sortConfig} onSort={handleSort} className="col-span-1" />
-                      <SortableHeaderCell label="Priority" sortKey="priority" sortConfig={sortConfig} onSort={handleSort} className="col-span-1" />
-                      <SortableHeaderCell label="Details" sortKey="deliverables" sortConfig={sortConfig} onSort={handleSort} className="col-span-2" />
-                    </div>
-                    <ul className="space-y-2">
-                      {phase.tasks.map(task => (
-                        <TaskRow
-                          key={task.id}
-                          task={task}
-                          level={0}
-                          isExpanded={expandedTasks.has(task.id)}
-                          expandedTasks={expandedTasks}
-                          highlightedTaskId={highlightedTaskId}
-                          onToggleExpand={handleToggleExpand}
-                          addingSubtaskTo={addingSubtaskTo}
-                          setAddingSubtaskTo={setAddingSubtaskTo}
-                          canEdit={effectiveCanEdit}
-                          handleSaveSubtask={handleSaveSubtask}
-                          editingField={editingField}
-                          setEditingField={setEditingField}
-                          handleUpdateTaskField={handleUpdateTaskField}
-                          onRequestDelete={handleRequestDeleteTask}
-                          checkPermission={checkPermission}
-                          checkTaskPermission={checkTaskPermission}
-                          phaseId={phase.id}
-                          onDragStart={handleDragStart}
-                          onDragOver={handleDragOver}
-                          onDrop={handleDrop}
-                          onDragEnd={handleDragEnd}
-                          onDragLeave={handleDragLeave}
-                          draggedItemId={draggedItemId}
-                          dropTarget={dropTarget}
-                          onAssign={(task) => {
-                            if (!effectiveCanEdit) return;
-                            setAssigningTo({
-                              type: 'task',
-                              id: task.id,
-                              currentAssignees: task.assignees || [],
-                              name: task.name,
-                              hasChildren: task.subTasks && task.subTasks.length > 0
-                            });
+                            let name = displayName;
+                            if (!name || name.includes('@')) {
+                              name = assignee.email.split('@')[0];
+                              name = name.charAt(0).toUpperCase() + name.slice(1);
+                            }
+
+                            const isFormer = assignee.isFormerMember || (project.team?.formerMembers && project.team.formerMembers.some(fm => fm.uid === assignee.uid));
+
+                            return (
+                              <div key={i} className={`w-6 h-6 rounded-full flex items-center justify-center text-xs overflow-hidden border ${isFormer ? 'bg-slate-700 border-amber-500/60 ring-1 ring-amber-500/30' : 'bg-slate-700 border-slate-800'
+                                }`}
+                                title={`${name} (${assignee.email})${isFormer ? ' — Former Member' : ''}`}>
+                                {photoURL ? <img src={photoURL} alt="" className="w-6 h-6 rounded-full" /> : (displayName?.[0] || assignee.email[0]).toUpperCase()}
+                              </div>
+                            );
+                          })
+                        ) : (
+                          <div className="w-6 h-6 rounded-full bg-slate-700/50 border border-slate-600 border-dashed flex items-center justify-center hover:border-brand-secondary hover:text-brand-secondary transition-colors" title="Assign Section">
+                            <UserIcon className="w-3 h-3 text-slate-400" />
+                          </div>
+                        )}
+                      </div>
+
+                      {checkPermission(phase.ownerId) && (
+                        <button onClick={() => handleRequestDeletePhase(phase)} className="text-slate-500 hover:text-red-500 opacity-0 group-hover:opacity-100 transition-opacity">
+                          <TrashIcon className="w-4 h-4" />
+                        </button>
+                      )}
+                      {effectiveCanEdit && (
+                        <button
+                          onClick={() => {
+                            if (collapsedPhases.has(phase.id)) {
+                              togglePhaseCollapse(phase.id);
+                            }
+                            setAddingTaskToPhase(phase.id);
                           }}
-                          projectTeam={project.team?.members || []}
-                          formerMembers={project.team?.formerMembers || []}
+                          className="flex items-center space-x-2 bg-slate-700 hover:bg-slate-600 text-slate-200 font-semibold py-1 px-3 rounded-lg transition-colors text-sm shadow-sm"
+                          title={`Add task to ${sectionIdLabel}`}
+                        >
+                          <span className="text-[11px] font-mono font-bold px-1.5 py-0.5 rounded bg-slate-800 text-brand-secondary border border-slate-600/60 leading-none">
+                            {sectionIdLabel}
+                          </span>
+                          <PlusCircleIcon className="w-4 h-4 text-slate-300" />
+                          <span>Add Task</span>
+                        </button>
+                      )}
+                    </div>
+                  </div>
+
+                  <div className={`transition-all duration-300 ease-in-out overflow-hidden ${collapsedPhases.has(phase.id) ? 'max-h-0 opacity-0' : 'max-h-[5000px] opacity-100'}`}>
+                    {addingTaskToPhase === phase.id && (
+                      <div className="p-4 pb-0">
+                        <InlineTaskForm
+                          onSave={(data) => handleSaveTask(phase.id, data)}
+                          onCancel={() => setAddingTaskToPhase(null)}
+                          placeholder={`New task in ${sectionIdLabel}...`}
+                          teamMembers={availableTeamMembers}
                           getUserDisplayName={getUserDisplayName}
                           getUserPhotoURL={getUserPhotoURL}
-                          onImageUpload={handleTaskImageUpload}
-                          onRemoveImage={handleRemoveTaskImage}
-                          onViewImage={(url) => setViewingImage(url)}
-                          onOpenFeedback={(task) => setFeedbackDrawerTask(task)}
-                          onOpenImpediment={(task) => setImpedimentModalTask(task)}
-                          onRequestComplete={(task) => setCompletionModalTask(task)}
+                          sectionLabel={sectionIdLabel}
                         />
-                      ))}
-                    </ul>
+                      </div>
+                    )}
+                    <div className="p-4">
+                      <div className="grid grid-cols-10 gap-4 text-sm mb-2 px-2" style={{ paddingLeft: '2.5rem' }}>
+                        <SortableHeaderCell label="Task" sortKey="name" sortConfig={sortConfig} onSort={handleSort} className="col-span-4" />
+                        <SortableHeaderCell label="Timeline" sortKey="startDate" sortConfig={sortConfig} onSort={handleSort} className="col-span-2" />
+                        <SortableHeaderCell label="Status" sortKey="status" sortConfig={sortConfig} onSort={handleSort} className="col-span-1" />
+                        <SortableHeaderCell label="Priority" sortKey="priority" sortConfig={sortConfig} onSort={handleSort} className="col-span-1" />
+                        <SortableHeaderCell label="Details" sortKey="deliverables" sortConfig={sortConfig} onSort={handleSort} className="col-span-2" />
+                      </div>
+                      <ul className="space-y-2">
+                        {phase.tasks.map(task => (
+                          <TaskRow
+                            key={task.id}
+                            task={task}
+                            level={0}
+                            isExpanded={expandedTasks.has(task.id)}
+                            expandedTasks={expandedTasks}
+                            highlightedTaskId={highlightedTaskId}
+                            onToggleExpand={handleToggleExpand}
+                            addingSubtaskTo={addingSubtaskTo}
+                            setAddingSubtaskTo={setAddingSubtaskTo}
+                            canEdit={effectiveCanEdit}
+                            handleSaveSubtask={handleSaveSubtask}
+                            editingField={editingField}
+                            setEditingField={setEditingField}
+                            handleUpdateTaskField={handleUpdateTaskField}
+                            onRequestDelete={handleRequestDeleteTask}
+                            checkPermission={checkPermission}
+                            checkTaskPermission={checkTaskPermission}
+                            phaseId={phase.id}
+                            onDragStart={handleDragStart}
+                            onDragOver={handleDragOver}
+                            onDrop={handleDrop}
+                            onDragEnd={handleDragEnd}
+                            onDragLeave={handleDragLeave}
+                            draggedItemId={draggedItemId}
+                            dropTarget={dropTarget}
+                            onAssign={(task) => {
+                              if (!effectiveCanEdit) return;
+                              setAssigningTo({
+                                type: 'task',
+                                id: task.id,
+                                currentAssignees: task.assignees || [],
+                                name: task.name,
+                                hasChildren: task.subTasks && task.subTasks.length > 0
+                              });
+                            }}
+                            projectTeam={project.team?.members || []}
+                            formerMembers={project.team?.formerMembers || []}
+                            getUserDisplayName={getUserDisplayName}
+                            getUserPhotoURL={getUserPhotoURL}
+                            onImageUpload={handleTaskImageUpload}
+                            onRemoveImage={handleRemoveTaskImage}
+                            onViewImage={(url) => setViewingImage(url)}
+                            onOpenFeedback={(task) => setFeedbackDrawerTask(task)}
+                            onOpenImpediment={(task) => setImpedimentModalTask(task)}
+                            onRequestComplete={(task) => setCompletionModalTask(task)}
+                          />
+                        ))}
+                      </ul>
+                    </div>
                   </div>
                 </div>
-              </div>
-            );
-          })}
+              );
+            })}
           </>
         ) : (
           viewMode === 'gantt' ? (
