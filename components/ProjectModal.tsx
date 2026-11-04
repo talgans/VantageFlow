@@ -556,11 +556,10 @@ const ProjectModal: React.FC<ProjectModalProps> = ({
                 <span className="text-[10px] font-bold uppercase tracking-wider text-brand-secondary bg-brand-secondary/15 px-2 py-0.5 rounded border border-brand-secondary/30">
                   {projectToEdit ? 'Edit Project' : 'Create New Project'}
                 </span>
-                <span className={`text-[10px] px-2 py-0.5 rounded-full font-medium inline-flex items-center gap-1 ${
-                  isPublic
+                <span className={`text-[10px] px-2 py-0.5 rounded-full font-medium inline-flex items-center gap-1 ${isPublic
                     ? 'bg-blue-500/15 text-blue-300 border border-blue-500/30'
                     : 'bg-slate-700/80 text-slate-300 border border-slate-600'
-                }`}>
+                  }`}>
                   {isPublic ? '🌐 Public' : '🔒 Private'}
                 </span>
               </div>
@@ -593,11 +592,10 @@ const ProjectModal: React.FC<ProjectModalProps> = ({
             <button
               type="button"
               onClick={() => setActiveTab('overview')}
-              className={`px-4 py-2.5 text-sm font-semibold border-b-2 transition-colors whitespace-nowrap flex items-center gap-2 ${
-                activeTab === 'overview'
+              className={`px-4 py-2.5 text-sm font-semibold border-b-2 transition-colors whitespace-nowrap flex items-center gap-2 ${activeTab === 'overview'
                   ? 'border-brand-secondary text-white'
                   : 'border-transparent text-slate-400 hover:text-white'
-              }`}
+                }`}
             >
               <span>Overview</span>
               {Object.keys(errors).length > 0 && (
@@ -608,11 +606,10 @@ const ProjectModal: React.FC<ProjectModalProps> = ({
             <button
               type="button"
               onClick={() => setActiveTab('team')}
-              className={`px-4 py-2.5 text-sm font-semibold border-b-2 transition-colors whitespace-nowrap flex items-center gap-2 ${
-                activeTab === 'team'
+              className={`px-4 py-2.5 text-sm font-semibold border-b-2 transition-colors whitespace-nowrap flex items-center gap-2 ${activeTab === 'team'
                   ? 'border-brand-secondary text-white'
                   : 'border-transparent text-slate-400 hover:text-white'
-              }`}
+                }`}
             >
               <span>Team, Access & Invites</span>
               <span className="text-xs px-1.5 py-0.5 rounded-full bg-slate-700 text-slate-300">
@@ -626,11 +623,10 @@ const ProjectModal: React.FC<ProjectModalProps> = ({
             <button
               type="button"
               onClick={() => setActiveTab('structure')}
-              className={`px-4 py-2.5 text-sm font-semibold border-b-2 transition-colors whitespace-nowrap flex items-center gap-2 ${
-                activeTab === 'structure'
+              className={`px-4 py-2.5 text-sm font-semibold border-b-2 transition-colors whitespace-nowrap flex items-center gap-2 ${activeTab === 'structure'
                   ? 'border-brand-secondary text-white'
                   : 'border-transparent text-slate-400 hover:text-white'
-              }`}
+                }`}
             >
               <span>Structure</span>
               <span className="text-xs px-1.5 py-0.5 rounded-full bg-slate-700 text-slate-300">
@@ -775,11 +771,10 @@ const ProjectModal: React.FC<ProjectModalProps> = ({
                             <span className="text-xs font-bold text-white uppercase tracking-wider">
                               Project Privacy
                             </span>
-                            <span className={`text-[10px] px-2 py-0.5 rounded-full font-semibold ${
-                              isPublic
+                            <span className={`text-[10px] px-2 py-0.5 rounded-full font-semibold ${isPublic
                                 ? 'bg-blue-500/20 text-blue-300 border border-blue-500/40'
                                 : 'bg-slate-700 text-slate-300 border border-slate-600'
-                            }`}>
+                              }`}>
                               {isPublic ? 'Public Project' : 'Private (Recommended)'}
                             </span>
                           </div>
@@ -802,16 +797,14 @@ const ProjectModal: React.FC<ProjectModalProps> = ({
                             setIsPublic(false);
                           }
                         }}
-                        className={`relative inline-flex h-6 w-11 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none focus:ring-2 focus:ring-brand-secondary focus:ring-offset-2 focus:ring-offset-slate-800 ${
-                          isPublic ? 'bg-blue-600' : 'bg-slate-600'
-                        }`}
+                        className={`relative inline-flex h-6 w-11 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none focus:ring-2 focus:ring-brand-secondary focus:ring-offset-2 focus:ring-offset-slate-800 ${isPublic ? 'bg-blue-600' : 'bg-slate-600'
+                          }`}
                         title={isPublic ? 'Click to make Private' : 'Click to make Public'}
                       >
                         <span
                           aria-hidden="true"
-                          className={`pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow-md ring-0 transition duration-200 ease-in-out ${
-                            isPublic ? 'translate-x-5' : 'translate-x-0'
-                          }`}
+                          className={`pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow-md ring-0 transition duration-200 ease-in-out ${isPublic ? 'translate-x-5' : 'translate-x-0'
+                            }`}
                         />
                       </button>
                     </div>
@@ -1013,7 +1006,7 @@ const ProjectModal: React.FC<ProjectModalProps> = ({
                 </div>
                 <h3 className="text-lg font-bold text-white">Project Privacy Warning</h3>
               </div>
-              
+
               <p className="text-sm text-slate-300 leading-relaxed">
                 You are about to make this project <strong className="text-white">Public</strong>.
               </p>
